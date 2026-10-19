@@ -103,7 +103,7 @@ public class ContentTypeBasedDataFetcherTest {
         assertFalse(includes.contains("seo.description_t"));
 
         assertTrue(hasTermFilter(request.query(), "internalName", "Home"));
-        assertFalse(hasMatchFilter(request.query(), "seo.description_t", "news"));
+        assertTrue(hasMatchFilter(request.query(), "seo.description_t", "news"));
     }
 
     @Test
