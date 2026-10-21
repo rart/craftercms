@@ -29,10 +29,26 @@ import static org.craftercms.studio.permissions.StudioPermissionsConstants.*;
  */
 public final class PublishPackageAvailableActions {
 
+	/**
+	 * Allows to review the package if the user is not the submitter or if peer review is disabled
+	 */
 	public static final long APPROVE = 1L;
+	/**
+	 * Allows to reject the package
+	 */
 	public static final long REJECT = 1L << 1;
+	/**
+	 * Allows to cancel the package
+	 */
 	public static final long CANCEL = 1L << 2;
+	/**
+	 * Allows to resubmit an already completed or cancelled package
+	 */
 	public static final long RESUBMIT = 1L << 3;
+	/**
+	 * Allows the submitter of the package to update the package
+	 * metadata (title, schedule, comment)
+	 */
 	public static final long UPDATE = 1L << 4;
 
 	/**
