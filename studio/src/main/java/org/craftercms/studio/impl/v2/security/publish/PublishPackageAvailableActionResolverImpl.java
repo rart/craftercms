@@ -75,7 +75,7 @@ public class PublishPackageAvailableActionResolverImpl implements PublishPackage
 		Collection<PublishItem> publishItems = publishDao.getPublishItems(siteId, publishPackage.getId());
 		SitePermissionMappings permissionMappings = permissionMappingProvider.getPermissionMappings(siteId);
 		List<Group> groups = userService.getUserGroups(-1, user);
-		boolean isSubmitter = publishPackage.getSubmitter().getUsername().equals(getCurrentUsername());
+		boolean isSubmitter = user.equals(publishPackage.getSubmitter().getUsername());
 		long userAllowedActions = permissionMappings.getPublishPackageAvailableActions(user, groups, publishItems, userService.isSystemAdmin(user));
 		long packageStateActions = getPossibleActionsForPackageStates(publishPackage.getPackageState(),
 			publishPackage.getApprovalState());
