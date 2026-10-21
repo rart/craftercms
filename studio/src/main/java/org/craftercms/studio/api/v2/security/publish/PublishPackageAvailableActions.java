@@ -33,6 +33,7 @@ public final class PublishPackageAvailableActions {
 	public static final long REJECT = 1L << 1;
 	public static final long CANCEL = 1L << 2;
 	public static final long RESUBMIT = 1L << 3;
+	public static final long UPDATE = 1L << 4;
 
 	/**
 	 * Map  permissions to package available actions
@@ -41,7 +42,8 @@ public final class PublishPackageAvailableActions {
 	 * @return bitmap of available actions
 	 */
 	public static long mapPermissionsToPackageAvailableActions(final Collection<String> permissions) {
-		long result = 0;
+		// UPDATE action will be validated later if the user is the submitter of the package
+		long result = UPDATE;
 		if (permissions.contains(PERMISSION_PUBLISH_REVIEW)) {
 			result |= APPROVE | REJECT;
 		}
@@ -66,13 +68,13 @@ public final class PublishPackageAvailableActions {
 														  final ApprovalState approvalState) {
 		if (READY.matches(packageState)) {
 			long result = switch (approvalState) {
-				case SUBMITTED -> APPROVE | REJECT;
-				case APPROVED -> REJECT;
+				case SUBMITTED -> APPROVE | REJECT | UPDATE;
+				case APPROVED -> APPROVE | REJECT | UPDATE;
 				case REJECTED -> APPROVE;
 			};
 			return result | CANCEL;
 		}
-		if(COMPLETED.matches(packageState) || CANCELLED.matches(packageState)) {
+		if (COMPLETED.matches(packageState) || CANCELLED.matches(packageState)) {
 			return RESUBMIT;
 		}
 		return 0;

@@ -30,6 +30,7 @@ import org.craftercms.studio.api.v2.dal.publish.PublishItem;
 import org.craftercms.studio.api.v2.dal.publish.PublishPackage;
 import org.craftercms.studio.api.v2.security.publish.PublishPackageAvailableActionResolver;
 import static org.craftercms.studio.api.v2.security.publish.PublishPackageAvailableActions.APPROVE;
+import static org.craftercms.studio.api.v2.security.publish.PublishPackageAvailableActions.UPDATE;
 import static org.craftercms.studio.api.v2.security.publish.PublishPackageAvailableActions.getPossibleActionsForPackageStates;
 
 import org.craftercms.studio.api.v2.service.publish.PublishService;
@@ -86,12 +87,17 @@ public class PublishPackageAvailableActionResolverImpl implements PublishPackage
 
 	/**
 	 * Ensure the submitter of a package does not have the APPROVE action available if peer review is enabled
+	 * and that non-submitters do not have the UPDATE action available
 	 */
 	private long applyPeerReviewConfig(long allowedActions, String siteId, boolean isSubmitter) throws SiteNotFoundException {
 		long result = allowedActions;
 		boolean peerReviewEnabled = servicesConfig.isRequirePeerReview(siteId);
 		if (isSubmitter && peerReviewEnabled) {
 			result &= ~APPROVE;
+		}
+
+		if (!isSubmitter) {
+			result &= ~UPDATE;
 		}
 
 		return result;
