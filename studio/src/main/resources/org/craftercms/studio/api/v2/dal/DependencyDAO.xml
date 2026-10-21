@@ -82,7 +82,7 @@
 		AND d.valid = 1
 		AND
 		<foreach item="pattern" index="index" collection="regex"
-			 open="(" separator=" OR " close=")">
+			 open="(" separator=" AND " close=")">
 			d.target_path NOT RLIKE #{pattern}
 		</foreach>
 		AND i.site_id = s.id
