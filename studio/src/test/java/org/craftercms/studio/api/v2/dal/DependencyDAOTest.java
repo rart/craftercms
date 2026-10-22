@@ -236,15 +236,16 @@ public class DependencyDAOTest {
 	}
 
 	@Test
-	public void includesModifiedItemSpecificDependencyOfRenamedItem() throws Exception {
+	public void includesRenamedItemAndItsModifiedItemSpecificDependency() throws Exception {
+		// moveItem sets MODIFIED together with previous_path. A live publish clears both.
 		insertItem(PAGE, EDITED, CONTENT_TYPE_PAGE);
-		long renamedId = insertItem(RENAMED_PAGE, PUBLISHED, CONTENT_TYPE_PAGE);
+		long renamedId = insertItem(RENAMED_PAGE, EDITED, CONTENT_TYPE_PAGE);
 		insertItem(MODIFIED_COMPONENT, EDITED, CONTENT_TYPE_COMPONENT);
 		depend(PAGE, RENAMED_PAGE);
 		depend(RENAMED_PAGE, MODIFIED_COMPONENT);
 		markRenamed(renamedId, "/site/website/old.xml");
 
-		assertEquals(Set.of(MODIFIED_COMPONENT), hardDependencies(PAGE));
+		assertEquals(Set.of(RENAMED_PAGE, MODIFIED_COMPONENT), hardDependencies(PAGE));
 	}
 
 	@Test
