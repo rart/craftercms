@@ -33,6 +33,8 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 
 import javax.sql.DataSource;
+import java.io.IOException;
+import java.io.InputStream;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.Statement;
@@ -40,12 +42,15 @@ import java.util.List;
 import java.util.Properties;
 import java.util.Set;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.stream.Collectors.toSet;
 import static org.craftercms.studio.api.v1.constant.StudioConstants.CONTENT_TYPE_COMPONENT;
+import static org.craftercms.studio.api.v1.constant.StudioConstants.CONTENT_TYPE_FOLDER;
 import static org.craftercms.studio.api.v1.constant.StudioConstants.CONTENT_TYPE_PAGE;
 import static org.craftercms.studio.api.v2.dal.ItemState.LIVE;
 import static org.craftercms.studio.api.v2.dal.ItemState.MODIFIED;
 import static org.craftercms.studio.api.v2.dal.ItemState.NEW;
+import static org.craftercms.studio.api.v2.dal.ItemState.STAGED;
 import static org.junit.Assert.assertEquals;
 
 /**
@@ -58,8 +63,19 @@ public class DependencyDAOTest {
 	private static final String SITE_ID = "site";
 	private static final String OTHER_SITE_ID = "other-site";
 	private static final String TARGET = "live";
+	private static final String STAGING_TARGET = "staging";
 	private static final String DATABASE = "dependency_dao_test";
-	private static final List<String> ITEM_SPECIFIC_PATTERNS = List.of("/site/components/.*");
+	private static final String DDL_RESOURCE = "crafter/studio/database/createDDL.sql";
+	/**
+	 * Default {@code studio.configuration.dependency.itemSpecificPatterns}.
+	 * A single pattern hides an AND separator: no path can match every pattern at once.
+	 */
+	private static final List<String> ITEM_SPECIFIC_PATTERNS = List.of(
+			"/site/components/page/.*",
+			"/static-assets/page/.*",
+			"/site/components/item/.*",
+			"/static-assets/item/.*");
+	private static final List<String> SCHEMA_TABLES = List.of("user", "site", "dependency", "item", "item_target");
 
 	private static final String PAGE = "/site/website/index.xml";
 	private static final String UNMODIFIED_COMPONENT = "/site/components/page/header.xml";
@@ -68,8 +84,22 @@ public class DependencyDAOTest {
 	private static final String DIRECT_MODIFIED_COMPONENT = "/site/components/page/footer.xml";
 	private static final String PUBLISHED_PAGE = "/site/website/about.xml";
 	private static final String NEW_PAGE = "/site/website/extra.xml";
+	private static final String ALREADY_STAGED_PAGE = "/site/website/staged.xml";
 	private static final String RENAMED_PAGE = "/site/website/moved.xml";
 	private static final String PUBLISHED_ASSET = "/static-assets/images/logo.png";
+	private static final String STAGING_SECTION = "/site/website/staging-section";
+	private static final String SECTION_COMPONENT = "/site/components/page/section-nav.xml";
+	private static final String LIVE_SECTION = "/site/website/live-section";
+	private static final String LIVE_SECTION_PAGE = "/site/website/live-section/index.xml";
+	private static final String LIVE_SECTION_COMPONENT = "/site/components/item/live-nav.xml";
+	private static final String RENAMED_IN_STAGING = "/site/website/renamed-staging.xml";
+	private static final String STAGED_CHILD = "/site/website/renamed-staging/child.xml";
+	private static final String LIVE_ONLY_CHILD = "/site/website/renamed-staging/live-child.xml";
+	private static final String RENAMED_IN_LIVE = "/site/website/renamed-live.xml";
+	private static final String CHILD_OF_LIVE_RENAME = "/site/website/renamed-live/child.xml";
+	private static final String COMPONENT_UNDER_LIVE_RENAME = "/static-assets/page/banner.png";
+	private static final String CYCLE_COMPONENT_A = "/site/components/item/a.xml";
+	private static final String CYCLE_COMPONENT_B = "/site/components/item/b.xml";
 
 	private static final long PUBLISHED = LIVE.value;
 	private static final long EDITED = LIVE.value | MODIFIED.value;
@@ -99,16 +129,13 @@ public class DependencyDAOTest {
 
 		try (Connection connection = dataSource.getConnection()) {
 			connection.setAutoCommit(true);
-			try (Statement statement = connection.createStatement()) {
-				for (String ddl : SCHEMA.split(";")) {
-					if (!ddl.isBlank()) {
-						statement.execute(ddl);
-					}
-				}
-			}
+			loadSchema(connection);
 			try (PreparedStatement insertSite = connection.prepareStatement(
-					"INSERT INTO site (site_id, deleted) VALUES (?, 0)", Statement.RETURN_GENERATED_KEYS)) {
+					"INSERT INTO site (site_uuid, site_id, name, deleted) VALUES (?, ?, ?, 0)",
+					Statement.RETURN_GENERATED_KEYS)) {
 				insertSite.setString(1, SITE_ID);
+				insertSite.setString(2, SITE_ID);
+				insertSite.setString(3, SITE_ID);
 				insertSite.executeUpdate();
 				try (var keys = insertSite.getGeneratedKeys()) {
 					keys.next();
@@ -260,10 +287,70 @@ public class DependencyDAOTest {
 		assertEquals(Set.of(), hardDependencies(PAGE));
 	}
 
+	@Test
+	public void stagingTargetUsesStagedMaskAndPerTargetPreviousPath() throws Exception {
+		// Ancestor renamed in staging is walked, so its modified item-specific dependency is included.
+		// A previous_path recorded only for live must not pull that ancestor in.
+		long stagingSectionId = insertItem(STAGING_SECTION, PUBLISHED, CONTENT_TYPE_FOLDER);
+		long pageId = insertItem(PAGE, EDITED, CONTENT_TYPE_PAGE);
+		setParent(pageId, stagingSectionId);
+		insertItem(SECTION_COMPONENT, EDITED, CONTENT_TYPE_COMPONENT);
+		depend(STAGING_SECTION, SECTION_COMPONENT);
+		markRenamed(stagingSectionId, "/site/website/old-staging-section", STAGING_TARGET);
+
+		long liveSectionId = insertItem(LIVE_SECTION, PUBLISHED, CONTENT_TYPE_FOLDER);
+		long liveSectionPageId = insertItem(LIVE_SECTION_PAGE, EDITED, CONTENT_TYPE_PAGE);
+		setParent(liveSectionPageId, liveSectionId);
+		insertItem(LIVE_SECTION_COMPONENT, EDITED, CONTENT_TYPE_COMPONENT);
+		depend(LIVE_SECTION, LIVE_SECTION_COMPONENT);
+		markRenamed(liveSectionId, "/site/website/old-live-section", TARGET);
+
+		// NEW with the STAGED bit clear is new in staging. NEW|STAGED is already published there.
+		insertItem(NEW_PAGE, NEW.value, CONTENT_TYPE_PAGE);
+		insertItem(ALREADY_STAGED_PAGE, NEW.value | STAGED.value, CONTENT_TYPE_PAGE);
+		depend(PAGE, NEW_PAGE);
+		depend(PAGE, ALREADY_STAGED_PAGE);
+
+		// Child of a page renamed in staging is included when it carries the STAGED bit.
+		// A child published only to live does not.
+		long renamedInStagingId = insertItem(RENAMED_IN_STAGING, PUBLISHED, CONTENT_TYPE_PAGE);
+		markRenamed(renamedInStagingId, "/site/website/old-renamed-staging.xml", STAGING_TARGET);
+		depend(PAGE, RENAMED_IN_STAGING);
+		setParent(insertItem(STAGED_CHILD, STAGED.value | MODIFIED.value, CONTENT_TYPE_PAGE), renamedInStagingId);
+		setParent(insertItem(LIVE_ONLY_CHILD, LIVE.value | MODIFIED.value, CONTENT_TYPE_PAGE), renamedInStagingId);
+
+		// A rename recorded only for live is not a staging dependency, so neither it nor its child is returned.
+		long renamedInLiveId = insertItem(RENAMED_IN_LIVE, PUBLISHED, CONTENT_TYPE_PAGE);
+		markRenamed(renamedInLiveId, "/site/website/old-renamed-live.xml", TARGET);
+		depend(PAGE, RENAMED_IN_LIVE);
+		insertItem(COMPONENT_UNDER_LIVE_RENAME, EDITED, CONTENT_TYPE_COMPONENT);
+		depend(RENAMED_IN_LIVE, COMPONENT_UNDER_LIVE_RENAME);
+		setParent(insertItem(CHILD_OF_LIVE_RENAME, STAGED.value | MODIFIED.value, CONTENT_TYPE_PAGE), renamedInLiveId);
+
+		assertEquals(Set.of(SECTION_COMPONENT, NEW_PAGE, STAGED_CHILD),
+				hardDependencies(STAGING_TARGET, false, PAGE, LIVE_SECTION_PAGE));
+	}
+
+	@Test
+	public void terminatesOnCycleBetweenItemSpecificComponents() throws Exception {
+		insertItem(PAGE, EDITED, CONTENT_TYPE_PAGE);
+		insertItem(CYCLE_COMPONENT_A, EDITED, CONTENT_TYPE_COMPONENT);
+		insertItem(CYCLE_COMPONENT_B, PUBLISHED, CONTENT_TYPE_COMPONENT);
+		depend(PAGE, CYCLE_COMPONENT_A);
+		depend(CYCLE_COMPONENT_A, CYCLE_COMPONENT_B);
+		depend(CYCLE_COMPONENT_B, CYCLE_COMPONENT_A);
+
+		assertEquals(Set.of(CYCLE_COMPONENT_A), hardDependencies(PAGE));
+	}
+
 	private static Set<String> hardDependencies(String... paths) {
+		return hardDependencies(TARGET, true, paths);
+	}
+
+	private static Set<String> hardDependencies(String target, boolean isLiveTarget, String... paths) {
 		try (SqlSession session = sqlSessionFactory.openSession()) {
 			DependencyDAO dao = session.getMapper(DependencyDAO.class);
-			return dao.getHardDependenciesForList(SITE_ID, TARGET, List.of(paths), ITEM_SPECIFIC_PATTERNS, true)
+			return dao.getHardDependenciesForList(SITE_ID, target, List.of(paths), ITEM_SPECIFIC_PATTERNS, isLiveTarget)
 					.stream()
 					.map(LightItem::getPath)
 					.collect(toSet());
@@ -310,16 +397,61 @@ public class DependencyDAOTest {
 		}
 	}
 
+	private static void setParent(long itemId, long parentId) throws Exception {
+		try (Connection connection = dataSource.getConnection();
+			 PreparedStatement statement = connection.prepareStatement(
+					 "UPDATE item SET parent_id = ? WHERE id = ?")) {
+			statement.setLong(1, parentId);
+			statement.setLong(2, itemId);
+			statement.executeUpdate();
+		}
+	}
+
 	private static void markRenamed(long itemId, String previousPath) throws Exception {
+		markRenamed(itemId, previousPath, TARGET);
+	}
+
+	private static void markRenamed(long itemId, String previousPath, String target) throws Exception {
 		try (Connection connection = dataSource.getConnection();
 			 PreparedStatement statement = connection.prepareStatement(
 					 "INSERT INTO item_target (item_id, target, previous_path, published_commit_id) VALUES (?, ?, ?, ?)")) {
 			statement.setLong(1, itemId);
-			statement.setString(2, TARGET);
+			statement.setString(2, target);
 			statement.setString(3, previousPath);
 			statement.setString(4, "commit");
 			statement.executeUpdate();
 		}
+	}
+
+	private static void loadSchema(Connection connection) throws Exception {
+		String ddl = readResource(DDL_RESOURCE);
+		try (Statement statement = connection.createStatement()) {
+			for (String table : SCHEMA_TABLES) {
+				statement.execute(extractCreateTable(ddl, table));
+			}
+		}
+	}
+
+	private static String readResource(String path) throws IOException {
+		try (InputStream in = DependencyDAOTest.class.getClassLoader().getResourceAsStream(path)) {
+			if (in == null) {
+				throw new IllegalStateException("Classpath resource not found: " + path);
+			}
+			return new String(in.readAllBytes(), UTF_8);
+		}
+	}
+
+	private static String extractCreateTable(String ddl, String table) {
+		String marker = "CREATE TABLE IF NOT EXISTS `" + table + "`";
+		int start = ddl.indexOf(marker);
+		if (start < 0) {
+			throw new IllegalStateException("createDDL.sql has no CREATE TABLE for " + table);
+		}
+		int end = ddl.indexOf(" ;", start);
+		if (end < 0) {
+			throw new IllegalStateException("createDDL.sql CREATE TABLE for " + table + " has no terminator");
+		}
+		return ddl.substring(start, end);
 	}
 
 	private static Configuration mybatisConfiguration(DataSource dataSource) {
@@ -348,40 +480,4 @@ public class DependencyDAOTest {
 		variables.setProperty("blobFilePattern", "%.blob");
 		return variables;
 	}
-
-	private static final String SCHEMA = """
-			CREATE TABLE site (
-				id BIGINT NOT NULL AUTO_INCREMENT,
-				site_id VARCHAR(50) NOT NULL,
-				deleted INT NOT NULL DEFAULT 0,
-				PRIMARY KEY (id)
-			);
-			CREATE TABLE item (
-				id BIGINT NOT NULL AUTO_INCREMENT,
-				site_id BIGINT NOT NULL,
-				path VARCHAR(2048) NOT NULL,
-				state BIGINT NOT NULL,
-				system_type VARCHAR(64) NULL,
-				label VARCHAR(256) NULL,
-				mime_type VARCHAR(96) NULL,
-				parent_id BIGINT NULL,
-				PRIMARY KEY (id)
-			);
-			CREATE TABLE dependency (
-				id BIGINT NOT NULL AUTO_INCREMENT,
-				site VARCHAR(50) NOT NULL,
-				source_path TEXT NOT NULL,
-				target_path TEXT NOT NULL,
-				type VARCHAR(50) NOT NULL,
-				valid BIT NOT NULL DEFAULT 1,
-				PRIMARY KEY (id)
-			);
-			CREATE TABLE item_target (
-				item_id BIGINT NOT NULL,
-				target VARCHAR(20) NOT NULL,
-				previous_path VARCHAR(2048) NULL,
-				published_commit_id VARCHAR(40) NOT NULL,
-				PRIMARY KEY (item_id, target)
-			);
-			""";
 }
