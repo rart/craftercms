@@ -200,12 +200,12 @@ public class DependencyDAOTest {
 	}
 
 	@Test
-	public void excludesNewDependencyThatIsNotModified() throws Exception {
+	public void includesNewAndModifiedDependencies() throws Exception {
 		insertItem(PAGE, EDITED, CONTENT_TYPE_PAGE);
 		insertItem(NEW_PAGE, NEW.value, CONTENT_TYPE_PAGE);
 		depend(PAGE, NEW_PAGE);
 
-		assertEquals(Set.of(), hardDependencies(PAGE));
+		assertEquals(Set.of(NEW_PAGE), hardDependencies(PAGE));
 	}
 
 	@Test
