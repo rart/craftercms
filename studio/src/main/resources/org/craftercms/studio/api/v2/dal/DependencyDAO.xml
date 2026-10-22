@@ -56,7 +56,7 @@
 		AND (i.state &amp; #{newMask}) = 0
 		AND
 		<foreach item="pattern" index="index" collection="regex"
-			 open="(" separator=" OR " close=")">
+			 open="(" separator=" AND " close=")">
 			cte.target_path NOT RLIKE #{pattern}
 		</foreach>
 	</select>
