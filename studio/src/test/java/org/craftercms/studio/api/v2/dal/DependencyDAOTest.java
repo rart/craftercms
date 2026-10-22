@@ -312,9 +312,10 @@ public class DependencyDAOTest {
 		depend(PAGE, NEW_PAGE);
 		depend(PAGE, ALREADY_STAGED_PAGE);
 
-		// Child of a page renamed in staging is included when it carries the STAGED bit.
-		// A child published only to live does not.
-		long renamedInStagingId = insertItem(RENAMED_IN_STAGING, PUBLISHED, CONTENT_TYPE_PAGE);
+		// A staging publish clears the staging previous_path and leaves MODIFIED set, so a page
+		// renamed in staging is published with the requesting page. Its child is included when
+		// it carries the STAGED bit. A child published only to live is not.
+		long renamedInStagingId = insertItem(RENAMED_IN_STAGING, STAGED.value | LIVE.value | MODIFIED.value, CONTENT_TYPE_PAGE);
 		markRenamed(renamedInStagingId, "/site/website/old-renamed-staging.xml", STAGING_TARGET);
 		depend(PAGE, RENAMED_IN_STAGING);
 		setParent(insertItem(STAGED_CHILD, STAGED.value | MODIFIED.value, CONTENT_TYPE_PAGE), renamedInStagingId);
@@ -328,7 +329,7 @@ public class DependencyDAOTest {
 		depend(RENAMED_IN_LIVE, COMPONENT_UNDER_LIVE_RENAME);
 		setParent(insertItem(CHILD_OF_LIVE_RENAME, STAGED.value | MODIFIED.value, CONTENT_TYPE_PAGE), renamedInLiveId);
 
-		assertEquals(Set.of(SECTION_COMPONENT, NEW_PAGE, STAGED_CHILD),
+		assertEquals(Set.of(SECTION_COMPONENT, NEW_PAGE, RENAMED_IN_STAGING, STAGED_CHILD),
 				hardDependencies(STAGING_TARGET, false, PAGE, LIVE_SECTION_PAGE));
 	}
 
