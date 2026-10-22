@@ -210,9 +210,9 @@
 			#{path}
 		</foreach>
 		<!-- Remove items that are not modified or new in target -->
-		AND (state &amp; #{modifiedMask} > 0 OR
-			(state &amp; #{newInTargetMaskOn}) = #{newInTargetMaskOn}
-			AND (state &amp; #{newInTargetMaskOff}) = 0)
+		AND ((state &amp; #{modifiedMask}) > 0
+			OR ((state &amp; #{newInTargetMaskOn}) = #{newInTargetMaskOn}
+				AND (state &amp; #{newInTargetMaskOff}) = 0))
 	</select>
 
 	<select id="getDependentItemsInternal" resultMap="org.craftercms.studio.api.v2.dal.ItemDAO.LightItemMap">
