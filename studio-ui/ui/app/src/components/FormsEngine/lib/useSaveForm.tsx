@@ -32,11 +32,10 @@ import {
 	extractAtomValues,
 	getBasePath,
 	getFileNameValueFromPath,
-	getValidationAtomsExcludingIrrelevant,
 	showAlert
 } from './formUtils';
 import { FormSavePromiseResult, FormsEngineProps } from '../FormsEngine';
-import { contentFormSaveAction } from '../../../utils/contentFormLaunch';
+import { baseFieldId, contentFormSaveAction, hiddenInvalidFieldLabels } from '../../../utils/contentFormLaunch';
 import { XmlKeys } from './formConsts';
 import { fromString } from '../../../utils/xml';
 import {
@@ -66,7 +65,7 @@ import {
 	collectAffectedPluginControlFields,
 	preloadControlPluginsForFields
 } from './controlPluginLoader';
-import { runFormControllerBeforeSave } from '../formControllers/runtime';
+import { isFieldPathIrrelevant, runFormControllerBeforeSave } from '../formControllers/runtime';
 import { rememberCommittedRelevance } from '../formControllers/relevance';
 export interface UseSaveFormProps {
 	createPath?: string;
@@ -77,6 +76,13 @@ export interface UseSaveFormProps {
 	isStackedForm?: boolean;
 	/** Repeat stacked forms: sub-fields of the repeat group (same set as bootstrap). */
 	fieldsToRender?: ContentTypeField[];
+	/**
+	 * Field ids on screen for a targeted ICE or selected-field launch. Omitted when the
+	 * whole form is showing, including a stacked repeat item (that form validates only its subfields).
+	 */
+	visibleFieldIds?: string[];
+	/** Called when a non-draft save fails on fields outside `visibleFieldIds`. The write is skipped. */
+	onHiddenInvalidFields?: () => void;
 	onBeforeSave?: FormsEngineProps['onSave'];
 	onSave?: FormsEngineProps['onSave'];
 	onClose?(): void;
@@ -100,7 +106,9 @@ export function useSaveForm(props: UseSaveFormProps) {
 		onClose,
 		onMinimize,
 		createPath,
-		fieldsToRender
+		fieldsToRender,
+		visibleFieldIds,
+		onHiddenInvalidFields
 	} = props;
 	const { id, contentType, contentObject, path: itemPath } = useContext(ItemMetaContext);
 	const isPage = contentType.type === 'page';
@@ -186,19 +194,22 @@ export function useSaveForm(props: UseSaveFormProps) {
 			stableFormContext.affectedPluginControlFields = [];
 			let values = extractAtomValues(jotai, stableFormContext.atoms.valueByFieldId);
 			const repeatFieldId = isRepeatMode ? stableFormContext.props?.repeat?.fieldId : undefined;
-			let validityStates = await Promise.all(
-				getValidationAtomsExcludingIrrelevant(
-					stableFormContext.atoms.validationByFieldId,
-					stableFormContext.formControllerState?.irrelevantFieldPaths,
-					repeatFieldId
-				).map((validityDataAtom) => jotai.get(validityDataAtom))
-			);
+			const readValidity = async () => {
+				const irrelevant = stableFormContext.formControllerState?.irrelevantFieldPaths;
+				const entries = Object.entries(stableFormContext.atoms.validationByFieldId).filter(
+					([fieldId]) => !isFieldPathIrrelevant(irrelevant, fieldId, repeatFieldId)
+				);
+				const states = await Promise.all(entries.map(([, validityAtom]) => jotai.get(validityAtom)));
+				const invalidFieldIds = entries.flatMap(([fieldId], index) => (states[index]?.isValid ? [] : [fieldId]));
+				return { isFormInvalid: invalidFieldIds.length > 0, invalidFieldIds };
+			};
 			// Put system properties in before creating the XML
-			let isFormInvalid = validityStates.some((state) => !state.isValid);
+			let { isFormInvalid, invalidFieldIds } = await readValidity();
 			let saveAsDraft = draft || isFormInvalid;
-			// Close wins over minimize. An in-context repeat Done (`closeOnSuccess`) also closes,
-			// which is what FE1 did by unstacking the dialog after a completed ICE save. A save that
-			// was downgraded to a draft stays open so the author can finish required fields.
+			// Close wins over minimize. An in-context repeat Done (`closeOnSuccess`) also closes
+			// a completed save, which is what FE1 did by unstacking the dialog. A draft stays open.
+			// Invalid fields outside a targeted subset do not take this path: the save is skipped
+			// and the full form is shown so the author can see what is missing.
 			const closesDialog = () => closeAfterSave || (Boolean(options?.closeOnSuccess) && !saveAsDraft);
 
 			const onSavePromiseHandler = ({ close }: FormSavePromiseResult) => {
@@ -290,15 +301,35 @@ export function useSaveForm(props: UseSaveFormProps) {
 				if (!(await preloadPluginsOrBlock(values))) {
 					return;
 				}
-				validityStates = await Promise.all(
-					getValidationAtomsExcludingIrrelevant(
-						stableFormContext.atoms.validationByFieldId,
-						stableFormContext.formControllerState?.irrelevantFieldPaths,
-						repeatFieldId
-					).map((validityDataAtom) => jotai.get(validityDataAtom))
-				);
-				isFormInvalid = validityStates.some((state) => !state.isValid);
+				({ isFormInvalid, invalidFieldIds } = await readValidity());
 				saveAsDraft = draft || isFormInvalid;
+			}
+
+			// Done/Save on a targeted launch still validates the whole document. Writing that as a
+			// draft would leave the dialog on the subset, hiding the fields that failed. Name them
+			// and reveal the form instead. An explicit draft save is left alone.
+			if (!draft && saveAsDraft && visibleFieldIds?.length) {
+				const hiddenLabels = hiddenInvalidFieldLabels(invalidFieldIds, visibleFieldIds, (fieldId) => {
+					const field = contentType.fields[fieldId] ?? contentType.fields[baseFieldId(fieldId)];
+					return field?.name;
+				});
+				if (hiddenLabels) {
+					setIsSubmitting(false);
+					dispatch(
+						showSystemNotification({
+							options: { variant: 'warning' },
+							message: formatMessage(
+								{
+									defaultMessage:
+										'These fields still need attention: {fields}. The rest of the form is shown so you can complete them. Nothing was saved.'
+								},
+								{ fields: hiddenLabels.join(', ') }
+							)
+						})
+					);
+					onHiddenInvalidFields?.();
+					return;
+				}
 			}
 
 			// `onBeforeSave` may have changed `file-name`; the render-time snapshot is stale from here on.

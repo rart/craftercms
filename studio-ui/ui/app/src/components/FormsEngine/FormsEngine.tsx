@@ -883,12 +883,16 @@ function FormOrchestrator(props: FormsEngineProps) {
 	const isRepeatMode = Boolean(repeat?.fieldId);
 	const affectedPackages = lockStatus.affectedPackages?.length > 0;
 	const contentTypeFields = contentType.fields;
+	// A targeted save that fails on fields outside the subset sets this so the author can see them.
+	const [revealFullForm, setRevealFullForm] = useState(false);
 	// Launch-time targeting (ICE group, selected fields, repeat index) is resolved here, after the
 	// content type is loaded. An explicit `fieldsToRender` (repeat / stacked forms) wins.
 	const launchTarget = useMemo(
 		() =>
-			fieldsToRender ? undefined : resolveContentFormFieldTarget(contentType, { fieldIds, iceGroupId, repeatIndex }),
-		[contentType, fieldIds, fieldsToRender, iceGroupId, repeatIndex]
+			fieldsToRender || revealFullForm
+				? undefined
+				: resolveContentFormFieldTarget(contentType, { fieldIds, iceGroupId, repeatIndex }),
+		[contentType, fieldIds, fieldsToRender, iceGroupId, repeatIndex, revealFullForm]
 	);
 	const renderedFields = fieldsToRenderForLaunch(fieldsToRender, launchTarget?.fields);
 	useEffect(() => {
@@ -1134,6 +1138,9 @@ function FormOrchestrator(props: FormsEngineProps) {
 		isCreateMode,
 		isRepeatMode,
 		fieldsToRender,
+		// Stacked forms validate their own fields. Only the targeted parent subset is "visible".
+		visibleFieldIds: fieldsToRender || revealFullForm ? undefined : launchTarget?.fields?.map((field) => field.id),
+		onHiddenInvalidFields: () => setRevealFullForm(true),
 		createPath: Boolean(create?.path) ? pathInSite : undefined, // pathInSite is the result of processing the create path with macros.
 		onClose: () => onCloseHandler(null, null),
 		onMinimize: () => props.onMinimize?.()

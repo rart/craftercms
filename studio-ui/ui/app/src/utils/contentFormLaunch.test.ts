@@ -22,6 +22,7 @@ import {
 	contentFormSaveAction,
 	fe2LaunchPropDisposition,
 	fieldsToRenderForLaunch,
+	hiddenInvalidFieldLabels,
 	normalizeRepeatIndex,
 	resolveContentFormFieldTarget,
 	toContentFormSaveSuccess,
@@ -216,6 +217,32 @@ describe('fieldsToRenderForLaunch', () => {
 	it('does not warn when the launch did not target fields', () => {
 		assert.equal(unmatchedLaunchTargetWarning({}), undefined);
 		assert.equal(unmatchedLaunchTargetWarning({ fields: [contentType.fields.title_s] }), undefined);
+	});
+});
+
+describe('hiddenInvalidFieldLabels', () => {
+	const labelFor = (fieldId: string) => ({ title_s: 'Title', sidebar_s: 'Sidebar' })[fieldId];
+
+	it('names invalid fields the targeted form is not showing', () => {
+		assert.deepEqual(hiddenInvalidFieldLabels(['title_s', 'sidebar_s'], ['title_s', 'body_html'], labelFor), [
+			'Sidebar'
+		]);
+	});
+
+	it('returns nothing when every invalid field is visible', () => {
+		assert.equal(hiddenInvalidFieldLabels(['title_s'], ['title_s'], labelFor), undefined);
+	});
+
+	it('treats a dotted id as visible when its base field is targeted', () => {
+		assert.equal(
+			hiddenInvalidFieldLabels(['articles_o.headline_s'], ['articles_o'], () => undefined),
+			undefined
+		);
+	});
+
+	it('returns nothing when the form is not a targeted subset', () => {
+		assert.equal(hiddenInvalidFieldLabels(['sidebar_s'], undefined, labelFor), undefined);
+		assert.equal(hiddenInvalidFieldLabels(['sidebar_s'], [], labelFor), undefined);
 	});
 });
 

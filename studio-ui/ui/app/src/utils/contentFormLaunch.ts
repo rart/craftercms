@@ -249,6 +249,24 @@ export function fieldsToRenderForLaunch(
 	return resolved?.length ? resolved : undefined;
 }
 
+/**
+ * Labels of invalid fields a targeted launch is not showing.
+ * Undefined when the form already shows every field, or every invalid field is on screen
+ * (that save still follows the draft path). A dotted id counts as visible when its base field is.
+ */
+export function hiddenInvalidFieldLabels(
+	invalidFieldIds: readonly string[],
+	visibleFieldIds: readonly string[] | undefined,
+	labelFor: (fieldId: string) => string | undefined
+): string[] | undefined {
+	if (!visibleFieldIds?.length) return undefined;
+	const visible = new Set(visibleFieldIds);
+	const labels = invalidFieldIds
+		.filter((fieldId) => !visible.has(fieldId) && !visible.has(baseFieldId(fieldId)))
+		.map((fieldId) => labelFor(fieldId) || fieldId);
+	return labels.length ? labels : undefined;
+}
+
 /** Warning when a launch target was given and no field matched. Undefined when there is nothing to warn about. */
 export function unmatchedLaunchTargetWarning(target: {
 	fieldIds?: string[];

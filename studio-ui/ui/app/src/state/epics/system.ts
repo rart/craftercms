@@ -218,8 +218,12 @@ const systemEpics: CrafterCMSEpic[] = [
 		action$.pipe(
 			ofType(showEditItemSuccessNotification.type),
 			tap(({ payload: { action, draft } }) => {
-				// FE1's Save button was the draft and reported `save`. FE2 reports the checkboxes
-				// and sets `draft` separately, so a stay-open save is not announced as a draft.
+				// FE2 already shows its own draft snack from the form save. Skip that case so one
+				// draft save does not raise a second warning. FE1 omits `draft`; its Save button
+				// was the draft and reported `action === 'save'`.
+				if (draft === true) {
+					return;
+				}
 				const savedAsDraft = draft ?? action === 'save';
 				let message;
 				if (savedAsDraft) {
