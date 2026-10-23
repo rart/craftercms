@@ -26,7 +26,7 @@ import List from '@mui/material/List';
 import ListItemText from '@mui/material/ListItemText';
 import ListItemSecondaryAction from '@mui/material/ListItemSecondaryAction';
 import ListItemButton from '@mui/material/ListItemButton';
-import { FormattedMessage } from 'react-intl';
+import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import Tooltip from '@mui/material/Tooltip';
 import { lazy, MouseEvent as ReactMouseEvent, Suspense, useMemo, useState } from 'react';
 import Avatar, { avatarClasses } from '@mui/material/Avatar';
@@ -38,7 +38,20 @@ import SortableListSkeleton from '../components/SortableListSkeleton';
 import type { TItem } from '../components/SortableList';
 import FieldBox from '../components/FieldBox';
 import { buttonClasses } from '@mui/material/Button';
-import { isRepeatAddDisabled, isRepeatRemoveDisabled } from '../../../utils/repeatLimits';
+import {
+	getRepeatMinimum,
+	isRepeatAddDisabled,
+	isRepeatRemoveDisabled,
+	readNumericLimit
+} from '../../../utils/repeatLimits';
+import { isFieldRequired } from '../lib/validators';
+
+const repeatMessages = defineMessages({
+	addItems: { defaultMessage: 'Add items' },
+	maxReached: { defaultMessage: 'Maximum of {max} items reached' },
+	deleteItem: { defaultMessage: 'Delete' },
+	minRequired: { defaultMessage: 'At least {min} items are required' }
+});
 
 export type RepeatItem = Record<string, unknown>;
 
@@ -67,6 +80,7 @@ function getRepeatItemSummary(item: RepeatItem): string {
 
 export function Repeat(props: RepeatProps) {
 	const { field, value, setValue, readonly, autoFocus } = props;
+	const { formatMessage } = useIntl();
 	const [sortMode, setSortMode] = useState(false);
 	const useTouchSorting = useMemo(() => isTouchDevice(), []);
 	const handleCancelReorder = () => setSortMode(false);
@@ -76,8 +90,20 @@ export function Repeat(props: RepeatProps) {
 	const hasContent = count;
 	const maxCount = field.validations?.maxCount?.value;
 	const minCount = field.validations?.minCount?.value;
+	const required = isFieldRequired(field);
+	const minimum = getRepeatMinimum(minCount, required);
 	const isAddDisabled = isRepeatAddDisabled(Boolean(readonly), count, maxCount);
-	const isRemoveDisabled = isRepeatRemoveDisabled(Boolean(readonly), count, minCount);
+	const isRemoveDisabled = isRepeatRemoveDisabled(Boolean(readonly), count, minCount, required);
+	const addTooltip = readonly
+		? ''
+		: isAddDisabled
+			? formatMessage(repeatMessages.maxReached, { max: readNumericLimit(maxCount) })
+			: formatMessage(repeatMessages.addItems);
+	const deleteTooltip = readonly
+		? ''
+		: isRemoveDisabled
+			? formatMessage(repeatMessages.minRequired, { min: minimum })
+			: formatMessage(repeatMessages.deleteItem);
 	const handleRemoveItem = (event: ReactMouseEvent, index: number) => {
 		event.stopPropagation();
 		if (isRemoveDisabled) return;
@@ -135,7 +161,7 @@ export function Repeat(props: RepeatProps) {
 				max={maxCount}
 				length={count}
 				action={
-					<Tooltip title={isAddDisabled ? '' : <FormattedMessage defaultMessage="Add items" />}>
+					<Tooltip title={addTooltip}>
 						<span>
 							<IconButton
 								size="small"
@@ -183,7 +209,7 @@ export function Repeat(props: RepeatProps) {
 													<EditOutlined fontSize="small" />
 												</IconButton>
 											</Tooltip>
-											<Tooltip title={isRemoveDisabled ? '' : <FormattedMessage defaultMessage="Delete" />}>
+											<Tooltip title={deleteTooltip}>
 												<span onClick={(event) => event.stopPropagation()}>
 													<IconButton
 														size="small"
@@ -200,24 +226,26 @@ export function Repeat(props: RepeatProps) {
 							))}
 						</List>
 					) : (
-						<>
-							<StackedButton
-								onClick={handleAddItem}
-								disabled={isAddDisabled}
-								sx={{
-									[`&.${buttonClasses.disabled} .${avatarClasses.root}`]: {
-										opacity: 0.7,
-										color: 'action.disabled',
-										bgcolor: 'action.disabled'
-									}
-								}}
-							>
-								<Avatar variant="circular">
-									<AddRounded />
-								</Avatar>
-								<FormattedMessage defaultMessage="Add" />
-							</StackedButton>
-						</>
+						<Tooltip title={addTooltip}>
+							<span>
+								<StackedButton
+									onClick={handleAddItem}
+									disabled={isAddDisabled}
+									sx={{
+										[`&.${buttonClasses.disabled} .${avatarClasses.root}`]: {
+											opacity: 0.7,
+											color: 'action.disabled',
+											bgcolor: 'action.disabled'
+										}
+									}}
+								>
+									<Avatar variant="circular">
+										<AddRounded />
+									</Avatar>
+									<FormattedMessage defaultMessage="Add" />
+								</StackedButton>
+							</span>
+						</Tooltip>
 					)}
 				</FieldBox>
 			</FormsEngineField>

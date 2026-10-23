@@ -40,7 +40,7 @@ import type { CheckboxGroupProps } from '../controls/CheckboxGroup';
 import { macroCreatorLookupTable } from '../../ContentTypeManagement/controls/PathWithMacroCreator';
 import { getPluginControlValidator } from '../controls/registry';
 import { isFieldPathIrrelevant } from '../formControllers/runtime';
-import { getRepeatOccurrenceViolations } from '../../../utils/repeatLimits';
+import { getRepeatMinimum, getRepeatOccurrenceViolations } from '../../../utils/repeatLimits';
 
 export interface ValidatorMetaData {
 	siteId: string;
@@ -306,8 +306,7 @@ export async function repeatGroupValidator(
 	const items = Array.isArray(currentValue) ? currentValue : [];
 	// The content-type parser stores FE1 minOccurs/maxOccurs as minCount/maxCount.
 	// A required repeat with no explicit minimum still needs at least one item.
-	const configuredMin = getValidationValue(field.validations, 'minCount');
-	const minCount = nnou(configuredMin) ? configuredMin : isFieldRequired(field) ? 1 : undefined;
+	const minCount = getRepeatMinimum(getValidationValue(field.validations, 'minCount'), isFieldRequired(field));
 	const maxCount = getValidationValue(field.validations, 'maxCount');
 
 	// Validate repeat group restrictions (min/max occurrences). Equality is allowed.

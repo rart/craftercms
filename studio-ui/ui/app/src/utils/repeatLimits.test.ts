@@ -17,6 +17,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
+	getRepeatMinimum,
 	getRepeatOccurrenceViolations,
 	isRepeatAddDisabled,
 	isRepeatRemoveDisabled,
@@ -89,6 +90,14 @@ describe('isRepeatRemoveDisabled', () => {
 
 	it('disables removal when readonly', () => {
 		assert.equal(isRepeatRemoveDisabled(true, 3, 0), true);
+	});
+
+	it('treats a required repeat with no minCount as a minimum of 1', () => {
+		assert.equal(getRepeatMinimum(undefined, true), 1);
+		assert.equal(getRepeatMinimum(undefined, false), 0);
+		assert.equal(getRepeatMinimum(3, true), 3);
+		assert.equal(isRepeatRemoveDisabled(false, 1, undefined, true), true);
+		assert.equal(isRepeatRemoveDisabled(false, 2, undefined, true), false);
 	});
 });
 

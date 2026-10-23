@@ -46,13 +46,22 @@ export function isRepeatAddDisabled(readonly: boolean, count: number, maxCount: 
 }
 
 /**
- * FE1 disables delete when the current count is at or below `minOccurs` (default 0).
- * Readonly always disables removal.
+ * Minimum the repeat will enforce. An explicit min wins. A required repeat with no min still
+ * needs one item. Otherwise there is no minimum (0).
  */
-export function isRepeatRemoveDisabled(readonly: boolean, count: number, minCount: unknown): boolean {
+export function getRepeatMinimum(minCount: unknown, required = false): number {
+	const min = readNumericLimit(minCount);
+	if (min != null) return min;
+	return required ? 1 : 0;
+}
+
+/**
+ * FE1 disables delete when the current count is at or below `minOccurs` (default 0).
+ * Readonly always disables removal. `required` matches {@link getRepeatMinimum}.
+ */
+export function isRepeatRemoveDisabled(readonly: boolean, count: number, minCount: unknown, required = false): boolean {
 	if (readonly) return true;
-	const min = readNumericLimit(minCount) ?? 0;
-	return count <= min;
+	return count <= getRepeatMinimum(minCount, required);
 }
 
 /**
