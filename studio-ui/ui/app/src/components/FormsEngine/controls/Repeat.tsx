@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007-2024 Crafter Software Corporation. All Rights Reserved.
+ * Copyright (C) 2007-2026 Crafter Software Corporation. All Rights Reserved.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 3 as published by
@@ -38,6 +38,7 @@ import SortableListSkeleton from '../components/SortableListSkeleton';
 import type { TItem } from '../components/SortableList';
 import FieldBox from '../components/FieldBox';
 import { buttonClasses } from '@mui/material/Button';
+import { isRepeatAddDisabled, isRepeatRemoveDisabled } from '../../../utils/repeatLimits';
 
 export type RepeatItem = Record<string, unknown>;
 
@@ -71,9 +72,15 @@ export function Repeat(props: RepeatProps) {
 	const handleCancelReorder = () => setSortMode(false);
 	const onReorder = () => setSortMode(true);
 	const api = useStableGlobalApiContext();
-	const hasContent = value.length;
+	const count = value.length;
+	const hasContent = count;
+	const maxCount = field.validations?.maxCount?.value;
+	const minCount = field.validations?.minCount?.value;
+	const isAddDisabled = isRepeatAddDisabled(Boolean(readonly), count, maxCount);
+	const isRemoveDisabled = isRepeatRemoveDisabled(Boolean(readonly), count, minCount);
 	const handleRemoveItem = (event: ReactMouseEvent, index: number) => {
 		event.stopPropagation();
+		if (isRemoveDisabled) return;
 		const nextValue = value.concat();
 		nextValue.splice(index, 1);
 		setValue(nextValue);
@@ -90,7 +97,8 @@ export function Repeat(props: RepeatProps) {
 			}
 		});
 	};
-	const handleAddItem: IconButtonProps['onClick'] = (e) => {
+	const handleAddItem: IconButtonProps['onClick'] = () => {
+		if (isAddDisabled) return;
 		api.pushForm({
 			repeat: { fieldId: field.id },
 			fieldsToRender: Object.values(field.fields),
@@ -100,7 +108,6 @@ export function Repeat(props: RepeatProps) {
 			}
 		});
 	};
-	const isAddDisabled = readonly || field.validations.maxCount?.value >= value;
 	const sortList = useMemo<Array<TItem<RepeatItem>>>(
 		() => (sortMode ? value.map((i, index) => ({ key: String(index), value: getRepeatItemTitle(i), data: i })) : []),
 		[sortMode, value]
@@ -124,14 +131,22 @@ export function Repeat(props: RepeatProps) {
 			</Dialog>
 			<FormsEngineField
 				field={field}
-				min={field.validations.minCount?.value}
-				max={field.validations.maxCount?.value}
-				length={value.length}
+				min={minCount}
+				max={maxCount}
+				length={count}
 				action={
 					<Tooltip title={isAddDisabled ? '' : <FormattedMessage defaultMessage="Add items" />}>
-						<IconButton size="small" color="primary" onClick={handleAddItem} autoFocus={autoFocus}>
-							<AddRounded fontSize="small" />
-						</IconButton>
+						<span>
+							<IconButton
+								size="small"
+								color="primary"
+								onClick={handleAddItem}
+								autoFocus={autoFocus}
+								disabled={isAddDisabled}
+							>
+								<AddRounded fontSize="small" />
+							</IconButton>
+						</span>
 					</Tooltip>
 				}
 				menuOptions={[{ id: 'reorder', text: <FormattedMessage defaultMessage="Reorder Items" /> }]}
@@ -146,7 +161,7 @@ export function Repeat(props: RepeatProps) {
 							{value.map((item, index) => (
 								<ListItemButton
 									key={index}
-									divider={index !== value.length - 1}
+									divider={index !== count - 1}
 									onClick={(e) => handleEditItem(e, item, index)}
 								>
 									<ListItemText
@@ -168,10 +183,16 @@ export function Repeat(props: RepeatProps) {
 													<EditOutlined fontSize="small" />
 												</IconButton>
 											</Tooltip>
-											<Tooltip title={<FormattedMessage defaultMessage="Delete" />}>
-												<IconButton size="small" onClick={(e) => handleRemoveItem(e, index)}>
-													<DeleteOutlined fontSize="small" />
-												</IconButton>
+											<Tooltip title={isRemoveDisabled ? '' : <FormattedMessage defaultMessage="Delete" />}>
+												<span onClick={(event) => event.stopPropagation()}>
+													<IconButton
+														size="small"
+														disabled={isRemoveDisabled}
+														onClick={(e) => handleRemoveItem(e, index)}
+													>
+														<DeleteOutlined fontSize="small" />
+													</IconButton>
+												</span>
 											</Tooltip>
 										</ListItemSecondaryAction>
 									)}

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007-2025 Crafter Software Corporation. All Rights Reserved.
+ * Copyright (C) 2007-2026 Crafter Software Corporation. All Rights Reserved.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 3 as published by
@@ -40,6 +40,7 @@ import type { CheckboxGroupProps } from '../controls/CheckboxGroup';
 import { macroCreatorLookupTable } from '../../ContentTypeManagement/controls/PathWithMacroCreator';
 import { getPluginControlValidator } from '../controls/registry';
 import { isFieldPathIrrelevant } from '../formControllers/runtime';
+import { getRepeatOccurrenceViolations } from '../../../utils/repeatLimits';
 
 export interface ValidatorMetaData {
 	siteId: string;
@@ -200,7 +201,13 @@ export async function validateFieldValue(
 	const isEmpty = isEmptyValue(field, validateValue);
 
 	// If it's required, and the value is empty, then it's invalid. For file-name, if path is root it's ok to be empty.
-	if ((isRequired || (field.id === 'file-name' && meta.itemMeta.path !== '/site/website/index.xml')) && isEmpty) {
+	// Repeat groups report their own occurrence message, including when empty ("At least N occurrence(s) are required."),
+	// so the generic required check must not replace it.
+	if (
+		field.type !== 'repeat' &&
+		(isRequired || (field.id === 'file-name' && meta.itemMeta.path !== '/site/website/index.xml')) &&
+		isEmpty
+	) {
 		messages.push(defineMessage({ defaultMessage: 'This field is required.' }));
 		return Promise.resolve({ isValid: false, messages });
 	}
@@ -296,27 +303,31 @@ export async function repeatGroupValidator(
 	meta: ValidatorMetaData
 ): Promise<boolean> {
 	let isValid = true;
-	const minOccurs: number = getValidationValue(field.validations, 'minOccurs') as number;
-	const maxOccurs: number = getValidationValue(field.validations, 'maxOccurs') as number;
+	const items = Array.isArray(currentValue) ? currentValue : [];
+	// The content-type parser stores FE1 minOccurs/maxOccurs as minCount/maxCount.
+	// A required repeat with no explicit minimum still needs at least one item.
+	const configuredMin = getValidationValue(field.validations, 'minCount');
+	const minCount = nnou(configuredMin) ? configuredMin : isFieldRequired(field) ? 1 : undefined;
+	const maxCount = getValidationValue(field.validations, 'maxCount');
 
-	// Validate repeat group restrictions (min/max occurrences)
-	if (nnou(minOccurs) && currentValue.length < minOccurs) {
-		messages?.push([
-			defineMessage({ defaultMessage: 'At least {minOccurs} occurrence(s) are required.' }),
-			{ minOccurs }
-		]);
+	// Validate repeat group restrictions (min/max occurrences). Equality is allowed.
+	for (const violation of getRepeatOccurrenceViolations(items.length, minCount, maxCount)) {
 		isValid = false;
-	}
-	if (nnou(maxOccurs) && currentValue.length > maxOccurs) {
-		messages?.push([
-			defineMessage({ defaultMessage: 'No more than {maxOccurs} occurrence(s) are allowed.' }),
-			{ maxOccurs }
-		]);
-		isValid = false;
+		if (violation.kind === 'min') {
+			messages?.push([
+				defineMessage({ defaultMessage: 'At least {minOccurs} occurrence(s) are required.' }),
+				{ minOccurs: violation.limit }
+			]);
+		} else {
+			messages?.push([
+				defineMessage({ defaultMessage: 'No more than {maxOccurs} occurrence(s) are allowed.' }),
+				{ maxOccurs: violation.limit }
+			]);
+		}
 	}
 
 	// If there are no items, return validation result (items validation is not needed if there are no items)
-	if (currentValue.length === 0) return isValid;
+	if (items.length === 0) return isValid;
 
 	const fields = field.fields;
 	if (!fields) return isValid;
@@ -324,7 +335,7 @@ export async function repeatGroupValidator(
 	const validationPromises: Promise<FieldValidityState>[] = [];
 
 	// Validate fields of each repeat group item. Min/max occurrence checks above still apply.
-	currentValue?.forEach((item) => {
+	items.forEach((item) => {
 		Object.values(fields).forEach((subField) => {
 			if (isFieldPathIrrelevant(meta.irrelevantFieldPaths, subField.id, field.id)) return;
 			const id = subField.id;
