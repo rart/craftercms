@@ -244,6 +244,7 @@ function getFieldDataSourceValidations(
 	return validations;
 }
 
+/** Maps legacy form-definition fields into the Forms Engine content-type model. */
 function parseLegacyFormDefinitionFields(
 	legacyFieldsToBeParsed: LegacyFormDefinitionField[] | LegacyFormDefinitionField,
 	currentFieldLookup: LookupTable<ContentTypeField>,

@@ -296,6 +296,10 @@ export function dateTimeExpressionInputValidator(field, currentValue: string, me
 	return isValid;
 }
 
+/**
+ * Validates a repeat group's size against minCount/maxCount, then each item's fields.
+ * A required group with no minimum still requires one item. A count equal to either bound is valid.
+ */
 export async function repeatGroupValidator(
 	field: ContentTypeField,
 	currentValue: Array<RepeatItem>,

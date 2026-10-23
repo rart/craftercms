@@ -81,6 +81,7 @@ export function getRepeatOccurrenceViolations(
 	return violations;
 }
 
+/** Parses a repeat limit. `*`, blank, and non-numeric values are unlimited (`null`). */
 function readOccursNumber(value: unknown): number | null {
 	if (value == null) return null;
 	const text = typeof value === 'string' ? value.trim() : value;

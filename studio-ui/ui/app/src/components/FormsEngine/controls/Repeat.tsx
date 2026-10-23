@@ -48,9 +48,9 @@ import { isFieldRequired } from '../lib/validators';
 
 const repeatMessages = defineMessages({
 	addItems: { defaultMessage: 'Add items' },
-	maxReached: { defaultMessage: 'Maximum of {max} items reached' },
+	maxReached: { defaultMessage: 'Maximum of {max, plural, one {# item} other {# items}} reached' },
 	deleteItem: { defaultMessage: 'Delete' },
-	minRequired: { defaultMessage: 'At least {min} items are required' }
+	minRequired: { defaultMessage: 'At least {min, plural, one {# item is} other {# items are}} required' }
 });
 
 export type RepeatItem = Record<string, unknown>;
@@ -78,6 +78,7 @@ function getRepeatItemSummary(item: RepeatItem): string {
 		.join(' | ');
 }
 
+/** Repeating group. Add stops at the maximum; delete stops at the effective minimum. */
 export function Repeat(props: RepeatProps) {
 	const { field, value, setValue, readonly, autoFocus } = props;
 	const { formatMessage } = useIntl();
@@ -97,13 +98,14 @@ export function Repeat(props: RepeatProps) {
 	const addTooltip = readonly
 		? ''
 		: isAddDisabled
-			? formatMessage(repeatMessages.maxReached, { max: readNumericLimit(maxCount) })
+			? formatMessage(repeatMessages.maxReached, { max: readNumericLimit(maxCount) ?? 0 })
 			: formatMessage(repeatMessages.addItems);
 	const deleteTooltip = readonly
 		? ''
 		: isRemoveDisabled
 			? formatMessage(repeatMessages.minRequired, { min: minimum })
 			: formatMessage(repeatMessages.deleteItem);
+	/** Removes one item unless the repeat is already at its minimum. */
 	const handleRemoveItem = (event: ReactMouseEvent, index: number) => {
 		event.stopPropagation();
 		if (isRemoveDisabled) return;
@@ -123,6 +125,7 @@ export function Repeat(props: RepeatProps) {
 			}
 		});
 	};
+	/** Opens a new repeat item unless adding is disabled. */
 	const handleAddItem: IconButtonProps['onClick'] = () => {
 		if (isAddDisabled) return;
 		api.pushForm({
