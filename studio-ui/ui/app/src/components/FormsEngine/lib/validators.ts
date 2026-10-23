@@ -40,6 +40,7 @@ import type { CheckboxGroupProps } from '../controls/CheckboxGroup';
 import { macroCreatorLookupTable } from '../../ContentTypeManagement/controls/PathWithMacroCreator';
 import { getPluginControlValidator } from '../controls/registry';
 import { isFieldPathIrrelevant } from '../formControllers/runtime';
+import { evaluateRteConstraints, measureRteValue } from './rtePlainText';
 
 export interface ValidatorMetaData {
 	siteId: string;
@@ -602,47 +603,23 @@ const inputPhoneValidator = (
 	});
 };
 
-/**
- * Plain text of an HTML field value, for required and maxLength checks.
- *
- * DOMParser builds an inert document: scripts do not run and resources are not loaded.
- * The value is parsed with the HTML fragment algorithm against a div in that document,
- * which matches the text previously read from a detached element's innerText, without
- * assigning the value to innerHTML on a live-document element (that runs event-handler
- * attributes such as img onerror and svg onload in the author's session).
- */
-function plainTextFromHtml(html: string): string {
-	const inertDocument = new DOMParser().parseFromString('', 'text/html');
-	const context = inertDocument.createElement('div');
-	inertDocument.body.appendChild(context);
-	const range = inertDocument.createRange();
-	range.selectNodeContents(context);
-	return range.createContextualFragment(html).textContent ?? '';
-}
-
 const rteValidator = (field: ContentTypeField, currentValue: string, messages?: FieldValidityMessage[]): boolean => {
 	if (nou(field)) return true;
 	const isRequired = isFieldRequired(field);
-	let isValid = true;
-	const safeValue = typeof currentValue === 'string' ? currentValue : '';
-
 	const maxLength: number | undefined = getValidationValue(field.validations, 'maxLength');
-	const trimmedContent = plainTextFromHtml(safeValue).trim(); // Get only the text and remove white space
+	const trimmedContent = measureRteValue(currentValue); // Get only the text and remove white space
+	const { isValid, requiredFailed, maxLengthExceeded } = evaluateRteConstraints(trimmedContent, isRequired, maxLength);
 
-	if (isRequired) {
-		isValid = trimmedContent !== '';
-		if (!isValid) {
-			messages?.push(defineMessage({ defaultMessage: 'This field is required.' }));
-		}
+	if (requiredFailed) {
+		messages?.push(defineMessage({ defaultMessage: 'This field is required.' }));
 	}
-	if (nnou(maxLength) && trimmedContent.length > maxLength) {
+	if (maxLengthExceeded) {
 		messages?.push([
 			defineMessage({
 				defaultMessage: `The value is greater than the allowed maximum ({maxLength}).`
 			}),
 			{ maxLength }
 		]);
-		isValid = false;
 	}
 
 	return isValid;
