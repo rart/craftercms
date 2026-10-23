@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007-2025 Crafter Software Corporation. All Rights Reserved.
+ * Copyright (C) 2007-2026 Crafter Software Corporation. All Rights Reserved.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 3 as published by
@@ -602,6 +602,24 @@ const inputPhoneValidator = (
 	});
 };
 
+/**
+ * Plain text of an HTML field value, for required and maxLength checks.
+ *
+ * DOMParser builds an inert document: scripts do not run and resources are not loaded.
+ * The value is parsed with the HTML fragment algorithm against a div in that document,
+ * which matches the text previously read from a detached element's innerText, without
+ * assigning the value to innerHTML on a live-document element (that runs event-handler
+ * attributes such as img onerror and svg onload in the author's session).
+ */
+function plainTextFromHtml(html: string): string {
+	const inertDocument = new DOMParser().parseFromString('', 'text/html');
+	const context = inertDocument.createElement('div');
+	inertDocument.body.appendChild(context);
+	const range = inertDocument.createRange();
+	range.selectNodeContents(context);
+	return range.createContextualFragment(html).textContent ?? '';
+}
+
 const rteValidator = (field: ContentTypeField, currentValue: string, messages?: FieldValidityMessage[]): boolean => {
 	if (nou(field)) return true;
 	const isRequired = isFieldRequired(field);
@@ -609,9 +627,7 @@ const rteValidator = (field: ContentTypeField, currentValue: string, messages?: 
 	const safeValue = typeof currentValue === 'string' ? currentValue : '';
 
 	const maxLength: number | undefined = getValidationValue(field.validations, 'maxLength');
-	const aux = document.createElement('div');
-	aux.innerHTML = safeValue;
-	const trimmedContent = aux.innerText.trim(); // Get only the text and remove white space
+	const trimmedContent = plainTextFromHtml(safeValue).trim(); // Get only the text and remove white space
 
 	if (isRequired) {
 		isValid = trimmedContent !== '';
