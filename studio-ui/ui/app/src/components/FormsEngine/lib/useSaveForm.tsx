@@ -36,6 +36,7 @@ import {
 	showAlert
 } from './formUtils';
 import { FormSavePromiseResult, FormsEngineProps } from '../FormsEngine';
+import type { ContentFormSaveAction } from '../../../utils/contentFormLaunch';
 import { XmlKeys } from './formConsts';
 import { fromString } from '../../../utils/xml';
 import {
@@ -308,6 +309,20 @@ export function useSaveForm(props: UseSaveFormProps) {
 				return;
 			}
 
+			// Repository writes (root create/update and root embedded) tell the launcher which
+			// FE1 save choice this was, plus enough of the content type to build redirect flags.
+			const repositorySaveAction = (): ContentFormSaveAction =>
+				saveAsDraft ? 'save' : minimizeAfterSave ? 'saveAndMinimize' : 'saveAndClose';
+			const repositorySaveArgs = (savedPath: string, dom: Document | Element, xml: string) => ({
+				dom,
+				xml,
+				values,
+				versionComment,
+				path: savedPath,
+				action: repositorySaveAction(),
+				contentType: { id: contentType.id, type: contentType.type, previewable: contentType.previewable }
+			});
+
 			complementValuesWithSystemProps(id, values, contentObject, contentType, saveAsDraft);
 			const { [XmlKeys.fileName]: _, ...valuesWithoutFileName } = values;
 			const xml = buildContentXml(valuesWithoutFileName, contentTypesById);
@@ -358,13 +373,7 @@ export function useSaveForm(props: UseSaveFormProps) {
 						async next(ajaxResponse: AjaxResponse<WriteContentResponse>) {
 							try {
 								const isAmended = ajaxResponse.response?.items?.[0]?.amended;
-								const result = (await onSave?.({
-									dom,
-									xml,
-									values,
-									versionComment,
-									path
-								})) as FormSavePromiseResult;
+								const result = (await onSave?.(repositorySaveArgs(path, dom, xml))) as FormSavePromiseResult;
 								const shouldClose = result.close || closeAfterSave;
 								if (!shouldClose && isAmended) {
 									triggerReload();
@@ -426,7 +435,7 @@ export function useSaveForm(props: UseSaveFormProps) {
 					try {
 						const isAmended = ajaxResponse.response?.items?.[0]?.amended;
 						const dom = fromString(xml);
-						const result = (await onSave?.({ dom, xml, values, versionComment, path })) as FormSavePromiseResult;
+						const result = (await onSave?.(repositorySaveArgs(path, dom, xml))) as FormSavePromiseResult;
 						const shouldClose = result.close || closeAfterSave;
 						if (!shouldClose) {
 							if (isCreateMode) {
