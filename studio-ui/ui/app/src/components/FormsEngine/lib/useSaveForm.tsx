@@ -36,7 +36,7 @@ import {
 	showAlert
 } from './formUtils';
 import { FormSavePromiseResult, FormsEngineProps } from '../FormsEngine';
-import type { ContentFormSaveAction } from '../../../utils/contentFormLaunch';
+import { contentFormSaveAction } from '../../../utils/contentFormLaunch';
 import { XmlKeys } from './formConsts';
 import { fromString } from '../../../utils/xml';
 import {
@@ -116,7 +116,7 @@ export function useSaveForm(props: UseSaveFormProps) {
 	const { setRenamedPath, triggerReload, setSavedCreatePath } = useContext(RenamedPathContext);
 	const initialFileName = itemPath ? getFileNameValueFromPath(itemPath, isPage) : '';
 	const item = useContext(ItemContext);
-	return async (draft?: boolean) => {
+	return async (draft?: boolean, options?: { closeOnSuccess?: boolean }) => {
 		// Get before the first await so a second call cannot re-enter preload or onBeforeSave.
 		if (jotai.get(stableFormContext.atoms.isSubmitting)) {
 			return;
@@ -196,6 +196,10 @@ export function useSaveForm(props: UseSaveFormProps) {
 			// Put system properties in before creating the XML
 			let isFormInvalid = validityStates.some((state) => !state.isValid);
 			let saveAsDraft = draft || isFormInvalid;
+			// Close wins over minimize. An in-context repeat Done (`closeOnSuccess`) also closes,
+			// which is what FE1 did by unstacking the dialog after a completed ICE save. A save that
+			// was downgraded to a draft stays open so the author can finish required fields.
+			const closesDialog = () => closeAfterSave || (Boolean(options?.closeOnSuccess) && !saveAsDraft);
 
 			const onSavePromiseHandler = ({ close }: FormSavePromiseResult) => {
 				if (saveAsDraft) {
@@ -216,7 +220,7 @@ export function useSaveForm(props: UseSaveFormProps) {
 					// TODO: What would `setValuesCheckpoint` do if called on a repeat group form?
 					!isRepeatMode && formContextApi.setValuesCheckpoint(values);
 				});
-				if (close || closeAfterSave) {
+				if (close || closesDialog()) {
 					onClose?.();
 				} else if (minimizeAfterSave) {
 					setVersionComment('');
@@ -310,16 +314,15 @@ export function useSaveForm(props: UseSaveFormProps) {
 			}
 
 			// Repository writes (root create/update and root embedded) tell the launcher which
-			// FE1 save choice this was, plus enough of the content type to build redirect flags.
-			const repositorySaveAction = (): ContentFormSaveAction =>
-				saveAsDraft ? 'save' : minimizeAfterSave ? 'saveAndMinimize' : 'saveAndClose';
+			// dialog action this was, plus enough of the content type to build redirect flags.
 			const repositorySaveArgs = (savedPath: string, dom: Document | Element, xml: string) => ({
 				dom,
 				xml,
 				values,
 				versionComment,
 				path: savedPath,
-				action: repositorySaveAction(),
+				action: contentFormSaveAction({ close: closesDialog(), minimize: minimizeAfterSave }),
+				draft: saveAsDraft,
 				contentType: { id: contentType.id, type: contentType.type, previewable: contentType.previewable }
 			});
 
@@ -359,6 +362,8 @@ export function useSaveForm(props: UseSaveFormProps) {
 				}
 
 				// Root embedded: merge the component into the parent document and write the parent.
+				// The callback path is that parent (so a component inside a page reports the page's
+				// preview URL). FE1 did the same: it looked up the item that was written.
 				const path = itemPath;
 				const saveEmbeddedContent = (cancelPackagesComment: string = '') => {
 					const writeService$ = updateEmbeddedComponent(siteId, path, id, xml, { comment: versionComment });
@@ -374,7 +379,7 @@ export function useSaveForm(props: UseSaveFormProps) {
 							try {
 								const isAmended = ajaxResponse.response?.items?.[0]?.amended;
 								const result = (await onSave?.(repositorySaveArgs(path, dom, xml))) as FormSavePromiseResult;
-								const shouldClose = result.close || closeAfterSave;
+								const shouldClose = result.close || closesDialog();
 								if (!shouldClose && isAmended) {
 									triggerReload();
 								}
@@ -436,7 +441,7 @@ export function useSaveForm(props: UseSaveFormProps) {
 						const isAmended = ajaxResponse.response?.items?.[0]?.amended;
 						const dom = fromString(xml);
 						const result = (await onSave?.(repositorySaveArgs(path, dom, xml))) as FormSavePromiseResult;
-						const shouldClose = result.close || closeAfterSave;
+						const shouldClose = result.close || closesDialog();
 						if (!shouldClose) {
 							if (isCreateMode) {
 								setSavedCreatePath(path);

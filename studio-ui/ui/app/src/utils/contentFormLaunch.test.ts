@@ -19,11 +19,14 @@ import { describe, it } from 'node:test';
 import type { ContentType, ContentTypeField } from '../models/ContentType';
 import {
 	buildContentFormLaunch,
+	contentFormSaveAction,
 	fe2LaunchPropDisposition,
+	fieldsToRenderForLaunch,
 	normalizeRepeatIndex,
 	resolveContentFormFieldTarget,
-	toContentFormSaveSuccess
-} from './contentFormLaunch';
+	toContentFormSaveSuccess,
+	unmatchedLaunchTargetWarning
+} from './contentFormLaunch.ts';
 
 function field(partial: Pick<ContentTypeField, 'id' | 'type'> & Partial<ContentTypeField>): ContentTypeField {
 	return {
@@ -63,6 +66,11 @@ describe('resolveContentFormFieldTarget', () => {
 	it('returns an empty field list when the ICE group matches nothing', () => {
 		const resolved = resolveContentFormFieldTarget(contentType, { iceGroupId: 'missing' });
 		assert.deepEqual(resolved.fields, []);
+		assert.equal(fieldsToRenderForLaunch(undefined, resolved.fields), undefined);
+		assert.match(
+			unmatchedLaunchTargetWarning({ iceGroupId: 'missing', fields: resolved.fields }) ?? '',
+			/ICE group "missing"/
+		);
 	});
 
 	it('leaves the full form in place when the launch did not target fields', () => {
@@ -183,6 +191,31 @@ describe('toContentFormSaveSuccess', () => {
 
 	it('still reports the action when the write has no path', () => {
 		assert.deepEqual(toContentFormSaveSuccess({ action: 'saveAndMinimize' }), { action: 'saveAndMinimize' });
+	});
+});
+
+describe('contentFormSaveAction', () => {
+	it('reports the checkbox that actually runs, with close ahead of minimize', () => {
+		assert.equal(contentFormSaveAction({ close: true, minimize: true }), 'saveAndClose');
+		assert.equal(contentFormSaveAction({ close: false, minimize: true }), 'saveAndMinimize');
+		assert.equal(contentFormSaveAction({ close: false, minimize: false }), 'save');
+	});
+});
+
+describe('fieldsToRenderForLaunch', () => {
+	it('keeps an explicit field list and a matching target', () => {
+		const title = contentType.fields.title_s;
+		assert.deepEqual(fieldsToRenderForLaunch([title], []), [title]);
+		assert.deepEqual(fieldsToRenderForLaunch(undefined, [title]), [title]);
+	});
+
+	it('names the field ids that matched nothing', () => {
+		assert.match(unmatchedLaunchTargetWarning({ fieldIds: ['gone_s'], fields: [] }) ?? '', /gone_s/);
+	});
+
+	it('does not warn when the launch did not target fields', () => {
+		assert.equal(unmatchedLaunchTargetWarning({}), undefined);
+		assert.equal(unmatchedLaunchTargetWarning({ fields: [contentType.fields.title_s] }), undefined);
 	});
 });
 

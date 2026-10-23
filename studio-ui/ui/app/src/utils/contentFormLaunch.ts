@@ -17,7 +17,7 @@
 import type { ContentType, ContentTypeField } from '../models/ContentType';
 import type { LegacyFormDialogProps } from '../components/LegacyFormDialog/utils';
 import type { CommonSaveOptions } from '../components/MultiChoiceSaveButton/MultiChoiceSaveButton';
-import { getPreviewURLFromPath, isPagePath } from './path';
+import { getPreviewURLFromPath, isPagePath } from './sitePath';
 
 /**
  * Same set as {@link CommonSaveOptions}. `save` is a draft (FE1's "Save" choice);
@@ -228,29 +228,76 @@ export interface ContentFormSavedItem {
 	contentType?: string;
 }
 
+/**
+ * What the dialog did, from the close and minimize checkboxes. Close wins, matching
+ * `onSavePromiseHandler`. A save with neither checkbox reports `save` (the form stayed open).
+ * Draft-ness is separate: see `ContentFormSaveSuccess.draft`.
+ */
+export function contentFormSaveAction(flags: { close: boolean; minimize: boolean }): ContentFormSaveAction {
+	return flags.close ? 'saveAndClose' : flags.minimize ? 'saveAndMinimize' : 'save';
+}
+
+/**
+ * Fields the form should render. An explicit list wins. An ICE or selected-field target that
+ * matches nothing falls back to the whole form (`undefined`) instead of an empty form.
+ */
+export function fieldsToRenderForLaunch(
+	explicit: ContentTypeField[] | undefined,
+	resolved: ContentTypeField[] | undefined
+): ContentTypeField[] | undefined {
+	if (explicit) return explicit;
+	return resolved?.length ? resolved : undefined;
+}
+
+/** Warning when a launch target was given and no field matched. Undefined when there is nothing to warn about. */
+export function unmatchedLaunchTargetWarning(target: {
+	fieldIds?: string[];
+	iceGroupId?: string;
+	fields?: ContentTypeField[];
+}): string | undefined {
+	if (!target.fields || target.fields.length > 0) return undefined;
+	if (target.fieldIds?.length) {
+		return `Content form launch field ids matched no fields (${target.fieldIds.join(', ')}). Opening the full form.`;
+	}
+	if (target.iceGroupId) {
+		return `Content form launch ICE group "${target.iceGroupId}" matched no fields. Opening the full form.`;
+	}
+	return undefined;
+}
+
 export interface ContentFormSaveSuccess {
 	action: ContentFormSaveAction;
+	/**
+	 * True when the write was stored as a draft. Omitted by FE1, which used `action === 'save'`
+	 * for that. FE2 sets it explicitly so a stay-open save is not reported as a draft.
+	 */
+	draft?: boolean;
 	path?: string;
 	item?: ContentFormSavedItem;
-	/** Preview URL for the saved item. QuickCreate redirects pages with this. */
+	/** Preview URL for the saved document. For an embedded component this is the parent item. */
 	redirectUrl?: string;
 }
 
 export function toContentFormSaveSuccess(result: {
 	path?: string;
 	action?: ContentFormSaveAction;
+	draft?: boolean;
 	contentType?: { id?: string; type?: string; previewable?: boolean };
 }): ContentFormSaveSuccess {
 	const action = result.action ?? 'saveAndClose';
+	const draft = typeof result.draft === 'boolean' ? { draft: result.draft } : {};
 	const path = result.path;
 	if (!path) {
-		return { action };
+		return { action, ...draft };
 	}
+	// `path` is the document that was written. An embedded component is saved into its parent,
+	// so a component edited inside a page reports that page (FE1 looked the parent item up).
 	const isPage = result.contentType?.type === 'page' || isPagePath(path);
 	const isPreviewable = isPage || result.contentType?.type === 'component' || result.contentType?.previewable === true;
 	const redirectUrl = getPreviewURLFromPath(path);
 	return {
 		action,
+		...draft,
 		path,
 		redirectUrl,
 		item: {

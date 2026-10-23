@@ -160,7 +160,11 @@ import {
 	runFormControllerCleanup
 } from './formControllers/runtime';
 import { createEmbeddedRelevanceResolver } from './formControllers/relevance';
-import { resolveContentFormFieldTarget } from '../../utils/contentFormLaunch';
+import {
+	fieldsToRenderForLaunch,
+	resolveContentFormFieldTarget,
+	unmatchedLaunchTargetWarning
+} from '../../utils/contentFormLaunch';
 
 export interface FormSavePromiseResult {
 	close: boolean;
@@ -201,6 +205,8 @@ export interface BaseProps extends Partial<UpdateModeProps & RepeatModeProps & C
 		path?: string;
 		/** Set on repository writes. In-memory repeat and stacked-embedded saves omit it. */
 		action?: 'save' | 'saveAndClose' | 'saveAndMinimize';
+		/** Set on repository writes. True when the item was stored as a draft. */
+		draft?: boolean;
 		contentType?: { id: string; type: string; previewable?: boolean };
 	}): Promise<FormSavePromiseResult> | void;
 }
@@ -884,7 +890,12 @@ function FormOrchestrator(props: FormsEngineProps) {
 			fieldsToRender ? undefined : resolveContentFormFieldTarget(contentType, { fieldIds, iceGroupId, repeatIndex }),
 		[contentType, fieldIds, fieldsToRender, iceGroupId, repeatIndex]
 	);
-	const renderedFields = fieldsToRender ?? launchTarget?.fields;
+	const renderedFields = fieldsToRenderForLaunch(fieldsToRender, launchTarget?.fields);
+	useEffect(() => {
+		if (fieldsToRender) return;
+		const message = unmatchedLaunchTargetWarning({ fieldIds, iceGroupId, fields: launchTarget?.fields });
+		if (message) console.warn(message);
+	}, [fieldIds, fieldsToRender, iceGroupId, launchTarget]);
 	const contentTypeSections = useMemo(() => {
 		let sections = contentType.sections;
 		if (isEmbedded) {
@@ -1436,7 +1447,7 @@ function FormOrchestrator(props: FormsEngineProps) {
 					index={launchTarget.repeatItem.index}
 					scrollFieldId={launchTarget.repeatItem.scrollFieldId}
 					persistOnDone={launchTarget.fields?.length === 1}
-					saveParent={() => void saveFn(false)}
+					saveParent={() => void saveFn(false, { closeOnSuccess: true })}
 				/>
 			)}
 			{/* region Stacked Form Drawer */}

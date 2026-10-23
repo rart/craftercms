@@ -217,9 +217,12 @@ const systemEpics: CrafterCMSEpic[] = [
 	(action$, state$, { getIntl }) =>
 		action$.pipe(
 			ofType(showEditItemSuccessNotification.type),
-			tap(({ payload: { action } }) => {
+			tap(({ payload: { action, draft } }) => {
+				// FE1's Save button was the draft and reported `save`. FE2 reports the checkboxes
+				// and sets `draft` separately, so a stay-open save is not announced as a draft.
+				const savedAsDraft = draft ?? action === 'save';
 				let message;
-				if (action === 'save') {
+				if (savedAsDraft) {
 					message = getIntl().formatMessage(itemSuccessMessages.itemSavedAsDraft);
 				} else {
 					message = getIntl().formatMessage(itemSuccessMessages.itemEdited);
@@ -228,7 +231,7 @@ const systemEpics: CrafterCMSEpic[] = [
 				hostToHost$.next(
 					showSystemNotification({
 						message,
-						options: { variant: action === 'save' ? 'warning' : 'default' }
+						options: { variant: savedAsDraft ? 'warning' : 'default' }
 					})
 				);
 			}),
