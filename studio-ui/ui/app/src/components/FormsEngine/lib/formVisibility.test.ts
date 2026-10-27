@@ -19,14 +19,18 @@ import { describe, it } from 'node:test';
 import {
 	baseFieldId,
 	fieldVisibility,
+	clearRepeatItemScope,
 	firstOutOfScopeInvalidField,
+	hiddenInvalidReveal,
 	isScopeActive,
 	normalizeRepeatIndex,
 	openFullForm,
+	repeatIndexOutOfRangeWarning,
 	resolveLaunchVisibility,
 	returnToLaunchScope,
 	scopeFieldCounts,
-	unsupportedRepeatIndexWarning
+	unsupportedRepeatIndexWarning,
+	visibleRepeatItems
 } from './formVisibility.ts';
 
 const known = new Set(['title_s', 'body_html', 'articles_o', 'sidebar_s']);
@@ -173,5 +177,76 @@ describe('baseFieldId', () => {
 	it('strips from the first dot', () => {
 		assert.equal(baseFieldId('articles_o.headline_s'), 'articles_o');
 		assert.equal(baseFieldId('title_s'), 'title_s');
+	});
+});
+
+describe('visibleRepeatItems', () => {
+	const items = ['one', 'two', 'three'];
+
+	it('shows every item when the field is not the scoped one', () => {
+		const selection = visibleRepeatItems(items, { fieldId: 'other_o', index: 1 }, 'articles_o');
+		assert.equal(selection.scoped, false);
+		assert.deepEqual(
+			selection.items.map((entry) => entry.index),
+			[0, 1, 2]
+		);
+	});
+
+	it('shows only the addressed item', () => {
+		const selection = visibleRepeatItems(items, { fieldId: 'articles_o', index: 0 }, 'articles_o');
+		assert.equal(selection.scoped, true);
+		assert.deepEqual(selection.items, [{ item: 'one', index: 0 }]);
+	});
+
+	it('falls back to every item when the index is past the end', () => {
+		const selection = visibleRepeatItems(items, { fieldId: 'articles_o', index: 5 }, 'articles_o');
+		assert.equal(selection.scoped, false);
+		assert.equal(selection.outOfRangeIndex, 5);
+		assert.equal(selection.items.length, 3);
+		assert.match(repeatIndexOutOfRangeWarning('articles_o', 5, 3), /Showing all items/);
+	});
+});
+
+describe('hiddenInvalidReveal', () => {
+	const visibility = resolveLaunchVisibility({
+		selectedFields: ['title_s', 'articles_o'],
+		index: 1,
+		knownFieldIds: known,
+		repeatFieldIds: repeats
+	}).state;
+
+	it('opens the full form for an invalid field outside the scope', () => {
+		const reveal = hiddenInvalidReveal({
+			visibility,
+			invalidFieldIds: ['body_html'],
+			sectionOrder: ['title_s', 'body_html', 'articles_o']
+		});
+		assert.equal(reveal?.fieldId, 'body_html');
+		assert.equal(isScopeActive(reveal.state.active), false);
+		assert.ok(reveal.state.launch);
+	});
+
+	it('clears the item scope when the visible repeat field is invalid', () => {
+		const reveal = hiddenInvalidReveal({
+			visibility,
+			invalidFieldIds: ['articles_o'],
+			sectionOrder: ['title_s', 'articles_o', 'body_html']
+		});
+		assert.equal(reveal?.fieldId, 'articles_o');
+		assert.equal(reveal.state.active.repeatItem, null);
+		assert.deepEqual(reveal.state.active.fieldIds, ['title_s', 'articles_o']);
+		assert.deepEqual(reveal.state.launch?.repeatItem, { fieldId: 'articles_o', index: 1 });
+		assert.equal(clearRepeatItemScope(visibility).active.repeatItem, null);
+	});
+
+	it('leaves a valid item-scoped repeat alone', () => {
+		assert.equal(
+			hiddenInvalidReveal({
+				visibility,
+				invalidFieldIds: [],
+				sectionOrder: ['title_s', 'articles_o']
+			}),
+			undefined
+		);
 	});
 });

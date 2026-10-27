@@ -20,6 +20,7 @@ import { ContextMenuOption } from '../components/ContextMenu';
 import { getControllerPath, getRootPath, withoutIndex } from './path';
 import { popCodeEditorDialog, showHistoryDialog } from '../state/actions/dialogs';
 import { checkPathExistence, fetchContentItem, fetchContentItems } from '../services/content';
+import { saveSuccessFollowUps } from './contentFormLaunch';
 import {
 	batchActions,
 	changeContentType,
@@ -508,14 +509,14 @@ export const itemActionDispatcher = ({
 						site,
 						path,
 						authoringBase,
-						onSaveSuccess: ({ action, draft }) =>
-							dispatch(
-								batchActions([
-									// The form already announces a draft. This notification is the completed-save one.
-									...(draft ? [] : [showEditItemSuccessNotification({ action, draft: false })]),
-									...(onActionSuccess ? [onActionSuccess] : [])
-								])
-							),
+						onSaveSuccess: ({ action, draft }) => {
+							const followUps = saveSuccessFollowUps(
+								draft,
+								showEditItemSuccessNotification({ action }),
+								onActionSuccess ? [onActionSuccess] : []
+							);
+							if (followUps.length) dispatch(batchActions(followUps));
+						},
 						...extraPayload
 					})
 				);

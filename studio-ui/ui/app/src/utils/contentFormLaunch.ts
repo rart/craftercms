@@ -35,11 +35,8 @@ export interface ContentFormLaunchInput {
 	modelId?: string;
 	changeTemplate?: string;
 	readonly?: boolean;
-	/**
-	 * Fields to show. A single id is accepted because Experience Builder posts the
-	 * zone's field id list, and older callers have passed one string.
-	 */
-	selectedFields?: readonly string[] | string;
+	/** Fields to show. Experience Builder posts the zone's field id list. */
+	selectedFields?: readonly string[];
 	/** Repeat-item index. Nested indexes such as `"1.2"` are not applied. */
 	index?: string | number;
 }
@@ -55,9 +52,24 @@ type FormsEngineLaunchTarget = {
 );
 
 function selectedFieldList(value: ContentFormLaunchInput['selectedFields']): string[] | undefined {
-	if (Array.isArray(value)) return value.length ? [...value] : undefined;
-	if (typeof value === 'string' && value) return [value];
-	return undefined;
+	return value?.length ? [...value] : undefined;
+}
+
+/**
+ * Edit and change-template follow-ups. The form already announces a draft, so that
+ * save skips the success notification. The other work (refresh, caller callback) still runs.
+ */
+export function saveSuccessFollowUps<Notification, FollowUp>(
+	draft: boolean | undefined,
+	notification: Notification,
+	followUps: readonly FollowUp[]
+): Array<Notification | FollowUp> {
+	return draft === true ? [...followUps] : [notification, ...followUps];
+}
+
+/** Duplicate's only follow-up is the caller's onSuccess. A draft skips it. */
+export function duplicateSaveFollowUps<T>(draft: boolean | undefined, onSuccess: T): T[] {
+	return draft === true ? [] : [onSuccess];
 }
 
 /**

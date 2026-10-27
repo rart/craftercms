@@ -516,22 +516,30 @@ export const extractAtomValues: (store: JotaiStore, valueAtoms: LookupTable<Atom
 	}, {});
 
 /**
- * Validation atoms for the save / invalid-form snapshot.
+ * Fields for the save / invalid-form snapshot.
  * The deny-list is qualified (`repeatFieldId.subFieldId`). Only the unqualified entry applies
  * at this form's level, unless `parentPath` names the repeat group these atoms belong to.
  * Atoms the controller never rejected (descriptor additional fields, `folder-name`, …) stay.
+ * Out-of-scope fields stay in the list.
  */
+export function relevantFieldValidations(
+	validationByFieldId: LookupTable<Atom<Promise<FieldValidityState>>>,
+	irrelevantFieldPaths: Set<string> | null | undefined,
+	parentPath?: string
+): Array<{ fieldId: string; atom: Atom<Promise<FieldValidityState>> }> {
+	return Object.entries(validationByFieldId).flatMap(([fieldId, atom]) =>
+		fieldVisibility({ fieldId, irrelevantFieldPaths, parentPath, scopeFieldIds: null }) === 'irrelevant'
+			? []
+			: [{ fieldId, atom }]
+	);
+}
+
 export function getValidationAtomsExcludingIrrelevant(
 	validationByFieldId: LookupTable<Atom<Promise<FieldValidityState>>>,
 	irrelevantFieldPaths: Set<string> | null | undefined,
 	parentPath?: string
 ): Array<Atom<Promise<FieldValidityState>>> {
-	return Object.entries(validationByFieldId)
-		.filter(
-			([fieldId]) =>
-				fieldVisibility({ fieldId, irrelevantFieldPaths, parentPath, scopeFieldIds: null }) !== 'irrelevant'
-		)
-		.map(([, validityAtom]) => validityAtom);
+	return relevantFieldValidations(validationByFieldId, irrelevantFieldPaths, parentPath).map(({ atom }) => atom);
 }
 
 /**

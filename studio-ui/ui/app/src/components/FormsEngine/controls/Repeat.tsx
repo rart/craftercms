@@ -29,7 +29,7 @@ import ListItemSecondaryAction from '@mui/material/ListItemSecondaryAction';
 import ListItemButton from '@mui/material/ListItemButton';
 import { FormattedMessage } from 'react-intl';
 import Tooltip from '@mui/material/Tooltip';
-import { lazy, MouseEvent as ReactMouseEvent, Suspense, useContext, useMemo, useState } from 'react';
+import { lazy, MouseEvent as ReactMouseEvent, Suspense, useContext, useEffect, useMemo, useState } from 'react';
 import Avatar, { avatarClasses } from '@mui/material/Avatar';
 import { StackedButton } from '../components/StackedButton';
 import { isTouchDevice } from '../lib/sortableListUtil';
@@ -39,6 +39,7 @@ import SortableListSkeleton from '../components/SortableListSkeleton';
 import type { TItem } from '../components/SortableList';
 import FieldBox from '../components/FieldBox';
 import { buttonClasses } from '@mui/material/Button';
+import { repeatIndexOutOfRangeWarning, visibleRepeatItems } from '../lib/formVisibility';
 
 export type RepeatItem = Record<string, unknown>;
 
@@ -74,15 +75,14 @@ export function Repeat(props: RepeatProps) {
 	const api = useStableGlobalApiContext();
 	const formAtoms = useContext(StableFormContext).atoms;
 	const formVisibility = useAtomValue(formAtoms.formVisibility);
-	const scopedIndex =
-		formVisibility.active.repeatItem?.fieldId === field.id ? formVisibility.active.repeatItem.index : undefined;
-	const visibleItems =
-		scopedIndex === undefined
-			? value.map((item, index) => ({ item, index }))
-			: value[scopedIndex]
-				? [{ item: value[scopedIndex], index: scopedIndex }]
-				: [];
+	const selection = visibleRepeatItems(value, formVisibility.active.repeatItem, field.id);
+	const visibleItems = selection.items;
+	const itemScoped = selection.scoped;
 	const hasContent = visibleItems.length > 0;
+	useEffect(() => {
+		if (selection.outOfRangeIndex === undefined) return;
+		console.warn(repeatIndexOutOfRangeWarning(field.id, selection.outOfRangeIndex, value.length));
+	}, [field.id, selection.outOfRangeIndex, value.length]);
 	const handleRemoveItem = (event: ReactMouseEvent, index: number) => {
 		event.stopPropagation();
 		const nextValue = value.concat();
@@ -139,18 +139,16 @@ export function Repeat(props: RepeatProps) {
 				max={field.validations.maxCount?.value}
 				length={value.length}
 				action={
-					scopedIndex === undefined ? (
+					itemScoped ? undefined : (
 						<Tooltip title={isAddDisabled ? '' : <FormattedMessage defaultMessage="Add items" />}>
 							<IconButton size="small" color="primary" onClick={handleAddItem} autoFocus={autoFocus}>
 								<AddRounded fontSize="small" />
 							</IconButton>
 						</Tooltip>
-					) : undefined
+					)
 				}
 				menuOptions={
-					scopedIndex === undefined
-						? [{ id: 'reorder', text: <FormattedMessage defaultMessage="Reorder Items" /> }]
-						: undefined
+					itemScoped ? undefined : [{ id: 'reorder', text: <FormattedMessage defaultMessage="Reorder Items" /> }]
 				}
 				onMenuOptionClick={(_, __, closeMenu) => {
 					onReorder();
@@ -185,17 +183,19 @@ export function Repeat(props: RepeatProps) {
 													<EditOutlined fontSize="small" />
 												</IconButton>
 											</Tooltip>
-											<Tooltip title={<FormattedMessage defaultMessage="Delete" />}>
-												<IconButton size="small" onClick={(e) => handleRemoveItem(e, index)}>
-													<DeleteOutlined fontSize="small" />
-												</IconButton>
-											</Tooltip>
+											{!itemScoped && (
+												<Tooltip title={<FormattedMessage defaultMessage="Delete" />}>
+													<IconButton size="small" onClick={(e) => handleRemoveItem(e, index)}>
+														<DeleteOutlined fontSize="small" />
+													</IconButton>
+												</Tooltip>
+											)}
 										</ListItemSecondaryAction>
 									)}
 								</ListItemButton>
 							))}
 						</List>
-					) : scopedIndex === undefined ? (
+					) : (
 						<>
 							<StackedButton
 								onClick={handleAddItem}
@@ -214,7 +214,7 @@ export function Repeat(props: RepeatProps) {
 								<FormattedMessage defaultMessage="Add" />
 							</StackedButton>
 						</>
-					) : null}
+					)}
 				</FieldBox>
 			</FormsEngineField>
 		</>

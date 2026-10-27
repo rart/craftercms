@@ -32,11 +32,12 @@ import {
 	extractAtomValues,
 	getBasePath,
 	getFileNameValueFromPath,
+	relevantFieldValidations,
 	showAlert
 } from './formUtils';
 import { FormSavePromiseResult, FormsEngineProps } from '../FormsEngine';
 import { contentFormSaveAction } from '../../../utils/contentFormLaunch';
-import { fieldVisibility, firstOutOfScopeInvalidField, openFullForm } from './formVisibility';
+import { hiddenInvalidReveal } from './formVisibility';
 import { XmlKeys } from './formConsts';
 import { fromString } from '../../../utils/xml';
 import {
@@ -187,19 +188,14 @@ export function useSaveForm(props: UseSaveFormProps) {
 			let values = extractAtomValues(jotai, stableFormContext.atoms.valueByFieldId);
 			const repeatFieldId = isRepeatMode ? stableFormContext.props?.repeat?.fieldId : undefined;
 			const readValidity = async () => {
-				const irrelevant = stableFormContext.formControllerState?.irrelevantFieldPaths;
 				// Out-of-scope fields stay in this list. Only controller-irrelevant fields are skipped.
-				const entries = Object.entries(stableFormContext.atoms.validationByFieldId).filter(
-					([fieldId]) =>
-						fieldVisibility({
-							fieldId,
-							irrelevantFieldPaths: irrelevant,
-							parentPath: repeatFieldId,
-							scopeFieldIds: null
-						}) !== 'irrelevant'
+				const fields = relevantFieldValidations(
+					stableFormContext.atoms.validationByFieldId,
+					stableFormContext.formControllerState?.irrelevantFieldPaths,
+					repeatFieldId
 				);
-				const states = await Promise.all(entries.map(([, validityAtom]) => jotai.get(validityAtom)));
-				const invalidFieldIds = entries.flatMap(([fieldId], index) => (states[index]?.isValid ? [] : [fieldId]));
+				const states = await Promise.all(fields.map(({ atom }) => jotai.get(atom)));
+				const invalidFieldIds = fields.flatMap(({ fieldId }, index) => (states[index]?.isValid ? [] : [fieldId]));
 				return { isFormInvalid: invalidFieldIds.length > 0, invalidFieldIds };
 			};
 			// Put system properties in before creating the XML
@@ -299,24 +295,19 @@ export function useSaveForm(props: UseSaveFormProps) {
 				saveAsDraft = draft || isFormInvalid;
 			}
 
-			// A scoped form still validates every field. An invalid field outside the scope is
-			// opened in place and scrolled to; nothing is written until the author can see it.
+			// A scoped form still validates every field. An error the author cannot see — a field
+			// outside the launch scope, or a repeat field limited to one item — opens that
+			// scope in place and scrolls to the field. Nothing is written.
 			if (!isRepeatMode) {
-				const scopeFieldIds = jotai.get(stableFormContext.atoms.formVisibility).active.fieldIds;
-				const hiddenFieldId = firstOutOfScopeInvalidField(
+				const reveal = hiddenInvalidReveal({
+					visibility: jotai.get(stableFormContext.atoms.formVisibility),
 					invalidFieldIds,
-					contentType.sections?.flatMap((section) => section.fields) ?? [],
-					{
-						irrelevantFieldPaths: stableFormContext.formControllerState?.irrelevantFieldPaths,
-						scopeFieldIds
-					}
-				);
-				if (hiddenFieldId) {
-					jotai.set(
-						stableFormContext.atoms.formVisibility,
-						openFullForm(jotai.get(stableFormContext.atoms.formVisibility))
-					);
-					jotai.set(stableFormContext.atoms.pendingScrollFieldId, hiddenFieldId);
+					sectionOrder: contentType.sections?.flatMap((section) => section.fields) ?? [],
+					irrelevantFieldPaths: stableFormContext.formControllerState?.irrelevantFieldPaths
+				});
+				if (reveal) {
+					jotai.set(stableFormContext.atoms.formVisibility, reveal.state);
+					jotai.set(stableFormContext.atoms.pendingScrollFieldId, reveal.fieldId);
 					setIsSubmitting(false);
 					return;
 				}
@@ -334,8 +325,7 @@ export function useSaveForm(props: UseSaveFormProps) {
 				return;
 			}
 
-			// Repository writes (root create/update and root embedded) tell the launcher which
-			// dialog action this was, plus enough of the content type to build redirect flags.
+			// Repository writes report the checkbox action and whether the item was stored as a draft.
 			const repositorySaveArgs = (savedPath: string, dom: Document | Element, xml: string) => ({
 				dom,
 				xml,
@@ -343,8 +333,7 @@ export function useSaveForm(props: UseSaveFormProps) {
 				versionComment,
 				path: savedPath,
 				action: contentFormSaveAction({ close: closeAfterSave, minimize: minimizeAfterSave }),
-				draft: saveAsDraft,
-				contentType: { id: contentType.id, type: contentType.type, previewable: contentType.previewable }
+				draft: saveAsDraft
 			});
 
 			complementValuesWithSystemProps(id, values, contentObject, contentType, saveAsDraft);
@@ -383,8 +372,7 @@ export function useSaveForm(props: UseSaveFormProps) {
 				}
 
 				// Root embedded: merge the component into the parent document and write the parent.
-				// The callback path is that parent (so a component inside a page reports the page's
-				// preview URL). FE1 did the same: it looked up the item that was written.
+				// The callback path is that parent, so a component inside a page reports the page path.
 				const path = itemPath;
 				const saveEmbeddedContent = (cancelPackagesComment: string = '') => {
 					const writeService$ = updateEmbeddedComponent(siteId, path, id, xml, { comment: versionComment });

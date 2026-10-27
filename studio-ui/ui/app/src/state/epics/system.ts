@@ -217,21 +217,13 @@ const systemEpics: CrafterCMSEpic[] = [
 	(action$, state$, { getIntl }) =>
 		action$.pipe(
 			ofType(showEditItemSuccessNotification.type),
-			tap(({ payload: { action, draft } }) => {
-				// FE2 passes `draft: false` for a completed save that stayed open, so `action === 'save'`
-				// is not itself a draft. FE1 omits `draft` and its Save button reported `save`.
-				const savedAsDraft = draft ?? action === 'save';
-				let message;
-				if (savedAsDraft) {
-					message = getIntl().formatMessage(itemSuccessMessages.itemSavedAsDraft);
-				} else {
-					message = getIntl().formatMessage(itemSuccessMessages.itemEdited);
-				}
+			tap(() => {
+				// Draft saves never dispatch this. The form already announced the draft.
 				const hostToHost$ = getHostToHostBus();
 				hostToHost$.next(
 					showSystemNotification({
-						message,
-						options: { variant: savedAsDraft ? 'warning' : 'default' }
+						message: getIntl().formatMessage(itemSuccessMessages.itemEdited),
+						options: { variant: 'default' }
 					})
 				);
 			}),

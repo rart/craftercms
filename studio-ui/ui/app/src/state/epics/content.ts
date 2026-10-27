@@ -89,6 +89,7 @@ import SocketEvent, { MoveContentEventPayload } from '../../models/SocketEvent';
 import { popDialog, pushDialog } from '../actions/dialogStack';
 import { nanoid } from 'nanoid';
 import { createComponentId, pickShowContentFormAction, pushConfirmDialog, pushErrorDialog } from '../../utils/system';
+import { duplicateSaveFollowUps } from '../../utils/contentFormLaunch';
 import type { ContentItem } from '../../models';
 import { popCodeEditorDialog, showItemMegaMenu } from '../actions/dialogs';
 
@@ -235,8 +236,8 @@ const content: CrafterCMSEpic[] = [
 								path,
 								authoringBase: state.env.authoringBase,
 								onSaveSuccess: ({ draft }) => {
-									if (draft) return;
-									store.dispatch(payload.onSuccess);
+									const followUps = duplicateSaveFollowUps(draft, payload.onSuccess);
+									if (followUps.length) store.dispatch(followUps[0]);
 								}
 							})
 						])

@@ -191,3 +191,68 @@ export function firstOutOfScopeInvalidField(
 	];
 	return ordered.find((fieldId) => fieldVisibility({ ...args, fieldId }) === 'outOfScope');
 }
+
+export interface VisibleRepeatItem<T> {
+	item: T;
+	index: number;
+}
+
+/**
+ * Rows a repeat control should list. A launch item scope shows that row.
+ * An index past the end of the list is not applied: every row is returned and
+ * `outOfRangeIndex` is set so the caller can warn and offer the normal actions.
+ */
+export function visibleRepeatItems<T>(
+	items: readonly T[],
+	repeatItem: RepeatItemScope | null,
+	fieldId: string
+): { items: VisibleRepeatItem<T>[]; scoped: boolean; outOfRangeIndex?: number } {
+	const indexed = items.map((item, index) => ({ item, index }));
+	if (repeatItem?.fieldId !== fieldId) return { items: indexed, scoped: false };
+	if (repeatItem.index >= 0 && repeatItem.index < items.length) {
+		return { items: [{ item: items[repeatItem.index], index: repeatItem.index }], scoped: true };
+	}
+	return { items: indexed, scoped: false, outOfRangeIndex: repeatItem.index };
+}
+
+export function repeatIndexOutOfRangeWarning(fieldId: string, index: number, length: number): string {
+	return `Repeat item index ${index} is outside "${fieldId}" (${length} items). Showing all items.`;
+}
+
+/** Drops the active repeat-item limit. Field scope and `launch` stay, so the author can return to the item. */
+export function clearRepeatItemScope(state: FormVisibilityState): FormVisibilityState {
+	if (!state.active.repeatItem) return state;
+	return { ...state, active: { ...state.active, repeatItem: null } };
+}
+
+export interface HiddenInvalidReveal {
+	state: FormVisibilityState;
+	fieldId: string;
+}
+
+/**
+ * What a save should reveal before writing, when an error is off screen.
+ * An invalid field outside the launch scope opens the full form.
+ * An invalid repeat field that is limited to one item drops that item scope:
+ * the field's validator covers every item and the count, which the single row hides.
+ * Section order wins when several fields qualify. Irrelevant fields are skipped.
+ */
+export function hiddenInvalidReveal(args: {
+	visibility: FormVisibilityState;
+	invalidFieldIds: readonly string[];
+	sectionOrder: readonly string[];
+	irrelevantFieldPaths?: ReadonlySet<string> | null;
+	parentPath?: string;
+}): HiddenInvalidReveal | undefined {
+	const fieldId = firstOutOfScopeInvalidField(args.invalidFieldIds, args.sectionOrder, {
+		irrelevantFieldPaths: args.irrelevantFieldPaths,
+		parentPath: args.parentPath,
+		scopeFieldIds: args.visibility.active.fieldIds
+	});
+	if (fieldId) return { state: openFullForm(args.visibility), fieldId };
+	const repeatItem = args.visibility.active.repeatItem;
+	if (repeatItem && args.invalidFieldIds.includes(repeatItem.fieldId)) {
+		return { state: clearRepeatItemScope(args.visibility), fieldId: repeatItem.fieldId };
+	}
+	return undefined;
+}

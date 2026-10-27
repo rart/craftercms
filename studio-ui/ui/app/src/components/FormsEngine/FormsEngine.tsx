@@ -206,7 +206,6 @@ export interface BaseProps extends Partial<UpdateModeProps & RepeatModeProps & C
 		action?: 'save' | 'saveAndClose' | 'saveAndMinimize';
 		/** Set on repository writes. True when the item was stored as a draft. */
 		draft?: boolean;
-		contentType?: { id: string; type: string; previewable?: boolean };
 	}): Promise<FormSavePromiseResult> | void;
 }
 
@@ -1230,13 +1229,26 @@ function FormOrchestrator(props: FormsEngineProps) {
 	}, [mainContent]);
 
 	const pendingScrollFieldId = useAtomValue(atoms.pendingScrollFieldId);
+	// True between starting a scroll and the effect re-running because that start cleared
+	// `pendingScrollFieldId`. That re-run has no target and must leave the observer in place.
+	// A later run with no target (the scope changed and the field is gone) cancels it.
+	const retainSettledScrollRef = useRef(false);
+	const cancelSettledScroll = useCallback(() => {
+		cancelFieldScrollRef.current?.();
+		cancelFieldScrollRef.current = null;
+		pendingFieldScrollRef.current = null;
+	}, []);
 	// Scroll to a requested field once form body layout settles (lazy controls, RTEs, images).
 	// `fieldToScroll` is a prop. `pendingScrollFieldId` is set when the scope opens up and a
-	// field that was hidden needs to be brought into view. Clearing the atom must not cancel
-	// the scroll that was just started, so this effect has no cleanup.
+	// field that was hidden needs to be brought into view.
 	useEffect(() => {
 		const fieldId = pendingScrollFieldId || fieldToScroll;
-		if (!fieldId || !mainContent) return;
+		if (!fieldId || !mainContent) {
+			if (!retainSettledScrollRef.current) cancelSettledScroll();
+			retainSettledScrollRef.current = false;
+			return;
+		}
+		cancelSettledScroll();
 		const sectionId = visibleSections.find((section) => section.fields.includes(fieldId))?.id;
 		const expandedAtom = sectionId ? atoms.expandedStateBySectionId[sectionId] : null;
 		const isExpanding = expandedAtom && !store.get(expandedAtom);
@@ -1249,6 +1261,7 @@ function FormOrchestrator(props: FormsEngineProps) {
 		} else {
 			beginSettledFieldScroll(fieldId);
 		}
+		retainSettledScrollRef.current = true;
 		if (pendingScrollFieldId) store.set(atoms.pendingScrollFieldId, null);
 	}, [
 		pendingScrollFieldId,
@@ -1258,8 +1271,10 @@ function FormOrchestrator(props: FormsEngineProps) {
 		atoms.expandedStateBySectionId,
 		atoms.pendingScrollFieldId,
 		store,
-		beginSettledFieldScroll
+		beginSettledFieldScroll,
+		cancelSettledScroll
 	]);
+	useEffect(() => cancelSettledScroll, [cancelSettledScroll]);
 
 	const bodyFragment = (
 		<FormLayout
