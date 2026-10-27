@@ -215,6 +215,16 @@ describe('fileNameValidator', () => {
 		assert.equal(fromMeta.isValid, false);
 		assert.deepEqual(fromMeta.messages.map(messageOf), [{ text: 'This field is required.' }]);
 	});
+
+	it('does not fail a required file-name on an empty value atom when meta.fileName is set', async () => {
+		const result = await validateFieldValue(
+			fileNameField(true),
+			'',
+			nameMeta('/site/website/about/index.xml', 'about')
+		);
+		assert.equal(result.isValid, true);
+		assert.deepEqual(result.messages, []);
+	});
 });
 
 describe('isFieldRequired', () => {

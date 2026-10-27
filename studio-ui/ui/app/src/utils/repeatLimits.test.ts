@@ -20,6 +20,7 @@ import {
 	checkboxGroupConstraintValue,
 	countLimitValue,
 	countLimitsFromStorage,
+	itemCountEditorValue,
 	getRepeatMinimum,
 	getRepeatOccurrenceViolations,
 	isItemCountMaxEditorValue,
@@ -114,6 +115,14 @@ describe('countLimitsFromStorage', () => {
 		} finally {
 			console.warn = original;
 		}
+	});
+
+	it('shows a stored max of 0 as the editor unlimited token', () => {
+		assert.equal(itemCountEditorValue(undefined, 'max', 'int'), '');
+		assert.equal(itemCountEditorValue(undefined, 'max', 'string'), '*');
+		assert.equal(itemCountEditorValue(4, 'max', 'int'), 4);
+		assert.equal(itemCountEditorValue(undefined, 'min', 'int'), 0);
+		assert.equal(itemCountEditorValue(2, 'min', 'int'), 2);
 	});
 
 	it('writes TB1 defaults for the editor and the XML', () => {

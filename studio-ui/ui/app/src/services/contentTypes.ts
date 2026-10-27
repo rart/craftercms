@@ -39,8 +39,8 @@ import {
 	checkboxGroupConstraintValue,
 	checkboxGroupLimitNames,
 	countLimitsFromStorage,
+	itemCountEditorValue,
 	nodeSelectorLimitNames,
-	repeatLimitEditorValues,
 	repeatLimitNames,
 	type CountLimits
 } from '../utils/repeatLimits';
@@ -260,6 +260,28 @@ function rawLegacyConstraintValue(legacyField: LegacyFormDefinitionField, name: 
 	return asArray(legacyField.constraints?.constraint).find((constraint) => constraint.name === name)?.value;
 }
 
+/**
+ * Stores the editor value for one bound. Repeats always have both properties.
+ * A missing property on any other control stays missing. See utils/repeatLimits.ts.
+ */
+function writeCountEditorProperty(
+	field: ContentTypeField,
+	name: string,
+	limit: number | undefined,
+	kind: 'min' | 'max',
+	options?: { ensure?: boolean; type?: string }
+): void {
+	const current = field.properties?.[name];
+	if (!current && !options?.ensure) return;
+	const type = options?.type ?? current?.type ?? (kind === 'min' ? 'int' : 'string');
+	field.properties[name] = {
+		...current,
+		name,
+		type,
+		value: itemCountEditorValue(limit, kind, type)
+	};
+}
+
 /** Writes virtual minCount/maxCount. Absent means unlimited. See utils/repeatLimits.ts. */
 function assignCountLimits(field: ContentTypeField, limits: CountLimits): void {
 	if (limits.minCount == null) delete field.validations.minCount;
@@ -374,19 +396,11 @@ function parseLegacyFormDefinitionFields(
 				);
 				assignCountLimits(field, limits);
 				// TB2 edits the properties. Store the element-winning values so load and save agree.
-				const editorValues = repeatLimitEditorValues(limits);
-				field.properties[repeatLimitNames.min] = {
-					...field.properties[repeatLimitNames.min],
-					name: repeatLimitNames.min,
-					type: 'int',
-					value: editorValues.minOccurs
-				};
-				field.properties[repeatLimitNames.max] = {
-					...field.properties[repeatLimitNames.max],
-					name: repeatLimitNames.max,
-					type: 'string',
-					value: editorValues.maxOccurs
-				};
+				writeCountEditorProperty(field, repeatLimitNames.min, limits.minCount, 'min', { ensure: true, type: 'int' });
+				writeCountEditorProperty(field, repeatLimitNames.max, limits.maxCount, 'max', {
+					ensure: true,
+					type: 'string'
+				});
 				parseLegacyFormDefinitionFields(
 					legacyField.fields.field,
 					field.fields,
@@ -403,16 +417,17 @@ function parseLegacyFormDefinitionFields(
 					...getFieldValidations(propertyProp, dropTargetsLookup)
 				};
 				// Count limits: utils/repeatLimits.ts. A positive minCount is the required marker, not a stored constraint.
-				assignCountLimits(
-					field,
-					countLimitsFromStorage(
-						{
-							minProperty: rawLegacyPropertyValue(legacyField, nodeSelectorLimitNames.min),
-							maxProperty: rawLegacyPropertyValue(legacyField, nodeSelectorLimitNames.max)
-						},
-						{ contentTypeId, fieldId }
-					)
+				const limits = countLimitsFromStorage(
+					{
+						minProperty: rawLegacyPropertyValue(legacyField, nodeSelectorLimitNames.min),
+						maxProperty: rawLegacyPropertyValue(legacyField, nodeSelectorLimitNames.max)
+					},
+					{ contentTypeId, fieldId }
 				);
+				assignCountLimits(field, limits);
+				// Same editor tokens as every other count field. A stored max of 0 becomes blank.
+				writeCountEditorProperty(field, nodeSelectorLimitNames.min, limits.minCount, 'min');
+				writeCountEditorProperty(field, nodeSelectorLimitNames.max, limits.maxCount, 'max');
 				break;
 			case 'checkbox-group': {
 				// Count limits: utils/repeatLimits.ts. The minSize constraint is not a runtime validation.

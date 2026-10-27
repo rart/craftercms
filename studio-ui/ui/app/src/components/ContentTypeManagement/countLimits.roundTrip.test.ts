@@ -192,6 +192,72 @@ describe('checkbox group minSize round trip', () => {
 	});
 });
 
+describe('stored max of 0 in Type Builder', () => {
+	it('loads a node selector maxSize of 0 as blank, and a repeat max of 0 as *', () => {
+		const parsed = parseLegacyFormDefinition({
+			'content-type': '/component/widget',
+			title: 'Widget',
+			description: '',
+			objectType: 'component',
+			sections: {
+				section: {
+					title: 'Main',
+					description: '',
+					defaultOpen: 'true',
+					fields: {
+						field: [
+							{
+								id: 'articles_o',
+								title: 'Articles',
+								description: '',
+								type: 'node-selector',
+								properties: {
+									property: [property('minSize', '0', 'int'), property('maxSize', '0', 'int')]
+								}
+							},
+							{
+								id: 'items_o',
+								title: 'Items',
+								description: '',
+								type: 'repeat',
+								maxOccurs: '0',
+								fields: { field: [] }
+							}
+						]
+					}
+				}
+			}
+		} as never);
+
+		const selectorValues = createTypeFieldValuesObject(parsed.fields.articles_o);
+		assert.equal(parsed.fields.articles_o.validations.maxCount, undefined);
+		assert.equal(selectorValues.minSize, 0);
+		assert.equal(selectorValues.maxSize, '');
+
+		const edited = reverseTypeFieldValuesObject(parsed.fields.articles_o, selectorValues, nodeSelectorDescriptor);
+		const savedType = { ...parsed, fields: { ...parsed.fields, articles_o: edited } };
+		const xml = prepareSerializeToXmlTypeObject(savedType);
+		const section = Array.isArray(xml.sections.section) ? xml.sections.section[0] : xml.sections.section;
+		const fields = Array.isArray(section.fields.field) ? section.fields.field : [section.fields.field];
+		const selector = fields.find((item) => item.id === 'articles_o');
+		const props = Array.isArray(selector.properties.property)
+			? selector.properties.property
+			: [selector.properties.property];
+		assert.equal(props.find((item) => item.name === 'maxSize')?.value, '');
+		assert.equal(props.find((item) => item.name === 'minSize')?.value, 0);
+		const constraints = selector.constraints?.constraint;
+		const constraintList = constraints == null ? [] : Array.isArray(constraints) ? constraints : [constraints];
+		assert.equal(
+			constraintList.some((item) => item.name === 'minCount' || item.name === 'maxCount'),
+			false
+		);
+
+		const repeatValues = createTypeFieldValuesObject(parsed.fields.items_o);
+		assert.equal(repeatValues.maxOccurs, '*');
+		assert.equal(parsed.fields.items_o.validations.maxCount, undefined);
+	});
+});
+
 describe('item count editor rules', () => {
 	it('explains an unlimited repeat maximum and requires an integer of at least 1', () => {
 		const field = repeatDescriptor.fields.maxOccurs;

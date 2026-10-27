@@ -139,13 +139,28 @@ export function isItemCountRangeValid(min: unknown, max: unknown): boolean {
 }
 
 /**
+ * Value Type Builder shows for one bound. Every control uses this.
+ * An unset limit, including a stored 0, is the unlimited token: `0` for a minimum,
+ * blank for an int maximum, and `*` for any other maximum. A positive limit is kept.
+ */
+export function itemCountEditorValue(
+	limit: number | undefined,
+	kind: 'min' | 'max',
+	storedType?: string
+): number | string {
+	if (kind === 'min') return limit ?? 0;
+	if (storedType === 'int') return limit == null ? '' : limit;
+	return limit == null ? repeatMaxDefault : String(limit);
+}
+
+/**
  * Values the repeat editor shows. No minimum is `0`. No maximum is `*`.
  * Save writes these (stringified) as both the element and the property.
  */
 export function repeatLimitEditorValues(limits: CountLimits): { minOccurs: number; maxOccurs: string } {
 	return {
-		minOccurs: limits.minCount ?? 0,
-		maxOccurs: limits.maxCount == null ? repeatMaxDefault : String(limits.maxCount)
+		minOccurs: itemCountEditorValue(limits.minCount, 'min', 'int') as number,
+		maxOccurs: itemCountEditorValue(limits.maxCount, 'max', 'string') as string
 	};
 }
 
