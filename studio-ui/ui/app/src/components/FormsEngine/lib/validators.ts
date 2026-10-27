@@ -124,6 +124,12 @@ export const validatorsMap: Partial<Record<BuiltInControlType | DescriptorContro
 };
 
 /**
+ * Control types whose validator applies the required constraint itself.
+ * {@link validateFieldValue} does not add a required message for these. The validator emits that message.
+ */
+const validatorsOwningRequired = new Set<BuiltInControlType | DescriptorControlType>(['file-name']);
+
+/**
  * Validators selected by a validation key on the field, not by its control type.
  * A key runs only when that validation is present. `required` is applied the same way in
  * {@link validateFieldValue}. `minValue`, `maxValue` and pattern/regex stay with the controls
@@ -197,7 +203,7 @@ export async function fileNameValidator(
 /**
  * Built-in map first (including explicit `undefined` = no type validator).
  * Plugin contributions only for types absent from the built-in map.
- * The required constraint stays in {@link validateFieldValue}.
+ * Required stays in {@link validateFieldValue}, except for types in {@link validatorsOwningRequired}.
  */
 export function getFieldValidator(fieldType: string): ValidatorFunctionDef | undefined {
 	if (Object.hasOwn(validatorsMap, fieldType)) {
@@ -238,9 +244,11 @@ export async function validateFieldValue(
 	const requiredByConstraint = Boolean(field.validations?.required?.value);
 	// A positive minCount is reported by the occurrence check. Don't add a second "required" message.
 	const minimum = countLimitValue(field.validations?.minCount?.value);
+	// This control's validator applies required itself, against the value it actually edits.
+	const ownsRequired = validatorsOwningRequired.has(field.type as BuiltInControlType | DescriptorControlType);
 
-	// A required constraint with an empty value is invalid. Control-specific rules stay in that control's validator.
-	if (requiredByConstraint && isEmpty && minimum == null) {
+	// A required constraint with an empty value is invalid. Types that own required decide that themselves.
+	if (!ownsRequired && requiredByConstraint && isEmpty && minimum == null) {
 		messages.push(defineMessage({ defaultMessage: 'This field is required.' }));
 		return Promise.resolve({ isValid: false, messages });
 	}
