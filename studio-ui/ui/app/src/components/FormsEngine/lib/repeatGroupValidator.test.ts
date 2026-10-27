@@ -39,6 +39,7 @@ const { createStore, atom } = await import('jotai');
  * Repeat, node selector and checkbox group share one occurrence message. A positive minCount is the marker,
  * and it does not also produce "This field is required."
  * The Type Builder editor check runs from the itemCount validation, not from the string or int control type.
+ * A validations key is used only when it is an own key of the validator map, so constructor is not a validator.
  * File name: a non-root item is required; the site root index /site/website/index.xml keeps its stored constraint.
  */
 
@@ -386,6 +387,19 @@ describe('item count editor validation', () => {
 		});
 		assert.equal(result.isValid, false);
 		assert.equal(messageOf(result.messages[0]).text, 'Minimum cannot be greater than maximum.');
+	});
+
+	// Given a string field whose only validation key is constructor, validation still succeeds. That name is on the prototype, not a validator.
+	it('ignores a prototype key such as constructor on the validations object', async () => {
+		const field = {
+			id: 'title_s',
+			name: 'Title',
+			type: 'string',
+			validations: { constructor: { id: 'constructor', value: true, level: 'required' } }
+		} as ContentTypeField;
+		const result = await validateFieldValue(field, 'hello', meta);
+		assert.equal(result.isValid, true);
+		assert.equal(result.messages.length, 0);
 	});
 
 	// Given a title string and a count int with no itemCount validation, '0' and 'abc' stay valid. The rule is not a type override.

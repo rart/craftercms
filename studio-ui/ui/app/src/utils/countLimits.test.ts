@@ -27,12 +27,14 @@ import {
 	isItemCountRangeValid,
 	isRepeatAddDisabled,
 	isRepeatRemoveDisabled,
+	getCountLimitStorage,
 	repeatLimitEditorValues,
 	repeatOccursXmlValues
 } from './countLimits.ts';
 
 /**
  * The shared min/max contract in utils/countLimits.ts.
+ * getCountLimitStorage reads that table by the control's own key. Prototype names are not controls.
  * countLimitStorage says where each control stores its limits. Each entry is round-tripped through parse,
  * the Type Builder editor and XML in countLimits.roundTrip.test.ts.
  * Storage parsing: the element wins, an invalid token falls back to the property, and 0, blank and * are unlimited.
@@ -42,6 +44,16 @@ import {
 
 // The warning text names this content type and this field. accounts_o is the repeat used for the element-vs-property case.
 const fieldContext = { contentTypeId: '/page/article', fieldId: 'accounts_o' };
+
+describe('getCountLimitStorage', () => {
+	// Given constructor and toString, the lookup is undefined. Those names live on Object.prototype, not in the table. repeat is a real entry.
+	it('ignores prototype keys and returns an entry only for a listed control', () => {
+		assert.equal(getCountLimitStorage('constructor'), undefined);
+		assert.equal(getCountLimitStorage('toString'), undefined);
+		assert.equal(getCountLimitStorage('repeat')?.type, 'repeat');
+		assert.equal(getCountLimitStorage('input'), undefined);
+	});
+});
 
 describe('countLimitsFromStorage', () => {
 	// Given a usable element and a different property, the element is the limit and the property is ignored.

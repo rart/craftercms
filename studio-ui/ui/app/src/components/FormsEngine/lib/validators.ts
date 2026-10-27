@@ -239,8 +239,9 @@ export async function validateFieldValue(
 	// The type validator runs for the control. Validation-key validators run only for keys this field has.
 	let isValid = nnou(validator) ? await validator(field, currentValue, messages, meta) : true;
 	for (const key of Object.keys(field.validations ?? {})) {
+		// Own keys only, same as hasValidationKeyValidator. A prototype name is not a validator.
+		if (!Object.hasOwn(validationValidators, key)) continue;
 		const keyed = validationValidators[key];
-		if (!keyed) continue;
 		if (!(await keyed(field, currentValue, messages, meta))) isValid = false;
 	}
 	return Promise.resolve({ isValid, messages });

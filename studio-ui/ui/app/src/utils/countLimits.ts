@@ -154,7 +154,8 @@ export const countLimitStorage: Record<string, CountLimitControl> = {
 
 /** The storage entry for a control type, or undefined when that control has no item-count limits. */
 export function getCountLimitStorage(fieldType?: string | null): CountLimitControl | undefined {
-	if (!fieldType) return undefined;
+	// Own keys only. `constructor` and `toString` are on the prototype, not controls.
+	if (!fieldType || !Object.hasOwn(countLimitStorage, fieldType)) return undefined;
 	return countLimitStorage[fieldType];
 }
 

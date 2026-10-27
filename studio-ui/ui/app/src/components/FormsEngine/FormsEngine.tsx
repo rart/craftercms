@@ -706,7 +706,7 @@ function FormBootstrap(props: FormsEngineProps) {
 						lockError: requirements.lockError,
 						affectedPackages: requirements.affectedPackages
 					});
-					const fileName = fileNameFromItemPath(requirements.item.path) || '';
+					const fileName = fileNameFromItemPath(requirements.item.path);
 					const atoms = createFormsEngineAtoms(effectRefs.current.username, {
 						lockResult: lockResultAtom,
 						readonly: createReadonlyAtom(lockResultAtom),
