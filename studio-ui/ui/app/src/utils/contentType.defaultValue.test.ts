@@ -1,0 +1,61 @@
+/*
+ * Copyright (C) 2007-2026 Crafter Software Corporation. All Rights Reserved.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3 as published by
+ * the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
+import '../../test/registerTsLoader.mjs';
+import type { ContentTypeField } from '../models/ContentType';
+
+const { getDefaultValue } = await import('./contentType.ts');
+
+function repeatField(validations: ContentTypeField['validations']): ContentTypeField {
+	return {
+		id: 'articles_o',
+		name: 'Articles',
+		type: 'repeat',
+		validations,
+		fields: {
+			title_s: {
+				id: 'title_s',
+				name: 'Title',
+				type: 'input',
+				validations: {},
+				defaultValue: 'Hello'
+			}
+		}
+	};
+}
+
+describe('getDefaultValue repeat prefill', () => {
+	it('starts a new repeat at the effective minimum, using minCount.value', () => {
+		const prefilled = getDefaultValue(
+			repeatField({
+				minCount: { id: 'minCount', value: 3, level: 'required' },
+				required: { id: 'required', value: true, level: 'required' }
+			})
+		);
+		assert.equal(prefilled.length, 3);
+		assert.deepEqual(prefilled, [{ title_s: 'Hello' }, { title_s: 'Hello' }, { title_s: 'Hello' }]);
+	});
+
+	it('starts a required repeat with no minCount at one item, and an optional one empty', () => {
+		const required = getDefaultValue(repeatField({ required: { id: 'required', value: true, level: 'required' } }));
+		assert.deepEqual(required, [{ title_s: 'Hello' }]);
+
+		const optional = getDefaultValue(repeatField({}));
+		assert.deepEqual(optional, []);
+	});
+});

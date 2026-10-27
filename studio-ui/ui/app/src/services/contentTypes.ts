@@ -412,7 +412,8 @@ function parseLegacyFormDefinitionFields(
 	});
 }
 
-function parseLegacyFormDefinition(definition: LegacyFormDefinition): ContentType {
+/** Maps a form-definition document into the Forms Engine content-type model. */
+export function parseLegacyFormDefinition(definition: LegacyFormDefinition): ContentType {
 	if (nou(definition)) {
 		return {} as ContentType;
 	}

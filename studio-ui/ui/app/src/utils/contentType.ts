@@ -20,6 +20,7 @@ import Jabber from 'jabber';
 import LookupTable from '../models/LookupTable';
 import { generatePlaceholderImageDataUrl } from './content';
 import { ensureSingleSlash, isEmpty, toColor } from './string';
+import { getRepeatMinimum } from './repeatLimits';
 import { darken } from '@mui/material/styles';
 import type { Theme } from '@mui/material';
 import type { ObjectTypeOption } from '../components/ContentTypeFilter/ContentTypesFilter';
@@ -124,7 +125,24 @@ export function getFieldsByType(contentType: ContentType, fieldType): ContentTyp
 export function getDefaultValue(field: ContentTypeField): string | number | boolean | any[] {
 	if (field.defaultValue) {
 		return field.defaultValue;
-	} else if (field.validations.required?.value) {
+	}
+	// Repeat prefill does not depend on the required flag alone. The effective minimum is the
+	// explicit minCount value, or 1 when the repeat is required and no minimum was set — the
+	// same rule as the Delete gate. minCount is the validation object, so the count is `.value`.
+	if (field.type === 'repeat') {
+		const minimum = getRepeatMinimum(field.validations.minCount?.value, Boolean(field.validations.required?.value));
+		if (minimum <= 0 || !field.fields) {
+			return [];
+		}
+		return Array.from({ length: minimum }, () => {
+			const item = {};
+			for (const subFieldId in field.fields) {
+				item[subFieldId] = getDefaultValue(field.fields[subFieldId]);
+			}
+			return item;
+		});
+	}
+	if (field.validations.required?.value) {
 		switch (field.type as BuiltInControlType) {
 			case 'image-picker': {
 				const width = field.validations.width?.value ?? field.validations.minWidth?.value ?? 150;
@@ -158,19 +176,6 @@ export function getDefaultValue(field: ContentTypeField): string | number | bool
 			}
 			case 'date-time': {
 				return new Date().toISOString();
-			}
-			case 'repeat': {
-				const repeat = [];
-				if (field.validations.minCount && field.fields) {
-					new Array(field.validations.minCount).fill(null).forEach(() => {
-						const item = {};
-						for (const subFieldId in field.fields) {
-							item[subFieldId] = getDefaultValue(field.fields[subFieldId]);
-						}
-						repeat.push(item);
-					});
-				}
-				return repeat;
 			}
 			case 'node-selector':
 				// TODO: CHECK MIN/MAX COUNT
