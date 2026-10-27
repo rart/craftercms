@@ -60,13 +60,15 @@ import type { BuiltInControlType } from '../FormsEngine/lib/controlMap';
 import { asArray } from '../../utils/array';
 import { componentsDataSourceContentTypesPropertyNames, systemValidationsKeysMap } from '../../utils/contentType';
 import {
-	checkboxGroupLimitNames,
-	countLimitValue,
-	countLimitsFromStorage,
-	repeatOccursXmlValues,
+	countLimitEditorOverrides,
+	countLimitValidationKeys,
+	countLimitsFromEditorValues,
+	getCountLimitStorage,
+	storageRefreshesVirtualCount,
 	virtualCountValidationIds,
+	writeCountLimitXml,
 	type ItemCountEditorSpec
-} from '../../utils/repeatLimits';
+} from '../../utils/countLimits';
 import { XmlKeys } from '../FormsEngine/lib/formConsts';
 import { getPossibleTranslation } from '../../utils/i18n';
 import { FormatXMLElementFn, PrimitiveType } from 'intl-messageformat';
@@ -183,11 +185,8 @@ export function createTypeFieldValuesObject(field: ContentTypeField): LookupTabl
 			values[contentTypeFieldToXmlNameMap[property] ?? property] = field[property];
 		}
 	}
-	if (field.type === 'checkbox-group') {
-		// The minSize editor shows minCount. Unset, including a stored 0, is blank. See utils/repeatLimits.ts.
-		const minimum = countLimitValue(field.validations?.minCount?.value);
-		values[checkboxGroupLimitNames.min] = minimum == null ? '' : minimum;
-	}
+	// Virtual editor fields (checkbox minSize) come from minCount. Property-backed bounds are already copied.
+	Object.assign(values, countLimitEditorOverrides(getCountLimitStorage(field.type), field.validations));
 	return values;
 }
 
@@ -305,9 +304,10 @@ export function reverseTypeFieldValuesObject(
 			const validations = fieldWithReversedValues.validations;
 			const mergedValidations = { ...defaults.validations, ...(field.validations ?? {}) };
 			let validationKey: ValidationKeys;
+			const countLimitKeys = new Set(countLimitValidationKeys(getCountLimitStorage(field.type)));
 			for (validationKey in mergedValidations) {
-				// The checkbox minimum is minCount. Its constraint is written on save from that value.
-				if (field.type === 'checkbox-group' && validationKey === checkboxGroupLimitNames.min) continue;
+				// A count-limit constraint is not a runtime validation. Save writes it from minCount.
+				if (countLimitKeys.has(validationKey)) continue;
 				validations[validationKey as ValidationKeys] = { ...mergedValidations[validationKey as ValidationKeys] };
 				validations[validationKey as ValidationKeys].value =
 					// TODO: Should we use upgrade manager to remove from properties and into constraints?
@@ -320,14 +320,23 @@ export function reverseTypeFieldValuesObject(
 			fieldWithReversedValues[property] = values[contentTypeFieldToXmlNameMap[property] ?? property];
 		}
 	}
-	if (field.type === 'checkbox-group') {
-		// Refresh minCount from the editor. 0 and blank are no minimum. The constraint is written on save.
-		const limits = countLimitsFromStorage({ minProperty: values[checkboxGroupLimitNames.min] });
+	// Rebuild virtual minCount/maxCount from editor fields that are not stored as properties.
+	const countStorage = getCountLimitStorage(field.type);
+	if (countStorage && storageRefreshesVirtualCount(countStorage)) {
+		const limits = countLimitsFromEditorValues(countStorage, values);
 		const validations = { ...(fieldWithReversedValues.validations ?? {}) };
-		delete validations[checkboxGroupLimitNames.min];
+		for (const name of countLimitValidationKeys(countStorage)) {
+			delete validations[name as keyof typeof validations];
+		}
 		fieldWithReversedValues.validations = validations;
-		if (limits.minCount == null) delete validations.minCount;
-		else validations.minCount = { id: 'minCount', value: limits.minCount, level: 'required' };
+		if (countStorage.min && (countStorage.min.editorFromVirtual || countStorage.min.sources.includes('constraint'))) {
+			if (limits.minCount == null) delete validations.minCount;
+			else validations.minCount = { id: 'minCount', value: limits.minCount, level: 'required' };
+		}
+		if (countStorage.max && (countStorage.max.editorFromVirtual || countStorage.max.sources.includes('constraint'))) {
+			if (limits.maxCount == null) delete validations.maxCount;
+			else validations.maxCount = { id: 'maxCount', value: limits.maxCount, level: 'required' };
+		}
 	}
 	return fieldWithReversedValues;
 }
@@ -686,32 +695,25 @@ export function buildContentTypeXml(serializeTypeStructureObject: SerializeToXml
 }
 
 function convertFieldStructToXmlStruct(field: ContentTypeField): Required<LegacyFormDefinitionField> {
-	// Repeat limits are written from the count-limit contract (utils/repeatLimits.ts): the element
-	// and the property get the same value, with TB1 defaults (min 0, max '*'). minCount/maxCount
-	// are virtual and are not written. A stored required constraint is stripped.
-	const repeatStorage =
-		field.type === 'repeat'
-			? repeatOccursXmlValues(field.properties?.minOccurs?.value, field.properties?.maxOccurs?.value)
-			: undefined;
-	const minOccurs = repeatStorage?.minOccurs ?? (field.properties?.minOccurs?.value as string);
-	const maxOccurs = repeatStorage?.maxOccurs ?? (field.properties?.maxOccurs?.value as string);
-	const propertiesSource = repeatStorage
-		? {
-				...field.properties,
-				minOccurs: {
-					...field.properties?.minOccurs,
-					name: 'minOccurs',
-					type: 'int',
-					value: repeatStorage.minOccurs
-				},
-				maxOccurs: {
-					...field.properties?.maxOccurs,
-					name: 'maxOccurs',
-					type: 'string',
-					value: repeatStorage.maxOccurs
+	// Count-limit XML comes from the storage table: elements, property types, and positive constraints.
+	const countXml = (() => {
+		const storage = getCountLimitStorage(field.type);
+		return storage ? writeCountLimitXml(storage, field) : undefined;
+	})();
+	const minOccurs = countXml?.elements.minOccurs ?? (field.properties?.minOccurs?.value as string);
+	const maxOccurs = countXml?.elements.maxOccurs ?? (field.properties?.maxOccurs?.value as string);
+	const propertiesSource =
+		countXml && Object.keys(countXml.properties).length > 0
+			? {
+					...field.properties,
+					...Object.fromEntries(
+						Object.entries(countXml.properties).map(([name, written]) => [
+							name,
+							{ ...field.properties?.[name], ...written }
+						])
+					)
 				}
-			}
-		: field.properties;
+			: field.properties;
 
 	// 'plugin' comes in 'field.properties'. (see ContentTypeField['properties'], but it's a separate object in the XML.
 	let plugin: LegacyFormDefinitionField['plugin'];
@@ -730,7 +732,7 @@ function convertFieldStructToXmlStruct(field: ContentTypeField): Required<Legacy
 		...Object.values(systemValidationsKeysMap),
 		...virtualCountValidationIds,
 		...componentsDataSourceContentTypesPropertyNames,
-		...(field.type === 'repeat' ? ['required'] : [])
+		...(countXml?.stripConstraints ?? [])
 	];
 
 	const constraintList =
@@ -743,15 +745,13 @@ function convertFieldStructToXmlStruct(field: ContentTypeField): Required<Legacy
 					}))
 					.filter((validation) => validation.name && !strippedValidationNames.includes(validation.name))
 			: [];
-	// Checkbox minCount is virtual. The minSize constraint is written only for a positive integer.
-	// A stored 0 is no minimum and is omitted. See utils/repeatLimits.ts.
-	if (field.type === 'checkbox-group') {
-		const minimum = countLimitValue(field.validations?.minCount?.value);
-		if (minimum != null && !constraintList.some((constraint) => constraint.name === checkboxGroupLimitNames.min)) {
+	for (const constraint of countXml?.constraints ?? []) {
+		if (!constraintList.some((item) => item.name === constraint.name)) {
+			// The table stores the constraint name as a string. The list's name is the validation-id union.
 			constraintList.push({
-				name: checkboxGroupLimitNames.min,
-				value: minimum,
-				type: 'number'
+				name: constraint.name as (typeof constraintList)[number]['name'],
+				value: constraint.value,
+				type: constraint.type as (typeof constraintList)[number]['type']
 			});
 		}
 	}

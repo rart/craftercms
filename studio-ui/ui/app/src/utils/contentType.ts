@@ -20,7 +20,7 @@ import Jabber from 'jabber';
 import LookupTable from '../models/LookupTable';
 import { generatePlaceholderImageDataUrl } from './content';
 import { ensureSingleSlash, isEmpty, toColor } from './string';
-import { getRepeatMinimum } from './repeatLimits';
+import { getRepeatMinimum } from './countLimits';
 import { darken } from '@mui/material/styles';
 import type { Theme } from '@mui/material';
 import type { ObjectTypeOption } from '../components/ContentTypeFilter/ContentTypesFilter';
@@ -126,7 +126,7 @@ export function getDefaultValue(field: ContentTypeField): string | number | bool
 	if (field.defaultValue) {
 		return field.defaultValue;
 	}
-	// Prefill to minCount.value (the validation object is not the count). See utils/repeatLimits.ts.
+	// Prefill to minCount.value (the validation object is not the count). See utils/countLimits.ts.
 	if (field.type === 'repeat') {
 		const minimum = getRepeatMinimum(field.validations.minCount?.value);
 		if (minimum <= 0 || !field.fields) {
@@ -285,7 +285,7 @@ export const systemValidationsNames = [
 	'fileBrowseRepo'
 ];
 
-// Item-count storage (minOccurs/maxOccurs, minSize/maxSize, checkbox minSize) is mapped in utils/repeatLimits.ts.
+// Item-count storage (minOccurs/maxOccurs, minSize/maxSize, checkbox minSize) is mapped in utils/countLimits.ts.
 export const systemValidationsKeysMap = {
 	maxlength: 'maxLength',
 	contentTypes: 'allowedContentTypes',

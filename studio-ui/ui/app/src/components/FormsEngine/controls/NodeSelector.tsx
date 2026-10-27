@@ -105,7 +105,7 @@ import TypeList from '../../ContentTypeManagement/components/TypeList';
 import { SearchBar } from '../../SearchBar';
 import useDebouncedInput from '../../../hooks/useDebouncedInput';
 import { filterTypesByKeywordsAndObjectType } from '../../../utils/contentType';
-import { countLimitValue } from '../../../utils/repeatLimits';
+import { countLimitValue } from '../../../utils/countLimits';
 import {
 	buildActionGroups,
 	consolidateItemActions,
@@ -630,7 +630,7 @@ function NodeSelector(props: NodeSelectorProps) {
 				onMenuClose={() => setAddMenuOpen(false)}
 			/>
 		) : null;
-	// minCount/maxCount are the mapped limits. 0 is unlimited. See utils/repeatLimits.ts.
+	// minCount/maxCount are the mapped limits. 0 is unlimited. See utils/countLimits.ts.
 	const maxCount = countLimitValue(field.validations?.maxCount?.value);
 	const maxLimitReached = maxCount != null && value.length >= maxCount;
 	const isAddDisabled = readonly || maxLimitReached || (!menuOptions.length && !customActions.length);

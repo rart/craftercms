@@ -29,10 +29,12 @@ import {
 	isRepeatRemoveDisabled,
 	repeatLimitEditorValues,
 	repeatOccursXmlValues
-} from './repeatLimits.ts';
+} from './countLimits.ts';
 
 /**
- * The shared min/max contract in utils/repeatLimits.ts.
+ * The shared min/max contract in utils/countLimits.ts.
+ * countLimitStorage says where each control stores its limits. Each entry is round-tripped through parse,
+ * the Type Builder editor and XML in countLimits.roundTrip.test.ts.
  * Storage parsing: the element wins, an invalid token falls back to the property, and 0, blank and * are unlimited.
  * A warning is logged only when a bound has nothing usable. Type Builder editor tokens and the Add, Delete and
  * occurrence helpers use that same reading of a limit.

@@ -47,7 +47,7 @@ import {
 import { clearAndListen$ } from '../store/subjects';
 import { startListening } from '../store/actions';
 import { ElementRecord } from '../models/InContextEditing';
-import { countLimitValue } from '@craftercms/studio-ui/utils/repeatLimits';
+import { countLimitValue } from '@craftercms/studio-ui/utils/countLimits';
 import { extractCollection, findParentModelId } from '@craftercms/studio-ui/utils/model';
 import { isSimple, popPiece } from '@craftercms/studio-ui/utils/string';
 import { AnyAction } from '@reduxjs/toolkit';
@@ -213,7 +213,7 @@ export function ZoneMenu(props: ZoneMenuProps) {
 
 		if (containerHasEditAction && Boolean(collection)) {
 			const validations = nodeSelectorEntries?.field?.validations;
-			// minCount/maxCount values. 0 is unlimited. See utils/repeatLimits.ts.
+			// minCount/maxCount values. 0 is unlimited. See utils/countLimits.ts.
 			const maxCount = countLimitValue(validations?.maxCount?.value);
 			const minCount = countLimitValue(validations?.minCount?.value);
 			const trashableValidation = minCount == null || minCount < numOfItemsInContainerCollection;

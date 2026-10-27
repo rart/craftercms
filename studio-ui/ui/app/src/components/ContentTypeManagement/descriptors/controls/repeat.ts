@@ -37,14 +37,14 @@ export const repeatDescriptor: DescriptorContentType = {
 				defaultMessage: 'Enter 0 or leave blank for no minimum.'
 			}),
 			defaultValue: 0,
-			// See utils/repeatLimits.ts.
+			// See utils/countLimits.ts.
 			validations: {
 				itemCount: createValidation('itemCount', { role: 'min', partner: 'maxOccurs' })
 			}
 		},
 		maxOccurs: {
 			id: 'maxOccurs',
-			// '*' or blank means no maximum. 0 is not accepted. See utils/repeatLimits.ts.
+			// '*' or blank means no maximum. 0 is not accepted. See utils/countLimits.ts.
 			type: 'string',
 			name: defineMessage({ defaultMessage: 'Maximum Occurrences' }),
 			description: defineMessage({

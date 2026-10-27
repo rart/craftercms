@@ -47,7 +47,7 @@ import {
 	isItemCountMinEditorValue,
 	isItemCountRangeValid,
 	readItemCountEditorSpec
-} from '../../../utils/repeatLimits';
+} from '../../../utils/countLimits';
 
 export interface ValidatorMetaData {
 	siteId: string;
@@ -125,7 +125,7 @@ export const validatorsMap: Partial<Record<BuiltInControlType | DescriptorContro
  * Validators selected by a validation key on the field, not by its control type.
  * A key runs only when that validation is present. `required` is applied the same way in
  * {@link validateFieldValue}. `minValue`, `maxValue` and pattern/regex stay with the controls
- * that already read those keys. See utils/repeatLimits.ts for the item-count spec.
+ * that already read those keys. See utils/countLimits.ts for the item-count spec.
  */
 const validationValidators: Partial<Record<string, ValidatorFunctionDef>> = {
 	itemCount: (field, currentValue, messages, meta) => itemCountEditorValidator(field, currentValue, messages, meta)
@@ -252,7 +252,7 @@ const maxItemsMessage = defineMessage({
 	defaultMessage: 'No more than {maxCount, plural, one {# item is} other {# items are}} allowed.'
 });
 
-/** Same occurrence errors for every item-count control. See utils/repeatLimits.ts. */
+/** Same occurrence errors for every item-count control. See utils/countLimits.ts. */
 function pushItemCountViolations(
 	messages: FieldValidityState['messages'],
 	count: number,
@@ -271,7 +271,7 @@ function pushItemCountViolations(
 	return violations.length === 0;
 }
 
-/** Type Builder min/max. Blank and '*' are unlimited. 0 is not a maximum. See utils/repeatLimits.ts. */
+/** Type Builder min/max. Blank and '*' are unlimited. 0 is not a maximum. See utils/countLimits.ts. */
 function itemCountEditorValidator(
 	field: ContentTypeField,
 	currentValue: unknown,
@@ -332,7 +332,7 @@ export function isEmptyValue(field: ContentTypeField, currentValue: unknown): bo
  *
  */
 export function isFieldRequired(field: ContentTypeField): boolean {
-	// The marker is the required constraint, or a positive minimum. See utils/repeatLimits.ts.
+	// The marker is the required constraint, or a positive minimum. See utils/countLimits.ts.
 	return Boolean(field.validations?.required?.value) || countLimitValue(field.validations?.minCount?.value) != null;
 }
 
@@ -399,7 +399,7 @@ export async function repeatGroupValidator(
 ): Promise<boolean> {
 	let isValid = true;
 	const items = Array.isArray(currentValue) ? currentValue : [];
-	// minCount/maxCount are the mapped limits. See utils/repeatLimits.ts.
+	// minCount/maxCount are the mapped limits. See utils/countLimits.ts.
 	if (!pushItemCountViolations(messages, items.length, field)) isValid = false;
 
 	// If there are no items, return validation result (items validation is not needed if there are no items)
@@ -551,7 +551,7 @@ export async function nodeSelectorValidator(
 	const items = Array.isArray(currentValue) ? currentValue : [];
 	// This set is used to keep track of visited content items during validation to prevent infinite loops in case of circular references.
 	const visited = new Set<string>();
-	// minCount/maxCount are the mapped limits. 0 is unlimited. See utils/repeatLimits.ts.
+	// minCount/maxCount are the mapped limits. 0 is unlimited. See utils/countLimits.ts.
 	if (!pushItemCountViolations(messages, items.length, field)) isValid = false;
 	const embeddedContent = items.filter((item) => nnou(item.component));
 
@@ -603,7 +603,7 @@ export function checkboxGroupValidator(
 	currentValue: CheckboxGroupProps['value'],
 	messages: FieldValidityMessage[]
 ) {
-	// minCount is the mapped limit. 0 and blank are no minimum. There is no maximum. See utils/repeatLimits.ts.
+	// minCount is the mapped limit. 0 and blank are no minimum. There is no maximum. See utils/countLimits.ts.
 	const selectedCount = Array.isArray(currentValue) ? currentValue.length : 0;
 	return pushItemCountViolations(messages, selectedCount, field);
 }

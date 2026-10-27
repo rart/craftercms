@@ -43,7 +43,7 @@ import {
 	getRepeatMinimum,
 	isRepeatAddDisabled,
 	isRepeatRemoveDisabled
-} from '../../../utils/repeatLimits';
+} from '../../../utils/countLimits';
 const repeatMessages = defineMessages({
 	addItems: { defaultMessage: 'Add items' },
 	maxReached: { defaultMessage: 'Maximum of {max, plural, one {# item} other {# items}} reached' },
@@ -76,7 +76,7 @@ function getRepeatItemSummary(item: RepeatItem): string {
 		.join(' | ');
 }
 
-/** Repeating group. Add stops at maxCount; delete stops at minCount. See utils/repeatLimits.ts. */
+/** Repeating group. Add stops at maxCount; delete stops at minCount. See utils/countLimits.ts. */
 export function Repeat(props: RepeatProps) {
 	const { field, value, setValue, readonly, autoFocus } = props;
 	const { formatMessage } = useIntl();
@@ -87,7 +87,7 @@ export function Repeat(props: RepeatProps) {
 	const api = useStableGlobalApiContext();
 	const count = value.length;
 	const hasContent = count;
-	// minCount/maxCount are the mapped limits. 0 is unlimited. See utils/repeatLimits.ts.
+	// minCount/maxCount are the mapped limits. 0 is unlimited. See utils/countLimits.ts.
 	const maxCount = countLimitValue(field.validations?.maxCount?.value);
 	const minCount = countLimitValue(field.validations?.minCount?.value);
 	const minimum = getRepeatMinimum(minCount);

@@ -15,7 +15,7 @@
  */
 
 import { ControlProps } from '../types';
-import { countLimitValue } from '../../../utils/repeatLimits';
+import { countLimitValue } from '../../../utils/countLimits';
 import Alert from '@mui/material/Alert';
 import { FormattedMessage } from 'react-intl';
 import React, { ElementType, memo, Suspense, useCallback, useContext, useMemo } from 'react';
@@ -131,7 +131,7 @@ function ResolvedControlRenderer({
 			processPathMacros({ path, objectId: itemMeta?.id, fullParentPath: item?.path ?? itemMeta?.pathInSite }),
 		[item, itemMeta]
 	);
-	// A max of 0 is unlimited for every control. See utils/repeatLimits.ts.
+	// A max of 0 is unlimited for every control. See utils/countLimits.ts.
 	const maxCount = countLimitValue(field.validations?.maxCount?.value);
 	const remainingCapacity =
 		typeof maxCount === 'number' && Array.isArray(value) ? Math.max(0, maxCount - value.length) : undefined;

@@ -18,7 +18,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import '../../test/registerTsLoader.mjs';
 import type { ContentTypeField } from '../models/ContentType';
-import { getRepeatMinimum } from '../utils/repeatLimits.ts';
+import { getRepeatMinimum } from '../utils/countLimits.ts';
 
 const { parseLegacyFormDefinition } = await import('./contentTypes.ts');
 

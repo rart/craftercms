@@ -28,7 +28,7 @@ import type {
 import { LookupTable } from '@craftercms/studio-ui/models/LookupTable';
 import { ICEProps, ICERecord, ICERecordRegistration, ReferentialEntries } from './models/InContextEditing';
 import { notNullOrUndefined, nou, nullOrUndefined, pluckProps } from '@craftercms/studio-ui/utils/object';
-import { countLimitValue, getRepeatMinimum } from '@craftercms/studio-ui/utils/repeatLimits';
+import { countLimitValue, getRepeatMinimum } from '@craftercms/studio-ui/utils/countLimits';
 import { forEach } from '@craftercms/studio-ui/utils/array';
 import { determineRecordType, findComponentContainerFields, resolvePlacementForZone } from './utils/ice';
 import { isSimple, removeLastPiece } from '@craftercms/studio-ui/utils/string';
@@ -37,7 +37,7 @@ import { Observer, Subject, Subscription } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 import { AllowedContentTypesData } from '@craftercms/studio-ui/models/AllowedContentTypesData';
 
-/** Functions return nullish if everything is fine. Limits come from countLimitValue. See utils/repeatLimits.ts. */
+/** Functions return nullish if everything is fine. Limits come from countLimitValue. See utils/countLimits.ts. */
 const validationChecks: Partial<Record<ValidationKeys, Function>> = {
 	minCount(id, minCount, level, length) {
 		const min = countLimitValue(minCount);
@@ -428,7 +428,7 @@ export function runDropTargetsValidations(dropTargets: ICERecord[]): LookupTable
 			const validation = validations[key];
 			switch (validation.id) {
 				case 'minCount': {
-					// 0 is unlimited. See utils/repeatLimits.ts.
+					// 0 is unlimited. See utils/countLimits.ts.
 					const minCount = countLimitValue(validation.value);
 					if (minCount != null && collection.length < minCount) {
 						validationResult[validation.id] = {
@@ -440,7 +440,7 @@ export function runDropTargetsValidations(dropTargets: ICERecord[]): LookupTable
 					break;
 				}
 				case 'maxCount': {
-					// 0 is unlimited. See utils/repeatLimits.ts.
+					// 0 is unlimited. See utils/countLimits.ts.
 					const maxCount = countLimitValue(validation.value);
 					if (maxCount != null && collection.length >= maxCount) {
 						validationResult[validation.id] = {
@@ -640,7 +640,7 @@ export function checkComponentMovability(entries: ReferentialEntries): boolean {
 		return false;
 	}
 
-	// minCount value. A missing minimum, including 0, is 0. See utils/repeatLimits.ts.
+	// minCount value. A missing minimum, including 0, is 0. See utils/countLimits.ts.
 	const minCount = getRepeatMinimum(parentField.validations?.minCount?.value);
 
 	if (parentField.type === 'node-selector') {
