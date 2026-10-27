@@ -29,7 +29,7 @@ export function parseRepeatOccursLimit(topLevel: unknown, propertyValue?: unknow
 	return readOccursNumber(hasTopLevel ? top : propertyValue);
 }
 
-/** Numeric validation values. `*`, blank, and non-numeric values mean "no limit". */
+/** Numeric validation values. Only a non-negative integer is a limit. */
 export function readNumericLimit(value: unknown): number | undefined {
 	const parsed = readOccursNumber(value);
 	return parsed == null ? undefined : parsed;
@@ -82,11 +82,12 @@ export function getRepeatOccurrenceViolations(
 	return violations;
 }
 
-/** Parses a repeat limit. `*`, blank, and non-numeric values are unlimited (`null`). */
+/** A repeat limit is a non-negative integer. Anything else, including `*` and blank, is unlimited (`null`). */
 function readOccursNumber(value: unknown): number | null {
-	if (value == null) return null;
-	const text = typeof value === 'string' ? value.trim() : value;
-	if (text === '' || text === '*') return null;
-	const parsed = typeof text === 'number' ? text : Number.parseInt(String(text), 10);
-	return Number.isNaN(parsed) ? null : parsed;
+	if (typeof value === 'number') {
+		return Number.isInteger(value) && value >= 0 ? value : null;
+	}
+	if (typeof value !== 'string') return null;
+	const text = value.trim();
+	return /^\d+$/.test(text) ? Number.parseInt(text, 10) : null;
 }

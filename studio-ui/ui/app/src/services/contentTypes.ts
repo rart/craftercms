@@ -356,9 +356,11 @@ function parseLegacyFormDefinitionFields(
 				// Runtime validations store the numeric limits as minCount/maxCount. `*` means unlimited.
 				const min = parseRepeatOccursLimit(legacyField?.minOccurs, field.properties?.minOccurs?.value) ?? 0;
 				const max = parseRepeatOccursLimit(legacyField?.maxOccurs, field.properties?.maxOccurs?.value);
+				// A minimum above zero implies required. Keep a required constraint when minOccurs is absent,
+				// so the effective minimum stays one item instead of being cleared.
 				field.validations.required = {
 					id: 'required',
-					value: min > 0,
+					value: min > 0 || field.validations.required?.value === true,
 					level: 'required'
 				};
 				if (min > 0) {

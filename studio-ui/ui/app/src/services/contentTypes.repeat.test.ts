@@ -18,6 +18,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import '../../test/registerTsLoader.mjs';
 import type { ContentTypeField } from '../models/ContentType';
+import { getRepeatMinimum } from '../utils/repeatLimits.ts';
 
 const { parseLegacyFormDefinition } = await import('./contentTypes.ts');
 
@@ -99,5 +100,16 @@ describe('repeat minOccurs/maxOccurs mapping', () => {
 		assert.equal(blankProperties.required?.value, false);
 		assert.equal(blankProperties.minCount, undefined);
 		assert.equal(blankProperties.maxCount, undefined);
+	});
+
+	it('keeps a required constraint when minOccurs is absent, so the minimum is 1', () => {
+		const validations = repeatLimits({
+			constraints: {
+				constraint: { name: 'required', value: 'true', type: 'boolean' }
+			}
+		});
+		assert.equal(validations.required?.value, true);
+		assert.equal(validations.minCount, undefined);
+		assert.equal(getRepeatMinimum(validations.minCount?.value, validations.required?.value === true), 1);
 	});
 });

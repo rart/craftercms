@@ -44,6 +44,16 @@ describe('parseRepeatOccursLimit', () => {
 		assert.equal(parseRepeatOccursLimit('', 4), 4);
 		assert.equal(parseRepeatOccursLimit(undefined, 5), 5);
 	});
+
+	it('rejects fractions, trailing junk, and negatives', () => {
+		assert.equal(parseRepeatOccursLimit('0.5'), null);
+		assert.equal(parseRepeatOccursLimit('3abc'), null);
+		assert.equal(parseRepeatOccursLimit('-1'), null);
+		assert.equal(parseRepeatOccursLimit(0.5), null);
+		assert.equal(parseRepeatOccursLimit(-1), null);
+		assert.equal(isRepeatAddDisabled(false, 0, '-1'), false);
+		assert.equal(isRepeatAddDisabled(false, 0, -1), false);
+	});
 });
 
 describe('isRepeatAddDisabled', () => {
