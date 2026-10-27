@@ -17,7 +17,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
-	checkboxGroupConstraintValue,
 	countLimitValue,
 	countLimitsFromStorage,
 	itemCountEditorValue,
@@ -132,13 +131,6 @@ describe('countLimitsFromStorage', () => {
 		assert.deepEqual(repeatOccursXmlValues(1, '*'), { minOccurs: '1', maxOccurs: '*' });
 		assert.deepEqual(repeatOccursXmlValues('2', 4), { minOccurs: '2', maxOccurs: '4' });
 		assert.deepEqual(repeatOccursXmlValues(0, 0), { minOccurs: '0', maxOccurs: '*' });
-	});
-
-	it('keeps a stored checkbox minimum of 0 for the constraint', () => {
-		assert.equal(checkboxGroupConstraintValue('0'), 0);
-		assert.equal(checkboxGroupConstraintValue('2'), 2);
-		assert.equal(checkboxGroupConstraintValue(''), undefined);
-		assert.equal(checkboxGroupConstraintValue('3abc'), undefined);
 	});
 });
 

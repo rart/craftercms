@@ -25,8 +25,10 @@
  * on save, are min `0` and max `*`.
  *
  * Node selectors store `minSize` / `maxSize` properties. Checkbox groups store a `minSize`
- * constraint and have no maximum. Type Builder 2 writes that constraint back and does not
- * write `minCount`.
+ * constraint and have no maximum. Type Builder reads and edits that minimum as `minCount`
+ * (blank when unset) and writes the constraint back only for a positive integer. A stored
+ * 0 is no minimum: it loads blank and is saved without the constraint, the same as omitting
+ * it. `minCount` is not written.
  *
  * A minimum of 0 or blank is no minimum. A maximum of 0, `*` or blank is no maximum.
  * Only positive integers are limits. Fractions, trailing junk and negatives count as blank.
@@ -98,15 +100,6 @@ export function countLimitsFromStorage(storage: ItemCountStorage, context?: Item
 		if (max.unusable) warnUnusableCountLimit('max', context);
 	}
 	return countLimits(min.limit, max.limit);
-}
-
-/**
- * The `minSize` constraint Type Builder 2 shows and writes back, including 0.
- * Stored on `validations.minSize`. Blank and invalid values are absent. 0 is kept so a stored zero still round-trips.
- */
-export function checkboxGroupConstraintValue(minSize: unknown): number | undefined {
-	const parsed = readOccursNumber(minSize);
-	return parsed == null ? undefined : parsed;
 }
 
 /** The other bound of a Type Builder min/max pair, when this field is one of them. */

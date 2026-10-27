@@ -160,7 +160,7 @@ describe('checkbox group minSize round trip', () => {
 		const parsed = checkboxField('2');
 		const loaded = parsed.fields.topics_o;
 		assert.equal(loaded.validations.minCount?.value, 2);
-		assert.equal(loaded.validations.minSize?.value, 2);
+		assert.equal(Object.hasOwn(loaded.validations, 'minSize'), false);
 		assert.equal(createTypeFieldValuesObject(loaded).minSize, 2);
 
 		const saved = savedConstraint(parsed);
@@ -169,11 +169,6 @@ describe('checkbox group minSize round trip', () => {
 			saved.constraintList.some((item) => item.name === 'minCount' || item.name === 'maxCount'),
 			false
 		);
-
-		const zero = checkboxField('0');
-		assert.equal(zero.fields.topics_o.validations.minCount, undefined);
-		assert.equal(createTypeFieldValuesObject(zero.fields.topics_o).minSize, 0);
-		assert.equal(savedConstraint(zero).constraintList.find((item) => item.name === 'minSize')?.value, 0);
 	});
 
 	it('keeps an edited minSize constraint after the form is saved', () => {
@@ -198,18 +193,31 @@ describe('checkbox group minSize round trip', () => {
 		const edited = reverseTypeFieldValuesObject(parsed.fields.topics_o, editedValues, checkboxGroupDescriptor);
 		assert.equal(createTypeFieldValuesObject(edited).minSize, 5);
 		assert.equal(edited.validations.minCount?.value, 5);
-		assert.equal(edited.validations.minSize?.value, 5);
+		assert.equal(Object.hasOwn(edited.validations, 'minSize'), false);
 
 		const clearedValues = createTypeFieldValuesObject(edited);
 		clearedValues.minSize = '';
 		const cleared = reverseTypeFieldValuesObject(edited, clearedValues, checkboxGroupDescriptor);
-		assert.equal(createTypeFieldValuesObject(cleared).minSize, undefined);
+		assert.equal(createTypeFieldValuesObject(cleared).minSize, '');
 		assert.equal(cleared.validations.minCount, undefined);
-		assert.equal(cleared.validations.minSize, undefined);
+		assert.equal(Object.hasOwn(cleared.validations, 'minSize'), false);
 
 		const type = { ...parsed, fields: { ...parsed.fields, topics_o: cleared } };
 		assert.equal(
 			savedConstraint(type).constraintList.some((item) => item.name === 'minSize'),
+			false
+		);
+	});
+
+	it('loads a stored minimum of 0 as blank and saves without the constraint', () => {
+		const parsed = checkboxField('0');
+		const loaded = parsed.fields.topics_o;
+		assert.equal(loaded.validations.minCount, undefined);
+		assert.equal(createTypeFieldValuesObject(loaded).minSize, '');
+
+		const saved = savedConstraint(parsed);
+		assert.equal(
+			saved.constraintList.some((item) => item.name === 'minSize' || item.name === 'minCount'),
 			false
 		);
 	});

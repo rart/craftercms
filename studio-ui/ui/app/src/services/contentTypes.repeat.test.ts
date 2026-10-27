@@ -170,7 +170,7 @@ describe('repeat minOccurs/maxOccurs mapping', () => {
 });
 
 describe('checkbox group minSize constraint', () => {
-	it('maps the constraint to minCount and keeps 0 for the editor', () => {
+	it('maps a positive constraint to minCount and treats 0 as no minimum', () => {
 		const limited = parsedField({
 			id: 'topics_o',
 			title: 'Topics',
@@ -180,7 +180,7 @@ describe('checkbox group minSize constraint', () => {
 		});
 		assert.equal(limited.validations.minCount?.value, 2);
 		assert.equal(limited.validations.maxCount, undefined);
-		assert.equal(limited.validations.minSize?.value, 2);
+		assert.equal(Object.hasOwn(limited.validations, 'minSize'), false);
 
 		const zero = parsedField({
 			id: 'topics_o',
@@ -190,7 +190,7 @@ describe('checkbox group minSize constraint', () => {
 			constraints: { constraint: { name: 'minSize', value: '0', type: 'int' } }
 		});
 		assert.equal(zero.validations.minCount, undefined);
-		assert.equal(zero.validations.minSize?.value, 0);
+		assert.equal(Object.hasOwn(zero.validations, 'minSize'), false);
 
 		const blank = parsedField({
 			id: 'topics_o',
@@ -199,7 +199,7 @@ describe('checkbox group minSize constraint', () => {
 			type: 'checkbox-group'
 		});
 		assert.equal(blank.validations.minCount, undefined);
-		assert.equal(blank.validations.minSize, undefined);
+		assert.equal(Object.hasOwn(blank.validations, 'minSize'), false);
 	});
 });
 
