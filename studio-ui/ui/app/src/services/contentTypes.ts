@@ -410,7 +410,7 @@ function parseLegacyFormDefinitionFields(
 				);
 				break;
 			}
-			case 'node-selector':
+			case 'node-selector': {
 				field.validations = {
 					...field.validations,
 					...getFieldValidations(propertyProp, dropTargetsLookup)
@@ -428,6 +428,7 @@ function parseLegacyFormDefinitionFields(
 				writeCountEditorProperty(field, nodeSelectorLimitNames.min, limits.minCount, 'min');
 				writeCountEditorProperty(field, nodeSelectorLimitNames.max, limits.maxCount, 'max');
 				break;
+			}
 			case 'checkbox-group': {
 				// Count limits: utils/repeatLimits.ts. minCount is the editor value and the runtime limit.
 				// A stored 0 is no minimum, so it is left unset and loads blank.
