@@ -14,32 +14,66 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+/**
+ * Covers the form visibility model the engine uses at launch and on save.
+ * Launch tests check which fields and repeat items a selected-field open keeps,
+ * including warnings when the request cannot be applied. Save tests check the
+ * single decision that either reveals a hidden error, refuses the write, or
+ * continues. They do not render the form.
+ */
+
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
 	baseFieldId,
+	childFields,
+	decideSaveReveal,
 	fieldVisibility,
-	applySaveClick,
-	claimSaveClick,
 	clearRepeatItemScope,
 	firstOutOfScopeInvalidField,
+	hasChildFields,
 	hiddenInvalidReveal,
 	isScopeActive,
+	itemGroupFieldIds,
+	launchScopeWarnings,
 	normalizeRepeatIndex,
 	openFullForm,
+	repeatIndexIgnoredWarning,
 	repeatIndexOutOfRangeWarning,
 	resolveLaunchVisibility,
 	returnToLaunchScope,
+	revealField,
 	scopeFieldCounts,
-	completedSaveRead,
 	unsupportedRepeatIndexWarning,
+	visibilityFromLaunch,
 	visibleRepeatItems
 } from './formVisibility.ts';
 
 const known = new Set(['title_s', 'body_html', 'articles_o', 'sidebar_s']);
 const repeats = new Set(['articles_o']);
+const typeFields = {
+	title_s: { id: 'title_s' },
+	body_html: { id: 'body_html' },
+	sidebar_s: { id: 'sidebar_s' },
+	articles_o: { id: 'articles_o', fields: { headline_s: { id: 'headline_s' } } }
+};
+
+function warningsFrom(run: () => void): string[] {
+	const warnings: string[] = [];
+	const original = console.warn;
+	console.warn = (message?: unknown) => {
+		warnings.push(String(message));
+	};
+	try {
+		run();
+	} finally {
+		console.warn = original;
+	}
+	return warnings;
+}
 
 describe('resolveLaunchVisibility', () => {
+	// A zone that names two fields should open on those fields and remember that as the launch scope.
 	it('shows only the selected base fields', () => {
 		const resolved = resolveLaunchVisibility({
 			selectedFields: ['title_s', 'sidebar_s'],
@@ -51,6 +85,7 @@ describe('resolveLaunchVisibility', () => {
 		assert.deepEqual(resolved.state.launch, resolved.state.active);
 	});
 
+	// Experience Builder posts `articles_o.headline_s` plus an index. The form shows that group and one item.
 	it('selects the base field for a dotted id and scopes that repeat item', () => {
 		const resolved = resolveLaunchVisibility({
 			selectedFields: ['articles_o.headline_s'],
@@ -62,6 +97,7 @@ describe('resolveLaunchVisibility', () => {
 		assert.deepEqual(resolved.state.active.repeatItem, { fieldId: 'articles_o', index: 1 });
 	});
 
+	// A mixed list should keep the fields that exist and report the ones that do not, so the form is not empty.
 	it('keeps the fields that matched and reports the rest', () => {
 		const resolved = resolveLaunchVisibility({
 			selectedFields: ['title_s', 'gone_s'],
@@ -73,7 +109,8 @@ describe('resolveLaunchVisibility', () => {
 		assert.ok(resolved.state.launch);
 	});
 
-	it('ignores an index that does not belong to a selected repeat field', () => {
+	// An index only means something on a selected field that has children. A plain field ignores it and says so.
+	it('ignores an index that does not belong to a selected field with children', () => {
 		const resolved = resolveLaunchVisibility({
 			selectedFields: ['title_s'],
 			index: 1,
@@ -81,20 +118,25 @@ describe('resolveLaunchVisibility', () => {
 			repeatFieldIds: repeats
 		});
 		assert.equal(resolved.state.active.repeatItem, null);
+		assert.equal(resolved.ignoredRepeatIndex, '1');
 		assert.equal(resolved.unsupportedRepeatIndex, undefined);
+		assert.match(repeatIndexIgnoredWarning(1), /child fields/);
 	});
 
-	it('does not apply an empty scope when nothing matches', () => {
+	// Unknown ids must not produce an empty form. The full form opens, and the first requested id is still a scroll target.
+	it('opens the full form and names the first requested field when nothing matches', () => {
 		const resolved = resolveLaunchVisibility({
-			selectedFields: ['gone_s'],
+			selectedFields: ['gone_s.nested', 'also_gone_s'],
 			knownFieldIds: known,
 			repeatFieldIds: repeats
 		});
 		assert.equal(resolved.state.active.fieldIds, null);
 		assert.equal(resolved.state.launch, null);
-		assert.deepEqual(resolved.unmatchedFieldIds, ['gone_s']);
+		assert.deepEqual(resolved.unmatchedFieldIds, ['gone_s', 'also_gone_s']);
+		assert.equal(resolved.scrollFieldId, 'gone_s');
 	});
 
+	// Nested indexes are not a supported address. The form stays unscoped to an item and the warning names the index.
 	it('does not apply a nested repeat index', () => {
 		const resolved = resolveLaunchVisibility({
 			selectedFields: ['articles_o'],
@@ -109,6 +151,7 @@ describe('resolveLaunchVisibility', () => {
 		assert.equal(normalizeRepeatIndex(0), 0);
 	});
 
+	// Opening the full form must keep the launch snapshot so "Back to selected fields" can restore it.
 	it('opens and restores the full form without dropping the launch scope', () => {
 		const resolved = resolveLaunchVisibility({
 			selectedFields: ['title_s'],
@@ -122,9 +165,21 @@ describe('resolveLaunchVisibility', () => {
 	});
 });
 
+describe('field shape used for item scope', () => {
+	// Item scope is for a field that holds children, not for a hard-coded repeat type name.
+	it('treats a field with children as an item group', () => {
+		assert.equal(hasChildFields(typeFields.articles_o), true);
+		assert.equal(hasChildFields(typeFields.title_s), false);
+		assert.equal(hasChildFields(undefined), false);
+		assert.deepEqual(childFields(typeFields.articles_o), [{ id: 'headline_s' }]);
+		assert.deepEqual([...itemGroupFieldIds(typeFields)], ['articles_o']);
+	});
+});
+
 describe('fieldVisibility', () => {
 	const denied = new Set(['sidebar_s', 'articles_o.headline_s']);
 
+	// A controller deny-list wins over the launch scope: the field is not validated even if it was requested.
 	it('hides a denied field even when the launch scope includes it', () => {
 		assert.equal(
 			fieldVisibility({ fieldId: 'sidebar_s', irrelevantFieldPaths: denied, scopeFieldIds: ['sidebar_s', 'title_s'] }),
@@ -132,11 +187,13 @@ describe('fieldVisibility', () => {
 		);
 	});
 
+	// A field outside the launch scope stays `outOfScope` so save still validates it.
 	it('keeps an out-of-scope field distinct so it is still validated', () => {
 		assert.equal(fieldVisibility({ fieldId: 'body_html', scopeFieldIds: ['title_s'] }), 'outOfScope');
 		assert.equal(fieldVisibility({ fieldId: 'title_s', scopeFieldIds: ['title_s'] }), 'visible');
 	});
 
+	// Repeat subfields are denied by a qualified path, so the same id in another group is not hidden.
 	it('qualifies a repeat subfield against the deny-list', () => {
 		assert.equal(
 			fieldVisibility({
@@ -149,6 +206,7 @@ describe('fieldVisibility', () => {
 		);
 	});
 
+	// The scope notice counts relevant fields, then how many of those the launch left on screen.
 	it('counts the fields a scope leaves on screen', () => {
 		assert.deepEqual(
 			scopeFieldCounts(['title_s', 'body_html', 'sidebar_s'], {
@@ -159,6 +217,7 @@ describe('fieldVisibility', () => {
 		);
 	});
 
+	// Save reveals the first hidden invalid field in section order, and skips a field the controller denied.
 	it('names the first out-of-scope invalid field in section order', () => {
 		assert.equal(
 			firstOutOfScopeInvalidField(['sidebar_s', 'body_html'], ['title_s', 'body_html', 'sidebar_s'], {
@@ -177,6 +236,7 @@ describe('fieldVisibility', () => {
 });
 
 describe('baseFieldId', () => {
+	// Dotted zone ids address the group, not the nested control.
 	it('strips from the first dot', () => {
 		assert.equal(baseFieldId('articles_o.headline_s'), 'articles_o');
 		assert.equal(baseFieldId('title_s'), 'title_s');
@@ -186,6 +246,7 @@ describe('baseFieldId', () => {
 describe('visibleRepeatItems', () => {
 	const items = ['one', 'two', 'three'];
 
+	// A scope for a different field must not hide this control's rows.
 	it('shows every item when the field is not the scoped one', () => {
 		const selection = visibleRepeatItems(items, { fieldId: 'other_o', index: 1 }, 'articles_o');
 		assert.equal(selection.scoped, false);
@@ -195,12 +256,14 @@ describe('visibleRepeatItems', () => {
 		);
 	});
 
+	// The zone menu's item index shows that row and keeps its original position for edit and delete.
 	it('shows only the addressed item', () => {
 		const selection = visibleRepeatItems(items, { fieldId: 'articles_o', index: 0 }, 'articles_o');
 		assert.equal(selection.scoped, true);
 		assert.deepEqual(selection.items, [{ item: 'one', index: 0 }]);
 	});
 
+	// An index past the list is not an empty repeat. Every row stays, and the caller can warn.
 	it('falls back to every item when the index is past the end', () => {
 		const selection = visibleRepeatItems(items, { fieldId: 'articles_o', index: 5 }, 'articles_o');
 		assert.equal(selection.scoped, false);
@@ -218,6 +281,7 @@ describe('hiddenInvalidReveal', () => {
 		repeatFieldIds: repeats
 	}).state;
 
+	// A completed save of an error the author cannot see opens the whole form on that field.
 	it('opens the full form for an invalid field outside the scope', () => {
 		const reveal = hiddenInvalidReveal({
 			visibility,
@@ -229,6 +293,7 @@ describe('hiddenInvalidReveal', () => {
 		assert.ok(reveal.state.launch);
 	});
 
+	// An invalid repeat that is limited to one item drops that limit. It does not open every other field.
 	it('clears the item scope when the visible repeat field is invalid', () => {
 		const reveal = hiddenInvalidReveal({
 			visibility,
@@ -242,6 +307,7 @@ describe('hiddenInvalidReveal', () => {
 		assert.equal(clearRepeatItemScope(visibility).active.repeatItem, null);
 	});
 
+	// A valid form has nothing to reveal.
 	it('leaves a valid item-scoped repeat alone', () => {
 		assert.equal(
 			hiddenInvalidReveal({
@@ -254,110 +320,113 @@ describe('hiddenInvalidReveal', () => {
 	});
 });
 
-describe('Save versus Save as draft when a scoped field is invalid off screen', () => {
+describe('revealField', () => {
 	const visibility = resolveLaunchVisibility({
 		selectedFields: ['title_s'],
 		knownFieldIds: known,
 		repeatFieldIds: repeats
 	}).state;
-	const hiddenError = {
-		visibility,
-		invalidFieldIds: ['body_html'],
-		sectionOrder: ['title_s', 'body_html']
-	};
 
-	it('a completed save opens the scope and does not write or show cannot-proceed', () => {
-		const reveal = hiddenInvalidReveal(hiddenError);
-		assert.ok(reveal);
+	// View in form, the scope notice, and a hidden-invalid save share this: open the form and name the field.
+	it('opens the full form and names the field to scroll to', () => {
+		const reveal = revealField(visibility, 'body_html');
 		assert.equal(isScopeActive(reveal.state.active), false);
+		assert.deepEqual(reveal.state.launch?.fieldIds, ['title_s']);
 		assert.equal(reveal.fieldId, 'body_html');
-		assert.equal(completedSaveRead({ hasHiddenInvalid: true, isFormInvalid: true }), 'revealed');
-	});
-
-	it('a completed save whose errors are already visible shows cannot-proceed', () => {
-		assert.equal(hiddenInvalidReveal({ ...hiddenError, invalidFieldIds: ['title_s'] }), undefined);
-		assert.equal(completedSaveRead({ hasHiddenInvalid: false, isFormInvalid: true }), 'invalid');
-	});
-
-	it('a fresh valid read writes, so a stale invalid flag does not block Save', () => {
-		assert.equal(hiddenInvalidReveal({ ...hiddenError, invalidFieldIds: [] }), undefined);
-		assert.equal(completedSaveRead({ hasHiddenInvalid: false, isFormInvalid: false }), 'valid');
 	});
 });
 
-describe('Save clicks while a validity read is in flight', () => {
-	it('ignores Save and Save as draft until the read settles, then clears the flag', async () => {
-		const inFlight = { current: false };
-		let draft = true;
-		let reads = 0;
-		let release!: (value: 'valid') => void;
-		assert.equal(
-			claimSaveClick(inFlight.current, 'save', (value) => {
-				draft = value;
-			}),
-			true
-		);
-		assert.equal(draft, false);
-		const first = applySaveClick({
-			inFlight,
-			type: 'save',
-			read: () => {
-				reads += 1;
-				return new Promise((resolve) => {
-					release = resolve;
-				});
-			}
+describe('launch scope installed from the open props', () => {
+	// Atom creation is where the launch is applied. The warning is logged once, here, not from a layout effect.
+	it('warns when an index is given for a field that has no children', () => {
+		let installed: ReturnType<typeof visibilityFromLaunch> | undefined;
+		const warnings = warningsFrom(() => {
+			installed = visibilityFromLaunch({
+				selectedFields: ['title_s'],
+				index: 2,
+				fields: typeFields
+			});
 		});
-		assert.equal(inFlight.current, true);
-		assert.equal(
-			claimSaveClick(inFlight.current, 'saveDraft', (value) => {
-				draft = value;
-			}),
-			false
+		assert.equal(installed?.state.active.repeatItem, null);
+		assert.deepEqual(installed?.state.active.fieldIds, ['title_s']);
+		assert.equal(warnings.length, 1);
+		assert.match(warnings[0], /ignored/);
+		assert.deepEqual(
+			launchScopeWarnings(
+				resolveLaunchVisibility({
+					selectedFields: ['title_s'],
+					index: 2,
+					knownFieldIds: known,
+					repeatFieldIds: repeats
+				})
+			),
+			warnings
 		);
-		assert.equal(draft, false);
-		const duringSave = await applySaveClick({
-			inFlight,
-			type: 'save',
-			read: async () => {
-				reads += 1;
-				return 'valid';
-			}
-		});
-		const duringDraft = await applySaveClick({
-			inFlight,
-			type: 'saveDraft',
-			read: async () => {
-				reads += 1;
-				return 'invalid';
-			}
-		});
-		assert.deepEqual(duringSave, { effect: 'ignore' });
-		assert.deepEqual(duringDraft, { effect: 'ignore' });
-		assert.equal(reads, 1);
-		release('valid');
-		assert.deepEqual(await first, { effect: 'write' });
-		assert.equal(inFlight.current, false);
-		assert.equal(
-			claimSaveClick(inFlight.current, 'saveDraft', (value) => {
-				draft = value;
-			}),
-			true
-		);
-		assert.equal(draft, true);
 	});
 
-	it('a rejected validity read reports the error and does not write', async () => {
-		const inFlight = { current: false };
-		const error = new Error('validity read failed');
-		const result = await applySaveClick({
-			inFlight,
-			type: 'save',
-			read: async () => {
-				throw error;
-			}
+	// A selection that matches nothing still asks the scroller for the first requested field, if that field is in the form.
+	it('scrolls to the first requested field when the selection matches nothing', () => {
+		let installed: ReturnType<typeof visibilityFromLaunch> | undefined;
+		const warnings = warningsFrom(() => {
+			installed = visibilityFromLaunch({
+				selectedFields: ['gone_s'],
+				fields: typeFields
+			});
 		});
-		assert.deepEqual(result, { effect: 'error', error });
-		assert.equal(inFlight.current, false);
+		assert.equal(installed?.state.launch, null);
+		assert.equal(installed?.scrollFieldId, 'gone_s');
+		assert.match(warnings[0], /Opening the full form/);
+	});
+});
+
+describe('save reveal decision', () => {
+	const visibility = resolveLaunchVisibility({
+		selectedFields: ['title_s'],
+		knownFieldIds: known,
+		repeatFieldIds: repeats
+	}).state;
+	const base = {
+		visibility,
+		sectionOrder: ['title_s', 'body_html'],
+		isRepeatMode: false
+	};
+
+	// The error is off screen, so Save opens it and does not write or show Cannot Proceed.
+	it('reveals a hidden invalid field on a completed save', () => {
+		const decision = decideSaveReveal({ ...base, draft: false, invalidFieldIds: ['body_html'] });
+		assert.equal(decision.status, 'revealed');
+		assert.equal(decision.reveal?.fieldId, 'body_html');
+		assert.equal(isScopeActive(decision.reveal.state.active), false);
+	});
+
+	// Errors the author can already see are the Cannot Proceed dialog. Nothing is written.
+	it('refuses a completed save whose errors are already visible', () => {
+		const decision = decideSaveReveal({ ...base, draft: false, invalidFieldIds: ['title_s'] });
+		assert.equal(decision.status, 'invalid');
+		assert.equal(decision.reveal, undefined);
+	});
+
+	// A valid read writes. A stale invalid flag is not an input to this decision.
+	it('writes when the fresh read is valid', () => {
+		assert.equal(decideSaveReveal({ ...base, draft: false, invalidFieldIds: [] }).status, 'write');
+	});
+
+	// Save as draft writes the hidden errors and does not change the scope.
+	it('writes a draft without revealing hidden errors', () => {
+		const decision = decideSaveReveal({ ...base, draft: true, invalidFieldIds: ['body_html'] });
+		assert.equal(decision.status, 'write');
+		assert.equal(decision.reveal, undefined);
+	});
+
+	// A repeat-item editor has no launch scope to open. A completed save with errors is Cannot Proceed.
+	it('does not reveal inside a repeat-item editor', () => {
+		const decision = decideSaveReveal({
+			...base,
+			draft: false,
+			isRepeatMode: true,
+			invalidFieldIds: ['body_html']
+		});
+		assert.equal(decision.status, 'invalid');
+		assert.equal(decision.reveal, undefined);
 	});
 });
