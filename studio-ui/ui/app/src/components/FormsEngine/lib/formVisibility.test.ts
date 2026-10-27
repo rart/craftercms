@@ -19,6 +19,7 @@ import { describe, it } from 'node:test';
 import {
 	baseFieldId,
 	fieldVisibility,
+	applySaveClick,
 	clearRepeatItemScope,
 	firstOutOfScopeInvalidField,
 	hiddenInvalidReveal,
@@ -280,5 +281,60 @@ describe('Save versus Save as draft when a scoped field is invalid off screen', 
 	it('a fresh valid read writes, so a stale invalid flag does not block Save', () => {
 		assert.equal(hiddenInvalidReveal({ ...hiddenError, invalidFieldIds: [] }), undefined);
 		assert.equal(completedSaveRead({ hasHiddenInvalid: false, isFormInvalid: false }), 'valid');
+	});
+});
+
+describe('Save clicks while a validity read is in flight', () => {
+	it('ignores Save and Save as draft until the read settles, then clears the flag', async () => {
+		const inFlight = { current: false };
+		let reads = 0;
+		let release!: (value: 'valid') => void;
+		const first = applySaveClick({
+			inFlight,
+			type: 'save',
+			read: () => {
+				reads += 1;
+				return new Promise((resolve) => {
+					release = resolve;
+				});
+			}
+		});
+		assert.equal(inFlight.current, true);
+		const duringSave = await applySaveClick({
+			inFlight,
+			type: 'save',
+			read: async () => {
+				reads += 1;
+				return 'valid';
+			}
+		});
+		const duringDraft = await applySaveClick({
+			inFlight,
+			type: 'saveDraft',
+			read: async () => {
+				reads += 1;
+				return 'invalid';
+			}
+		});
+		assert.deepEqual(duringSave, { effect: 'ignore' });
+		assert.deepEqual(duringDraft, { effect: 'ignore' });
+		assert.equal(reads, 1);
+		release('valid');
+		assert.deepEqual(await first, { effect: 'write' });
+		assert.equal(inFlight.current, false);
+	});
+
+	it('a rejected validity read reports the error and does not write', async () => {
+		const inFlight = { current: false };
+		const error = new Error('validity read failed');
+		const result = await applySaveClick({
+			inFlight,
+			type: 'save',
+			read: async () => {
+				throw error;
+			}
+		});
+		assert.deepEqual(result, { effect: 'error', error });
+		assert.equal(inFlight.current, false);
 	});
 });

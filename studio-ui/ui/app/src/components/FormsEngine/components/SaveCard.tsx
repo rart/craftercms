@@ -16,7 +16,7 @@
 
 import { useAtom, useAtomValue } from 'jotai';
 import { FormattedMessage, useIntl } from 'react-intl';
-import React, { MouseEvent, useContext } from 'react';
+import React, { MouseEvent, useContext, useRef } from 'react';
 import { StableFormContext } from '../lib/formsEngineContext';
 import Paper from '@mui/material/Paper';
 import TextField from '@mui/material/TextField';
@@ -27,10 +27,11 @@ import Grow from '@mui/material/Grow';
 import Alert from '@mui/material/Alert';
 import { SplitButton } from '../../SplitButton';
 import { useDispatch } from 'react-redux';
-import { pushConfirmDialog } from '../../../utils/system';
+import { pushConfirmDialog, pushErrorDialog } from '../../../utils/system';
 import { popDialog } from '../../../state/actions/dialogStack';
 import { nanoid } from 'nanoid';
-import type { CompletedSaveRead } from '../lib/formVisibility';
+import { applySaveClick, type CompletedSaveRead } from '../lib/formVisibility';
+import type { ApiResponse } from '../../../models/ApiResponse';
 
 export interface SaveCardProps {
 	isRepeatMode: boolean;
@@ -56,6 +57,7 @@ export function SaveCard(props: SaveCardProps) {
 	const disableSave = !isEmbedded && !isRepeatMode && (isSubmitting || !versionComment);
 	const { formatMessage } = useIntl();
 	const dispatch = useDispatch();
+	const revealInFlight = useRef(false);
 
 	const handleSetCloseAfterSave = (checked: boolean) => {
 		if (checked) {
@@ -87,14 +89,12 @@ export function SaveCard(props: SaveCardProps) {
 		);
 	};
 	const handleSave = async (e: MouseEvent, type: 'save' | 'saveDraft', draft?: boolean) => {
-		// Drafts are allowed to be invalid, including fields the launch scope is hiding.
-		if (type === 'saveDraft') {
-			onSave(e, draft);
-			return;
+		const result = await applySaveClick({ inFlight: revealInFlight, type, read: onRevealHiddenInvalid });
+		if (result.effect === 'draft' || result.effect === 'write') onSave(e, draft);
+		else if (result.effect === 'cannotProceed') showCannotProceed();
+		else if (result.effect === 'error') {
+			dispatch(pushErrorDialog({ props: { error: saveReadError(result.error) } }));
 		}
-		const outcome = await onRevealHiddenInvalid();
-		if (outcome === 'invalid') showCannotProceed();
-		else if (outcome === 'valid') onSave(e, draft);
 	};
 
 	return (
@@ -176,6 +176,12 @@ export function SaveCard(props: SaveCardProps) {
 			</Grow>
 		</Paper>
 	);
+}
+
+function saveReadError(error: unknown): ApiResponse {
+	if (error instanceof Error) return { message: error.message };
+	if (error && typeof error === 'object') return error as ApiResponse;
+	return { message: 'The form could not be checked before saving.' };
 }
 
 export default SaveCard;

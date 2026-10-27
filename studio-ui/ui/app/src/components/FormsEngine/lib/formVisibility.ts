@@ -271,3 +271,33 @@ export function completedSaveRead(args: { hasHiddenInvalid: boolean; isFormInval
 	if (args.isFormInvalid) return 'invalid';
 	return 'valid';
 }
+
+/** What one Save or Save as draft click should do after the in-flight guard. */
+export type SaveClickEffect =
+	{ effect: 'ignore' | 'draft' | 'write' | 'cannotProceed' | 'revealed' } | { effect: 'error'; error: unknown };
+
+/**
+ * One Save or Save as draft click. A click that arrives while a validity read is
+ * in flight is ignored. A rejected read reports the error and does not write.
+ * The in-flight flag is always cleared.
+ */
+export async function applySaveClick(args: {
+	inFlight: { current: boolean };
+	type: 'save' | 'saveDraft';
+	read: () => Promise<CompletedSaveRead>;
+}): Promise<SaveClickEffect> {
+	if (args.inFlight.current) return { effect: 'ignore' };
+	// Drafts are allowed to be invalid, including fields the launch scope is hiding.
+	if (args.type === 'saveDraft') return { effect: 'draft' };
+	args.inFlight.current = true;
+	try {
+		const outcome = await args.read();
+		if (outcome === 'invalid') return { effect: 'cannotProceed' };
+		if (outcome === 'valid') return { effect: 'write' };
+		return { effect: 'revealed' };
+	} catch (error) {
+		return { effect: 'error', error };
+	} finally {
+		args.inFlight.current = false;
+	}
+}
