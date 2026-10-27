@@ -38,7 +38,7 @@ import { fetchAffectedPackages } from '../../../services/workflow';
 import { Dispatch as ReduxDispatch } from 'redux';
 import { IntlShape } from 'react-intl';
 import { showSystemNotification, showUnlockItemSuccessNotification } from '../../../state/actions/system';
-import { atom, Atom, createStore, PrimitiveAtom, useAtomValue, useStore as useJotaiStore } from 'jotai';
+import { atom, Atom, PrimitiveAtom, useAtomValue, useStore as useJotaiStore } from 'jotai';
 import React, { ReactNode, RefObject, useContext, useEffect, useRef, type SetStateAction } from 'react';
 import { fromString, getInnerHtml } from '../../../utils/xml';
 import { nanoid } from 'nanoid';
@@ -432,12 +432,6 @@ export function fileNameFieldForForm(field: ContentTypeField, path?: string | nu
 	};
 }
 
-/** Current file name on the dedicated atom. A fresh store reads the value it was created with. */
-export function readFileNameAtom(fileNameAtom: FormsEngineAtoms['fileName']): string {
-	if (!fileNameAtom) return '';
-	return createStore().get(fileNameAtom as PrimitiveAtom<string>);
-}
-
 /** Writes that file name onto the values bag so rollback matches the value atom. */
 export function applyFileNameFormValue(values: LookupTable<unknown>, fileName: string): void {
 	if (!(XmlKeys.fileName in values)) return;
@@ -705,7 +699,8 @@ export function setFieldAtoms(
 	value: unknown,
 	validatorsData?: ValidatorsData,
 	isAdditional?: boolean,
-	itemPath?: string | null
+	itemPath?: string | null,
+	fileName?: string
 ): void {
 	let field = fieldLookup[fieldId];
 	if (!field) {
@@ -744,12 +739,11 @@ export function setFieldAtoms(
 			return;
 		}
 	}
-	// Content forms pass the item path. Type Builder does not, and its fields are left alone.
-	// The value atom starts from `atoms.fileName`. Required for this form is derived here.
-	// The content-type field is not changed.
+	// Content forms pass the item path and the file name computed from it. Type Builder does not.
+	// Required for this form is derived here. The content-type field is not changed.
 	if (itemPath !== undefined && field.id === XmlKeys.fileName) {
 		field = fileNameFieldForForm(field, itemPath);
-		value = readFileNameAtom(atomsTarget.fileName);
+		value = fileName ?? '';
 	}
 	const [valueAtom, validityAtom] = createFieldAtoms(field, value, stableFormContextRef, validatorsData);
 	atomsTarget.valueByFieldId[fieldId] = valueAtom;

@@ -29,7 +29,6 @@ const {
 	createFormStackData,
 	fileNameFieldForForm,
 	fileNameFromItemPath,
-	readFileNameAtom,
 	rootPagePath,
 	setFieldAtoms
 } = await import('./formUtils.tsx');
@@ -73,13 +72,13 @@ describe('repeatGroupValidator', () => {
 		const below = [];
 		assert.equal(await repeatGroupValidator(field, [{}], below, meta), false);
 		assert.deepEqual(below.map(messageOf), [
-			{ text: 'At least {minCount} item(s) are required.', values: { minCount: 2 } }
+			{ text: 'At least {minCount, plural, one {# item is} other {# items are}} required.', values: { minCount: 2 } }
 		]);
 
 		const above = [];
 		assert.equal(await repeatGroupValidator(field, [{}, {}, {}, {}], above, meta), false);
 		assert.deepEqual(above.map(messageOf), [
-			{ text: 'No more than {maxCount} item(s) are allowed.', values: { maxCount: 3 } }
+			{ text: 'No more than {maxCount, plural, one {# item is} other {# items are}} allowed.', values: { maxCount: 3 } }
 		]);
 
 		const onBound = [];
@@ -102,7 +101,7 @@ describe('repeatGroupValidator', () => {
 		const result = await validateFieldValue(field, [], meta);
 		assert.equal(result.isValid, false);
 		assert.deepEqual(result.messages.map(messageOf), [
-			{ text: 'At least {minCount} item(s) are required.', values: { minCount: 1 } }
+			{ text: 'At least {minCount, plural, one {# item is} other {# items are}} required.', values: { minCount: 1 } }
 		]);
 		assert.equal(
 			result.messages.some((message) => messageOf(message).text === 'This field is required.'),
@@ -123,7 +122,10 @@ describe('nodeSelectorValidator', () => {
 			meta
 		);
 		assert.equal(below.isValid, false);
-		assert.equal(messageOf(below.messages[0]).text, 'At least {minCount} item(s) are required.');
+		assert.equal(
+			messageOf(below.messages[0]).text,
+			'At least {minCount, plural, one {# item is} other {# items are}} required.'
+		);
 		assert.deepEqual(messageOf(below.messages[0]).values, { minCount: 2 });
 		assert.equal(
 			below.messages.some((message) => messageOf(message).text === 'This field is required.'),
@@ -150,7 +152,7 @@ describe('nodeSelectorValidator', () => {
 			meta
 		);
 		assert.deepEqual(empty.messages.map(messageOf), [
-			{ text: 'At least {minCount} item(s) are required.', values: { minCount: 1 } }
+			{ text: 'At least {minCount, plural, one {# item is} other {# items are}} required.', values: { minCount: 1 } }
 		]);
 	});
 });
@@ -168,7 +170,10 @@ describe('checkboxGroupValidator', () => {
 	it('reads minCount and treats 0 as no minimum', async () => {
 		const below = await validateFieldValue(group(2), ['a'], meta);
 		assert.equal(below.isValid, false);
-		assert.equal(messageOf(below.messages[0]).text, 'At least {minCount} item(s) are required.');
+		assert.equal(
+			messageOf(below.messages[0]).text,
+			'At least {minCount, plural, one {# item is} other {# items are}} required.'
+		);
 		assert.deepEqual(messageOf(below.messages[0]).values, { minCount: 2 });
 		assert.equal(
 			below.messages.some((message) => messageOf(message).text === 'This field is required.'),
@@ -186,7 +191,7 @@ describe('checkboxGroupValidator', () => {
 		const empty = await validateFieldValue(group(2), [], meta);
 		assert.equal(empty.isValid, false);
 		assert.deepEqual(empty.messages.map(messageOf), [
-			{ text: 'At least {minCount} item(s) are required.', values: { minCount: 2 } }
+			{ text: 'At least {minCount, plural, one {# item is} other {# items are}} required.', values: { minCount: 2 } }
 		]);
 	});
 });
@@ -230,28 +235,39 @@ describe('fileNameValidator', () => {
 	});
 
 	it('seeds the value atom from the item path, so an empty xml file-name with path name about is valid', async () => {
-		assert.equal(fileNameFromItemPath(aboutPath), 'about');
-		assert.equal(fileNameFromItemPath(rootPagePath), '');
+		const fileName = fileNameFromItemPath(aboutPath) || '';
+		assert.equal(fileName, 'about');
+		assert.equal(fileNameFromItemPath(rootPagePath) || '', '');
 		const values = { 'file-name': '' };
-		applyFileNameFormValue(values, fileNameFromItemPath(aboutPath));
+		applyFileNameFormValue(values, fileName);
 		assert.equal(values['file-name'], 'about');
 
 		const formContextRef = { current: createFormStackData() };
 		const atoms = createFormsEngineAtoms('author', {
 			lockResult: atom({ locked: true, lockError: null, affectedPackages: null }),
 			readonly: atom(false),
-			fileName: createFileNameAtom(aboutPath, formContextRef)
+			fileName: createFileNameAtom(aboutPath, formContextRef, fileName)
 		});
 		formContextRef.current.atoms = atoms;
 		formContextRef.current.itemMeta = { path: aboutPath } as never;
 		const stored = fileNameField(true);
 		const contentType = { id: '/page/article', name: 'Article', fields: { 'file-name': stored } } as never;
-		// The xml value is empty. The path is the source both atoms use.
-		setFieldAtoms(formContextRef, contentType, contentType.fields, 'file-name', atoms, '', undefined, false, aboutPath);
+		// The xml value is empty. The same computed name seeds both atoms.
+		setFieldAtoms(
+			formContextRef,
+			contentType,
+			contentType.fields,
+			'file-name',
+			atoms,
+			'',
+			undefined,
+			false,
+			aboutPath,
+			fileName
+		);
 		assert.equal(isFieldRequired(stored), true);
 
 		const store = createStore();
-		assert.equal(readFileNameAtom(atoms.fileName), 'about');
 		assert.equal(store.get(atoms.fileName), 'about');
 		assert.equal(store.get(atoms.valueByFieldId['file-name']), 'about');
 		const validity = await store.get(atoms.validationByFieldId['file-name']);

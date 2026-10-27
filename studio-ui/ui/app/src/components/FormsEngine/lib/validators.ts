@@ -227,8 +227,12 @@ export async function validateFieldValue(
 	return Promise.resolve({ isValid, messages });
 }
 
-const minItemsMessage = defineMessage({ defaultMessage: 'At least {minCount} item(s) are required.' });
-const maxItemsMessage = defineMessage({ defaultMessage: 'No more than {maxCount} item(s) are allowed.' });
+const minItemsMessage = defineMessage({
+	defaultMessage: 'At least {minCount, plural, one {# item is} other {# items are}} required.'
+});
+const maxItemsMessage = defineMessage({
+	defaultMessage: 'No more than {maxCount, plural, one {# item is} other {# items are}} allowed.'
+});
 
 /** Same occurrence errors for every item-count control. See utils/repeatLimits.ts. */
 function pushItemCountViolations(
