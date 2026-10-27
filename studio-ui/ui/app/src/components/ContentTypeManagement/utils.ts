@@ -44,6 +44,7 @@ import {
 import { RefObject } from 'react';
 import { Subject } from 'rxjs';
 import { atom } from 'jotai';
+import { emptyFieldScope, type FormVisibilityState } from '../FormsEngine/lib/formVisibility';
 import { createParsedValueForField } from '../FormsEngine/lib/valueRetrievers';
 import { toBooleanString, toColor } from '../../utils/string';
 import { getXmlBuilder, valueSerializersLookup } from '../FormsEngine/lib/valueSerializers';
@@ -563,7 +564,9 @@ export const createStableFormContextProps = (
 			closeAfterSave: undefined,
 			minimizeAfterSave: undefined,
 			// Field validation atoms always read this, even where no form controller attaches.
-			relevanceVersion: atom(0)
+			relevanceVersion: atom(0),
+			formVisibility: atom<FormVisibilityState>({ active: emptyFieldScope(), launch: null }),
+			pendingScrollFieldId: atom(null as unknown as string | null)
 		},
 		changedFieldIds: null,
 		fieldUpdates$: null,
@@ -704,8 +707,7 @@ function convertFieldStructToXmlStruct(field: ContentTypeField): Required<Legacy
 		defaultValue: field.defaultValue,
 		type: field.type,
 		help: field.helpText,
-		// Keep the group id so a later type save does not strip in-context editing targets.
-		iceId: field.iceId || undefined,
+		iceId: undefined, // TODO: drop?
 		// region Repeat Groups
 		maxOccurs,
 		minOccurs,

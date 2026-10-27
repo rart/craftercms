@@ -27,6 +27,7 @@ import { AtomWithStorage } from '../types';
 import { createUseContextHook } from '../../../utils/system';
 import type { AffectedPluginControlField } from './controlPluginLoader';
 import type { FormControllerState } from '../formControllers/types';
+import type { FormVisibilityState } from './formVisibility';
 
 export type FormsEngineSourceMap = LookupTable<string>;
 export type { AffectedPluginControlField };
@@ -99,6 +100,13 @@ export interface FormsEngineAtoms {
 	 * deny-list that arrives after bootstrap invalidates verdicts computed without it.
 	 */
 	relevanceVersion: PrimitiveAtom<number>;
+	/**
+	 * Launch scope and the "open full form" toggle. Relevance is not stored here;
+	 * `fieldVisibility` reads this atom together with the controller deny-list.
+	 */
+	formVisibility: PrimitiveAtom<FormVisibilityState>;
+	/** Set when a save or "View in form" should scroll to a field after the scope changes. */
+	pendingScrollFieldId: PrimitiveAtom<string | null>;
 }
 
 // Contains information to restore the state of a form when it comes back to being the active form on the stack

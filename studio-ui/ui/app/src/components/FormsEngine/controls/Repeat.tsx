@@ -15,7 +15,8 @@
  */
 
 import React from 'react';
-import { useStableGlobalApiContext } from '../lib/formsEngineContext';
+import { StableFormContext, useStableGlobalApiContext } from '../lib/formsEngineContext';
+import { useAtomValue } from 'jotai';
 import IconButton, { IconButtonProps } from '@mui/material/IconButton';
 import AddRounded from '@mui/icons-material/AddRounded';
 import DeleteOutlined from '@mui/icons-material/DeleteOutlined';
@@ -28,7 +29,7 @@ import ListItemSecondaryAction from '@mui/material/ListItemSecondaryAction';
 import ListItemButton from '@mui/material/ListItemButton';
 import { FormattedMessage } from 'react-intl';
 import Tooltip from '@mui/material/Tooltip';
-import { lazy, MouseEvent as ReactMouseEvent, Suspense, useMemo, useState } from 'react';
+import { lazy, MouseEvent as ReactMouseEvent, Suspense, useContext, useMemo, useState } from 'react';
 import Avatar, { avatarClasses } from '@mui/material/Avatar';
 import { StackedButton } from '../components/StackedButton';
 import { isTouchDevice } from '../lib/sortableListUtil';
@@ -71,7 +72,17 @@ export function Repeat(props: RepeatProps) {
 	const handleCancelReorder = () => setSortMode(false);
 	const onReorder = () => setSortMode(true);
 	const api = useStableGlobalApiContext();
-	const hasContent = value.length;
+	const formAtoms = useContext(StableFormContext).atoms;
+	const formVisibility = useAtomValue(formAtoms.formVisibility);
+	const scopedIndex =
+		formVisibility.active.repeatItem?.fieldId === field.id ? formVisibility.active.repeatItem.index : undefined;
+	const visibleItems =
+		scopedIndex === undefined
+			? value.map((item, index) => ({ item, index }))
+			: value[scopedIndex]
+				? [{ item: value[scopedIndex], index: scopedIndex }]
+				: [];
+	const hasContent = visibleItems.length > 0;
 	const handleRemoveItem = (event: ReactMouseEvent, index: number) => {
 		event.stopPropagation();
 		const nextValue = value.concat();
@@ -128,13 +139,19 @@ export function Repeat(props: RepeatProps) {
 				max={field.validations.maxCount?.value}
 				length={value.length}
 				action={
-					<Tooltip title={isAddDisabled ? '' : <FormattedMessage defaultMessage="Add items" />}>
-						<IconButton size="small" color="primary" onClick={handleAddItem} autoFocus={autoFocus}>
-							<AddRounded fontSize="small" />
-						</IconButton>
-					</Tooltip>
+					scopedIndex === undefined ? (
+						<Tooltip title={isAddDisabled ? '' : <FormattedMessage defaultMessage="Add items" />}>
+							<IconButton size="small" color="primary" onClick={handleAddItem} autoFocus={autoFocus}>
+								<AddRounded fontSize="small" />
+							</IconButton>
+						</Tooltip>
+					) : undefined
 				}
-				menuOptions={[{ id: 'reorder', text: <FormattedMessage defaultMessage="Reorder Items" /> }]}
+				menuOptions={
+					scopedIndex === undefined
+						? [{ id: 'reorder', text: <FormattedMessage defaultMessage="Reorder Items" /> }]
+						: undefined
+				}
 				onMenuOptionClick={(_, __, closeMenu) => {
 					onReorder();
 					closeMenu();
@@ -143,10 +160,10 @@ export function Repeat(props: RepeatProps) {
 				<FieldBox dashed={!hasContent}>
 					{hasContent ? (
 						<List dense>
-							{value.map((item, index) => (
+							{visibleItems.map(({ item, index }, position) => (
 								<ListItemButton
 									key={index}
-									divider={index !== value.length - 1}
+									divider={position !== visibleItems.length - 1}
 									onClick={(e) => handleEditItem(e, item, index)}
 								>
 									<ListItemText
@@ -178,7 +195,7 @@ export function Repeat(props: RepeatProps) {
 								</ListItemButton>
 							))}
 						</List>
-					) : (
+					) : scopedIndex === undefined ? (
 						<>
 							<StackedButton
 								onClick={handleAddItem}
@@ -197,7 +214,7 @@ export function Repeat(props: RepeatProps) {
 								<FormattedMessage defaultMessage="Add" />
 							</StackedButton>
 						</>
-					)}
+					) : null}
 				</FieldBox>
 			</FormsEngineField>
 		</>

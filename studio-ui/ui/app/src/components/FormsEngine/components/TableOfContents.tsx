@@ -25,6 +25,10 @@ import SearchBar from '../../SearchBar';
 import { SimpleTreeView } from '@mui/x-tree-view/SimpleTreeView';
 import Box from '@mui/material/Box';
 import { atom, useAtomValue, useSetAtom, useStore as useJotaiStore } from 'jotai';
+import { FormattedMessage, useIntl } from 'react-intl';
+import Button from '@mui/material/Button';
+import Typography from '@mui/material/Typography';
+import { isScopeActive, openFullForm, returnToLaunchScope, scopeFieldCounts } from '../lib/formVisibility';
 import { hasFieldValidator, isEmptyValue, isFieldRequired } from '../lib/validators';
 import { immutableEmptyArray } from '../../../utils/array';
 import useLoadableAtom from '../lib/useLoadableAtom';
@@ -35,12 +39,17 @@ import { XmlKeys } from '../lib/formConsts';
 
 export interface TableOfContentsProps {
 	containerRef: RefObject<HTMLDivElement>;
-	fieldsToRender: ContentTypeField[];
+	fieldsToRender?: ContentTypeField[];
 	/** When provided (full form), ToC sections follow the same filtered field lists as the form body. */
 	sections?: ContentTypeSection[];
+	/**
+	 * Field ids of the unscoped form (already past the embedded file-name filter).
+	 * Present when this form was opened with a launch scope.
+	 */
+	countFieldIds?: string[];
 }
 
-export function TableOfContents({ containerRef, fieldsToRender, sections }: TableOfContentsProps) {
+export function TableOfContents({ containerRef, fieldsToRender, sections, countFieldIds }: TableOfContentsProps) {
 	const store = useJotaiStore();
 	const atoms = useContext(StableFormContext).atoms;
 	const contentType = useContext(ItemMetaContext).contentType;
@@ -111,6 +120,7 @@ export function TableOfContents({ containerRef, fieldsToRender, sections }: Tabl
 	};
 	return (
 		<>
+			{countFieldIds && <FieldScopeNotice countFieldIds={countFieldIds} />}
 			<SearchBar
 				dense
 				sx={{ mb: 1, mt: 1 }}
@@ -145,6 +155,46 @@ export function TableOfContents({ containerRef, fieldsToRender, sections }: Tabl
 			{/* Spacer: */}
 			<Box sx={{ minHeight: 50 }} />
 		</>
+	);
+}
+
+function FieldScopeNotice({ countFieldIds }: { countFieldIds: string[] }) {
+	const { formatMessage } = useIntl();
+	const store = useJotaiStore();
+	const stableForm = useContext(StableFormContext);
+	const visibility = useAtomValue(stableForm.atoms.formVisibility);
+	useAtomValue(stableForm.atoms.relevanceVersion);
+	if (!visibility.launch || !isScopeActive(visibility.launch)) return null;
+	const viewingFullForm = !isScopeActive(visibility.active);
+	const { showing, total } = scopeFieldCounts(countFieldIds, {
+		irrelevantFieldPaths: stableForm.formControllerState?.irrelevantFieldPaths,
+		scopeFieldIds: visibility.active.fieldIds
+	});
+	return (
+		<Box sx={{ mb: 1 }}>
+			<Typography variant="body2" color="textSecondary">
+				{viewingFullForm
+					? formatMessage({ defaultMessage: 'Showing all {total} fields' }, { total })
+					: formatMessage({ defaultMessage: 'Showing {showing} of {total} fields' }, { showing, total })}
+			</Typography>
+			<Button
+				size="small"
+				sx={{ px: 0, minWidth: 0 }}
+				onClick={() => {
+					const current = store.get(stableForm.atoms.formVisibility);
+					store.set(
+						stableForm.atoms.formVisibility,
+						viewingFullForm ? returnToLaunchScope(current) : openFullForm(current)
+					);
+				}}
+			>
+				{viewingFullForm ? (
+					<FormattedMessage defaultMessage="Back to selected fields" />
+				) : (
+					<FormattedMessage defaultMessage="Open full form" />
+				)}
+			</Button>
+		</Box>
 	);
 }
 

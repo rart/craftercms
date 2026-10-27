@@ -56,7 +56,10 @@ const epics = [
 							changeTemplate: newContentTypeId,
 							onSaveSuccess: ({ action, draft }) =>
 								store.dispatch(
-									batchActions([showEditItemSuccessNotification({ action, draft }), reloadContentItem({ path })])
+									batchActions([
+										...(draft ? [] : [showEditItemSuccessNotification({ action, draft: false })]),
+										reloadContentItem({ path })
+									])
 								)
 						})
 					);

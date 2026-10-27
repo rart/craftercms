@@ -32,7 +32,7 @@ import { DialogStackItem } from '../models';
 import type { ConfirmDialogProps } from '../components/ConfirmDialog';
 import type { ErrorDialogProps } from '../components/ErrorDialog';
 import { getPathFromPreviewURL, getPreviewURLFromPath, isPagePath } from './path';
-import { buildContentFormLaunch, toContentFormSaveSuccess } from './contentFormLaunch';
+import { formsEnginePropsFromLaunch } from './contentFormLaunch';
 
 export type SystemLinkId =
 	| 'preview'
@@ -123,7 +123,7 @@ export function pickShowContentFormAction(oldProps: LegacyFormDialogProps) {
 				allowMinimize: true,
 				props: {
 					formProps: {
-						...buildContentFormLaunch(oldProps),
+						...formsEnginePropsFromLaunch(oldProps),
 						onSave(result) {
 							if (isPreviewAppUrl()) {
 								const params = new URLSearchParams(window.location.hash.replace(/^#\/?\?/, ''));
@@ -148,7 +148,7 @@ export function pickShowContentFormAction(oldProps: LegacyFormDialogProps) {
 									getHostToGuestBus().next(reloadRequest());
 								}
 							}
-							oldProps.onSaveSuccess?.(toContentFormSaveSuccess(result));
+							oldProps.onSaveSuccess?.(result);
 						}
 					} satisfies FormsEngineProps
 				}

@@ -45,8 +45,7 @@ import {
 	StableFormContext,
 	StableFormContextProps,
 	StableGlobalContext,
-	StableGlobalContextProps,
-	useStableGlobalApiContext
+	StableGlobalContextProps
 } from './lib/formsEngineContext';
 import { fetchContentItemComplete } from '../../state/actions/content';
 import { catchError, of } from 'rxjs';
@@ -156,15 +155,10 @@ import { processPathMacros } from '../../utils/path';
 import {
 	attachFormController,
 	findAncestorFormControllerEntry,
-	isFieldPathIrrelevant,
 	runFormControllerCleanup
 } from './formControllers/runtime';
 import { createEmbeddedRelevanceResolver } from './formControllers/relevance';
-import {
-	fieldsToRenderForLaunch,
-	resolveContentFormFieldTarget,
-	unmatchedLaunchTargetWarning
-} from '../../utils/contentFormLaunch';
+import { fieldVisibility, resolveLaunchVisibility, unsupportedRepeatIndexWarning } from './lib/formVisibility';
 
 export interface FormSavePromiseResult {
 	close: boolean;
@@ -180,17 +174,22 @@ export interface BaseProps extends Partial<UpdateModeProps & RepeatModeProps & C
 	onMinimize?: EnhancedDialogProps['onMinimize'];
 	onFullScreen?: EnhancedDialogProps['onFullScreen'];
 	onCancelFullScreen?: EnhancedDialogProps['onCancelFullScreen'];
-	/** The form will render only the specified fields from the main content type being worked with */
+	/**
+	 * Fields this form instance owns. Set by the repeat-item editor (its subfields).
+	 * A launch subset is `fieldIds`, not this prop: that scope keeps the section structure
+	 * and can be cleared without leaving the form.
+	 */
 	fieldsToRender?: ContentTypeField[];
 	/**
-	 * Field ids to render when `fieldsToRender` is not set. Dotted ids (`articles_o.headline_s`)
+	 * Experience Builder `selectedFields`: show only these fields. Dotted ids (`articles_o.headline_s`)
 	 * select the base field. Resolved against the content type once it is loaded.
 	 */
 	fieldIds?: string[];
-	/** In-context editing group. Used when `fieldIds` is absent. */
-	iceGroupId?: string;
-	/** Opens this index of a targeted repeat field. Nested indexes are not supported. */
-	repeatIndex?: number;
+	/**
+	 * Repeat-item index from Experience Builder. Limits that repeat field to one item.
+	 * Nested indexes such as `"1.2"` are not supported and are ignored.
+	 */
+	repeatIndex?: string | number;
 	/** Id of a field the form should scroll into view once rendered. Expands the field's section if collapsed. */
 	fieldToScroll?: string;
 	// Controls like the Item Selector and Repeat use the onSave to update once the form they opened is "saved".
@@ -838,7 +837,6 @@ function FormOrchestrator(props: FormsEngineProps) {
 		stackTransitionEnded,
 		fieldsToRender,
 		fieldIds,
-		iceGroupId,
 		repeatIndex,
 		fieldToScroll,
 		isDialog = false,
@@ -883,24 +881,40 @@ function FormOrchestrator(props: FormsEngineProps) {
 	const isRepeatMode = Boolean(repeat?.fieldId);
 	const affectedPackages = lockStatus.affectedPackages?.length > 0;
 	const contentTypeFields = contentType.fields;
-	// A targeted save that fails on fields outside the subset sets this so the author can see them.
-	const [revealFullForm, setRevealFullForm] = useState(false);
-	// Launch-time targeting (ICE group, selected fields, repeat index) is resolved here, after the
-	// content type is loaded. An explicit `fieldsToRender` (repeat / stacked forms) wins.
-	const launchTarget = useMemo(
-		() =>
-			fieldsToRender || revealFullForm
-				? undefined
-				: resolveContentFormFieldTarget(contentType, { fieldIds, iceGroupId, repeatIndex }),
-		[contentType, fieldIds, fieldsToRender, iceGroupId, repeatIndex, revealFullForm]
-	);
-	const renderedFields = fieldsToRenderForLaunch(fieldsToRender, launchTarget?.fields);
-	useEffect(() => {
-		if (fieldsToRender) return;
-		const message = unmatchedLaunchTargetWarning({ fieldIds, iceGroupId, fields: launchTarget?.fields });
-		if (message) console.warn(message);
-	}, [fieldIds, fieldsToRender, iceGroupId, launchTarget]);
-	const contentTypeSections = useMemo(() => {
+	// Re-render when the controller publishes a deny-list. The list itself lives on the stack entry.
+	useAtomValue(atoms.relevanceVersion);
+	const launchScopeInstalled = useRef(false);
+	useLayoutEffect(() => {
+		if (isRepeatMode || launchScopeInstalled.current) return;
+		launchScopeInstalled.current = true;
+		const knownFieldIds = new Set(Object.keys(contentType.fields ?? {}));
+		const repeatFieldIds = new Set(
+			Object.values(contentType.fields ?? {})
+				.filter((field) => field.type === 'repeat')
+				.map((field) => field.id)
+		);
+		const resolved = resolveLaunchVisibility({
+			selectedFields: fieldIds,
+			index: repeatIndex,
+			knownFieldIds,
+			repeatFieldIds
+		});
+		if (resolved.unmatchedFieldIds?.length) {
+			const ids = resolved.unmatchedFieldIds.join(', ');
+			console.warn(
+				resolved.state.active.fieldIds
+					? `Content form launch ignored unknown field ids (${ids}).`
+					: `Content form launch field ids matched no fields (${ids}). Opening the full form.`
+			);
+		}
+		if (resolved.unsupportedRepeatIndex) {
+			console.warn(unsupportedRepeatIndexWarning(resolved.unsupportedRepeatIndex));
+		}
+		store.set(atoms.formVisibility, resolved.state);
+	}, [atoms.formVisibility, contentType.fields, fieldIds, isRepeatMode, repeatIndex, store]);
+	const visibility = useAtomValue(atoms.formVisibility);
+	const scopeFieldIds = isRepeatMode ? null : visibility.active.fieldIds;
+	const formSections = useMemo(() => {
 		let sections = contentType.sections;
 		if (isEmbedded) {
 			// Embedded components don't have any path/file-name, so excluding the field from the sections will prevent it from
@@ -910,34 +924,50 @@ function FormOrchestrator(props: FormsEngineProps) {
 				fields: section.fields.filter((fieldId) => fieldId !== XmlKeys['fileName'])
 			}));
 		}
-		if (irrelevantFieldPaths && !renderedFields) {
-			sections = sections
+		return sections;
+	}, [contentType.sections, isEmbedded]);
+	const visibleSections = useMemo(
+		() =>
+			formSections
 				.map((section) => ({
 					...section,
-					fields: section.fields.filter((fieldId) => !isFieldPathIrrelevant(irrelevantFieldPaths, fieldId))
+					fields: section.fields.filter(
+						(fieldId) =>
+							fieldVisibility({ fieldId, irrelevantFieldPaths, parentPath: repeat?.fieldId, scopeFieldIds }) ===
+							'visible'
+					)
 				}))
-				// Remove sections that contain no remaining fields.
-				.filter((section) => section.fields.length > 0);
-		}
-		return sections;
-	}, [contentType.sections, isEmbedded, irrelevantFieldPaths, renderedFields]);
-	const visibleFieldsToRender = useMemo(() => {
-		if (!renderedFields) return renderedFields;
-		if (!irrelevantFieldPaths?.size) return renderedFields;
-		// Repeat item fields are subfields. Qualify them with the repeat group so `title_s` in
-		// another group is not hidden by this one.
-		return renderedFields.filter((field) => !isFieldPathIrrelevant(irrelevantFieldPaths, field.id, repeat?.fieldId));
-	}, [renderedFields, irrelevantFieldPaths, repeat?.fieldId]);
+				.filter((section) => section.fields.length > 0),
+		[formSections, irrelevantFieldPaths, repeat?.fieldId, scopeFieldIds]
+	);
+	const repeatFields = useMemo(
+		() =>
+			isRepeatMode
+				? (fieldsToRender ?? []).filter(
+						(field) =>
+							fieldVisibility({
+								fieldId: field.id,
+								irrelevantFieldPaths,
+								parentPath: repeat?.fieldId,
+								scopeFieldIds: null
+							}) === 'visible'
+					)
+				: undefined,
+		[fieldsToRender, irrelevantFieldPaths, isRepeatMode, repeat?.fieldId]
+	);
+	const countFieldIds = useMemo(() => formSections.flatMap((section) => section.fields), [formSections]);
 	const useCollapsedToC = useAtomValue(atoms.useCollapsedToC);
 	const tableOfContents = (
 		<TableOfContents
-			fieldsToRender={visibleFieldsToRender}
-			sections={contentTypeSections}
+			fieldsToRender={isRepeatMode ? repeatFields : undefined}
+			sections={isRepeatMode ? undefined : visibleSections}
+			countFieldIds={isRepeatMode || !visibility.launch ? undefined : countFieldIds}
 			containerRef={containerRef}
 		/>
 	);
 	const effectRefs = useUpdateRefs({
-		fieldsToRender: visibleFieldsToRender,
+		// Comments name every changed field, including ones the launch scope is hiding.
+		fieldsToRender: isRepeatMode ? fieldsToRender : Object.values(contentTypeFields),
 		versionCommentAtom: stableFormContext.atoms.versionComment,
 		fileNameAtom: stableFormContext.atoms.fileName,
 		lockStatus
@@ -1138,9 +1168,6 @@ function FormOrchestrator(props: FormsEngineProps) {
 		isCreateMode,
 		isRepeatMode,
 		fieldsToRender,
-		// Stacked forms validate their own fields. Only the targeted parent subset is "visible".
-		visibleFieldIds: fieldsToRender || revealFullForm ? undefined : launchTarget?.fields?.map((field) => field.id),
-		onHiddenInvalidFields: () => setRevealFullForm(true),
 		createPath: Boolean(create?.path) ? pathInSite : undefined, // pathInSite is the result of processing the create path with macros.
 		onClose: () => onCloseHandler(null, null),
 		onMinimize: () => props.onMinimize?.()
@@ -1202,40 +1229,34 @@ function FormOrchestrator(props: FormsEngineProps) {
 		};
 	}, [mainContent]);
 
-	// Scroll to the field requested via the `fieldToScroll` prop, once form body layout settles
-	// (lazy controls, RTEs, images can still grow after first paint).
+	const pendingScrollFieldId = useAtomValue(atoms.pendingScrollFieldId);
+	// Scroll to a requested field once form body layout settles (lazy controls, RTEs, images).
+	// `fieldToScroll` is a prop. `pendingScrollFieldId` is set when the scope opens up and a
+	// field that was hidden needs to be brought into view. Clearing the atom must not cancel
+	// the scroll that was just started, so this effect has no cleanup.
 	useEffect(() => {
-		if (!fieldToScroll || !mainContent) return;
-		const cancelSettle = () => {
-			cancelFieldScrollRef.current?.();
-			cancelFieldScrollRef.current = null;
-		};
-		// The field may be inside a collapsed section; it needs to be expanded for the field to be scrolled to.
-		// A flat field subset is not inside a section accordion, so expanding one would never settle.
-		const sectionId = renderedFields
-			? undefined
-			: contentTypeSections.find((section) => section.fields.includes(fieldToScroll))?.id;
+		const fieldId = pendingScrollFieldId || fieldToScroll;
+		if (!fieldId || !mainContent) return;
+		const sectionId = visibleSections.find((section) => section.fields.includes(fieldId))?.id;
 		const expandedAtom = sectionId ? atoms.expandedStateBySectionId[sectionId] : null;
 		const isExpanding = expandedAtom && !store.get(expandedAtom);
 		if (isExpanding) {
 			store.set(expandedAtom, true);
 			pendingFieldScrollRef.current = {
 				sectionId,
-				start: () => beginSettledFieldScroll(fieldToScroll)
+				start: () => beginSettledFieldScroll(fieldId)
 			};
-			return () => {
-				pendingFieldScrollRef.current = null;
-				cancelSettle();
-			};
+		} else {
+			beginSettledFieldScroll(fieldId);
 		}
-		beginSettledFieldScroll(fieldToScroll);
-		return cancelSettle;
+		if (pendingScrollFieldId) store.set(atoms.pendingScrollFieldId, null);
 	}, [
+		pendingScrollFieldId,
 		fieldToScroll,
 		mainContent,
-		contentTypeSections,
-		renderedFields,
+		visibleSections,
 		atoms.expandedStateBySectionId,
+		atoms.pendingScrollFieldId,
 		store,
 		beginSettledFieldScroll
 	]);
@@ -1359,16 +1380,15 @@ function FormOrchestrator(props: FormsEngineProps) {
 								<FormattedMessage defaultMessage="This content type has a client-side form controller, but it could not be loaded. Check form-controller.js for syntax or export errors. The form will open without a custom controller." />
 							</Alert>
 						)}
-						{visibleFieldsToRender ? (
-							// Renders the specified set of fields only
+						{isRepeatMode ? (
+							// Repeat-item editor: subfields are not grouped into sections.
 							<Paper sx={{ p: 2 }}>
-								{visibleFieldsToRender.map((field, index) =>
+								{(repeatFields ?? []).map((field, index) =>
 									renderFieldControl(field, stableFormContext.atoms.valueByFieldId, index === 0, readonly, contentType)
 								)}
 							</Paper>
 						) : (
-							// Renders the full form, all sections
-							contentTypeSections.map((section, sectionIndex) => (
+							visibleSections.map((section, sectionIndex) => (
 								<SectionAccordion
 									key={sectionIndex}
 									section={section}
@@ -1448,15 +1468,6 @@ function FormOrchestrator(props: FormsEngineProps) {
 				</>
 			}
 		>
-			{launchTarget?.repeatItem && (
-				<RepeatItemLaunch
-					field={launchTarget.repeatItem.field}
-					index={launchTarget.repeatItem.index}
-					scrollFieldId={launchTarget.repeatItem.scrollFieldId}
-					persistOnDone={launchTarget.fields?.length === 1}
-					saveParent={() => void saveFn(false, { closeOnSuccess: true })}
-				/>
-			)}
 			{/* region Stacked Form Drawer */}
 			{stackIndex === 0 && (
 				<Drawer
@@ -1559,61 +1570,6 @@ function FormOrchestrator(props: FormsEngineProps) {
 }
 
 export { FormGuard as FormsEngine };
-
-/**
- * Opens one item of a repeat field that an in-context edit targeted.
- * Done writes the item back into the parent. When that repeat field is the only targeted field,
- * Done also saves the parent so the launcher callback runs.
- */
-function RepeatItemLaunch(props: {
-	field: ContentTypeField;
-	index: number;
-	scrollFieldId?: string;
-	persistOnDone: boolean;
-	saveParent: () => void;
-}) {
-	const api = useStableGlobalApiContext();
-	const { formsStackData } = useContext(StableGlobalContext);
-	const { atoms } = useContext(StableFormContext);
-	const store = useJotaiStore();
-	const launchedRef = useRef(false);
-	const saveParentRef = useRef(props.saveParent);
-	const { field, index, scrollFieldId, persistOnDone, saveParent } = props;
-	useLayoutEffect(() => {
-		saveParentRef.current = saveParent;
-	}, [saveParent]);
-	useLayoutEffect(() => {
-		// The stack lives on the parent provider and survives a StrictMode remount, which resets
-		// launchedRef. Skip when a form was already pushed.
-		if (launchedRef.current || formsStackData.length > 1) {
-			launchedRef.current = true;
-			return;
-		}
-		const valueAtom = atoms.valueByFieldId[field.id];
-		if (!valueAtom) return;
-		const value = store.get(valueAtom) as RepeatItem[] | undefined;
-		const item = value?.[index];
-		if (!item) return;
-		launchedRef.current = true;
-		const resolvedScrollFieldId = scrollFieldId && field.fields?.[scrollFieldId] ? scrollFieldId : undefined;
-		api.pushForm({
-			repeat: { fieldId: field.id, index, values: item },
-			fieldsToRender: Object.values(field.fields ?? {}),
-			...(resolvedScrollFieldId ? { fieldToScroll: resolvedScrollFieldId } : {}),
-			onSave(result) {
-				const current = (store.get(valueAtom) as RepeatItem[]) ?? [];
-				const next = current.slice();
-				next[index] = result.values as RepeatItem;
-				store.set(valueAtom, next);
-				if (persistOnDone && !store.get(atoms.readonly)) {
-					saveParentRef.current();
-				}
-				return Promise.resolve({ close: true });
-			}
-		});
-	}, [api, atoms, field, formsStackData, index, persistOnDone, scrollFieldId, store]);
-	return null;
-}
 
 export default FormGuard;
 

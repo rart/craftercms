@@ -17,7 +17,6 @@
 import { PropsWithChildren } from 'react';
 import StandardAction from '../../models/StandardAction';
 import { type DialogProps } from '@mui/material/Dialog';
-import type { ContentFormSaveSuccess } from '../../utils/contentFormLaunch';
 
 export interface LegacyFormDialogBaseProps {
 	open?: boolean;
@@ -56,7 +55,7 @@ export type LegacyFormDialogProps = PropsWithChildren<
 		onMinimize?(): any;
 		onClose?(): any;
 		onClosed?(): any;
-		onSaveSuccess?(response: ContentFormSaveSuccess): void;
+		onSaveSuccess?(response?: any): any;
 	}
 >;
 

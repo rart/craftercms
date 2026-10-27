@@ -234,7 +234,10 @@ const content: CrafterCMSEpic[] = [
 								site: state.sites.active,
 								path,
 								authoringBase: state.env.authoringBase,
-								onSaveSuccess: () => store.dispatch(payload.onSuccess)
+								onSaveSuccess: ({ draft }) => {
+									if (draft) return;
+									store.dispatch(payload.onSuccess);
+								}
 							})
 						])
 					)

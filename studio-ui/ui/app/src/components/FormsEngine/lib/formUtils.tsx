@@ -68,7 +68,7 @@ import useActiveSiteId from '../../../hooks/useActiveSiteId';
 import { areAllPairsEqual } from '../../../utils/array';
 import { deserializeContentDoc } from './valueRetrievers';
 import { buildContentXml } from './valueSerializers';
-import { isFieldPathIrrelevant } from '../formControllers/runtime';
+import { emptyFieldScope, fieldVisibility, type FormVisibilityState } from './formVisibility';
 import { createEmbeddedRelevanceResolver } from '../formControllers/relevance';
 import useUpdateRefs from '../../../hooks/useUpdateRefs';
 import ApiResponse from '../../../models/ApiResponse';
@@ -526,11 +526,11 @@ export function getValidationAtomsExcludingIrrelevant(
 	irrelevantFieldPaths: Set<string> | null | undefined,
 	parentPath?: string
 ): Array<Atom<Promise<FieldValidityState>>> {
-	if (!irrelevantFieldPaths?.size) {
-		return Object.values(validationByFieldId);
-	}
 	return Object.entries(validationByFieldId)
-		.filter(([fieldId]) => !isFieldPathIrrelevant(irrelevantFieldPaths, fieldId, parentPath))
+		.filter(
+			([fieldId]) =>
+				fieldVisibility({ fieldId, irrelevantFieldPaths, parentPath, scopeFieldIds: null }) !== 'irrelevant'
+		)
 		.map(([, validityAtom]) => validityAtom);
 }
 
@@ -640,7 +640,11 @@ export function createFormsEngineAtoms(
 			getOnInit: true
 		}) as unknown as AtomWithStorage,
 		...mixin,
-		relevanceVersion: atom(0)
+		relevanceVersion: atom(0),
+		formVisibility: atom<FormVisibilityState>({ active: emptyFieldScope(), launch: null }),
+		// `null` is assignable to a read function when strictNullChecks is off, which would
+		// pick jotai's read-only overload. The assertion keeps this a writable atom.
+		pendingScrollFieldId: atom(null as unknown as string | null)
 	};
 	return atoms;
 }
@@ -764,7 +768,7 @@ export function useValidateFormProps(props: Partial<FormsEngineProps>): void {
 	const siteId = useActiveSiteId();
 	const previousProps = usePreviousValue(props);
 	const propsChangedRef = useRef(false);
-	const { create, update, repeat, fieldsToRender, fieldIds, iceGroupId, repeatIndex, readonly } = props;
+	const { create, update, repeat, fieldsToRender, fieldIds, repeatIndex, readonly } = props;
 	if (!siteId) {
 		throw NoSiteIdError;
 	} else if (
@@ -786,7 +790,6 @@ export function useValidateFormProps(props: Partial<FormsEngineProps>): void {
 				[create, previousProps.create],
 				[fieldsToRender, previousProps.fieldsToRender],
 				[fieldIds, previousProps.fieldIds],
-				[iceGroupId, previousProps.iceGroupId],
 				[repeatIndex, previousProps.repeatIndex],
 				[readonly, previousProps.readonly],
 				[repeat?.fieldId, previousProps.repeat?.fieldId],

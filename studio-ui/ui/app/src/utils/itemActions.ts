@@ -511,7 +511,8 @@ export const itemActionDispatcher = ({
 						onSaveSuccess: ({ action, draft }) =>
 							dispatch(
 								batchActions([
-									showEditItemSuccessNotification({ action, draft }),
+									// The form already announces a draft. This notification is the completed-save one.
+									...(draft ? [] : [showEditItemSuccessNotification({ action, draft: false })]),
 									...(onActionSuccess ? [onActionSuccess] : [])
 								])
 							),

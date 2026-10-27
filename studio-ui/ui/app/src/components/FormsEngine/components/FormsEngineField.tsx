@@ -41,7 +41,8 @@ import {
 	useStableFormContext,
 	useStableGlobalApiContext
 } from '../lib/formsEngineContext';
-import { useAtomValue } from 'jotai';
+import { useAtomValue, useStore as useJotaiStore } from 'jotai';
+import { isScopeActive, openFullForm } from '../lib/formVisibility';
 import { translateIfMessageDescriptor } from '../../ContentTypeManagement/utils';
 import useLoadableAtom from '../lib/useLoadableAtom';
 import { XmlKeys } from '../lib/formConsts';
@@ -105,7 +106,11 @@ export const FormsEngineField = forwardRef<HTMLDivElement, FormsEngineFieldProps
 		onMenuOptionClick
 	} = props;
 	const { sourceMap } = useItemMetaContext();
-	const { changedFieldIds, atoms } = useStableFormContext();
+	const stableForm = useStableFormContext();
+	const { changedFieldIds, atoms } = stableForm;
+	const jotai = useJotaiStore();
+	const visibility = useAtomValue(atoms.formVisibility);
+	const scopeActive = isScopeActive(visibility.active);
 	const formApi = useFormApiContext();
 	const globalApi = useStableGlobalApiContext();
 	const { formatMessage } = useIntl();
@@ -205,6 +210,18 @@ export const FormsEngineField = forwardRef<HTMLDivElement, FormsEngineFieldProps
 										<FormattedMessage defaultMessage="Field Information" />
 									</ListItemText>
 								</MenuItem>
+								{scopeActive && (
+									<MenuItem
+										onClick={() => {
+											jotai.set(atoms.formVisibility, openFullForm(jotai.get(atoms.formVisibility)));
+											jotai.set(atoms.pendingScrollFieldId, field.id);
+										}}
+									>
+										<ListItemText>
+											<FormattedMessage defaultMessage="View in form" />
+										</ListItemText>
+									</MenuItem>
+								)}
 								{hasChanges && [
 									<Divider key="rollback-divider" />,
 									<MenuItem key="rollback-action" onClick={handleRollback}>
