@@ -32,6 +32,8 @@
  *
  * At runtime both become the virtual validations `field.validations.minCount` / `maxCount`.
  * They are not stored. Type Builder 2 strips them on save and writes the storage form.
+ * Read those values with {@link countLimitValue}. Null and undefined are unlimited. A value of 0
+ * is a real limit: a repeat maximum of 0 is a cap, and must not be tested with truthiness.
  * A stored `required` constraint is not a repeat minimum and is stripped on save.
  *
  * TODO: Normalize the XML so each limit has a single representation.
@@ -108,6 +110,14 @@ export function nodeSelectorCountLimit(value: unknown): number | undefined {
 export function readNumericLimit(value: unknown): number | undefined {
 	const parsed = readOccursNumber(value);
 	return parsed == null ? undefined : parsed;
+}
+
+/**
+ * Virtual `minCount` / `maxCount` value. Null and undefined are unlimited.
+ * 0 is a real limit, so do not test the result with truthiness.
+ */
+export function countLimitValue(value: unknown): number | undefined {
+	return readNumericLimit(value);
 }
 
 /**

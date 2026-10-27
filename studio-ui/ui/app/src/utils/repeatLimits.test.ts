@@ -19,6 +19,7 @@ import { describe, it } from 'node:test';
 import {
 	countLimitsFromNodeSelector,
 	countLimitsFromRepeat,
+	countLimitValue,
 	getRepeatMinimum,
 	getRepeatOccurrenceViolations,
 	isRepeatAddDisabled,
@@ -82,6 +83,18 @@ describe('countLimitsFromNodeSelector', () => {
 	it('rejects invalid values', () => {
 		assert.deepEqual(countLimitsFromNodeSelector('3abc', '0.5'), {});
 		assert.deepEqual(countLimitsFromNodeSelector('-1', '*'), {});
+	});
+});
+
+describe('countLimitValue', () => {
+	it('keeps a limit of 0 and treats nullish values as unlimited', () => {
+		assert.equal(countLimitValue(0), 0);
+		assert.equal(countLimitValue('0'), 0);
+		assert.equal(countLimitValue(3), 3);
+		assert.equal(countLimitValue(undefined), undefined);
+		assert.equal(countLimitValue(null), undefined);
+		assert.equal(countLimitValue(''), undefined);
+		assert.equal(countLimitValue('*'), undefined);
 	});
 });
 

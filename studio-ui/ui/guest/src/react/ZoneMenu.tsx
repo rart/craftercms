@@ -47,6 +47,7 @@ import {
 import { clearAndListen$ } from '../store/subjects';
 import { startListening } from '../store/actions';
 import { ElementRecord } from '../models/InContextEditing';
+import { countLimitValue } from '@craftercms/studio-ui/utils/repeatLimits';
 import { extractCollection, findParentModelId } from '@craftercms/studio-ui/utils/model';
 import { isSimple, popPiece } from '@craftercms/studio-ui/utils/string';
 import { AnyAction } from '@reduxjs/toolkit';
@@ -212,12 +213,12 @@ export function ZoneMenu(props: ZoneMenuProps) {
 
 		if (containerHasEditAction && Boolean(collection)) {
 			const validations = nodeSelectorEntries?.field?.validations;
-			const maxValidation = validations?.maxCount?.value;
-			const minValidation = validations?.minCount?.value;
-			const trashableValidation = minValidation ? minValidation < numOfItemsInContainerCollection : true;
+			// minCount/maxCount values. 0 is a real cap. See utils/repeatLimits.ts.
+			const maxCount = countLimitValue(validations?.maxCount?.value);
+			const minCount = countLimitValue(validations?.minCount?.value);
+			const trashableValidation = minCount == null || minCount < numOfItemsInContainerCollection;
 			const duplicateValidation =
-				permissions.includes('content_create') &&
-				(maxValidation ? maxValidation > numOfItemsInContainerCollection : true);
+				permissions.includes('content_create') && (maxCount == null || maxCount > numOfItemsInContainerCollection);
 
 			// The trash/duplicate are not applicable outside of item selector or repeat group type fields:
 			if (

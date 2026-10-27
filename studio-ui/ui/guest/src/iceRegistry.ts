@@ -28,6 +28,7 @@ import type {
 import { LookupTable } from '@craftercms/studio-ui/models/LookupTable';
 import { ICEProps, ICERecord, ICERecordRegistration, ReferentialEntries } from './models/InContextEditing';
 import { notNullOrUndefined, nou, nullOrUndefined, pluckProps } from '@craftercms/studio-ui/utils/object';
+import { countLimitValue, getRepeatMinimum } from '@craftercms/studio-ui/utils/repeatLimits';
 import { forEach } from '@craftercms/studio-ui/utils/array';
 import { determineRecordType, findComponentContainerFields, resolvePlacementForZone } from './utils/ice';
 import { isSimple, removeLastPiece } from '@craftercms/studio-ui/utils/string';
@@ -36,25 +37,27 @@ import { Observer, Subject, Subscription } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 import { AllowedContentTypesData } from '@craftercms/studio-ui/models/AllowedContentTypesData';
 
-/** Functions return nullish if everything is fine */
+/** Functions return nullish if everything is fine. Limits come from countLimitValue. See utils/repeatLimits.ts. */
 const validationChecks: Partial<Record<ValidationKeys, Function>> = {
 	minCount(id, minCount, level, length) {
-		if (length < minCount) {
+		const min = countLimitValue(minCount);
+		if (min != null && length < min) {
 			return {
 				id,
 				level,
-				values: { minCount }
+				values: { minCount: min }
 			};
 		} else {
 			return null;
 		}
 	},
 	maxCount(id, maxCount, level, length) {
-		if (length >= maxCount) {
+		const max = countLimitValue(maxCount);
+		if (max != null && length >= max) {
 			return {
 				id,
 				level,
-				values: { maxCount }
+				values: { maxCount: max }
 			};
 		} else {
 			return null;
@@ -425,21 +428,25 @@ export function runDropTargetsValidations(dropTargets: ICERecord[]): LookupTable
 			const validation = validations[key];
 			switch (validation.id) {
 				case 'minCount': {
-					if (validation.value && collection.length < validation.value) {
+					// 0 is a real minimum. See utils/repeatLimits.ts.
+					const minCount = countLimitValue(validation.value);
+					if (minCount != null && collection.length < minCount) {
 						validationResult[validation.id] = {
 							id: validation.id,
 							level: validation.level,
-							values: { min: validation.value }
+							values: { min: minCount }
 						};
 					}
 					break;
 				}
 				case 'maxCount': {
-					if (validation.value && collection.length >= validation.value) {
+					// 0 is a real cap. See utils/repeatLimits.ts.
+					const maxCount = countLimitValue(validation.value);
+					if (maxCount != null && collection.length >= maxCount) {
 						validationResult[validation.id] = {
 							id: validation.id,
 							level: validation.level,
-							values: { max: validation.value }
+							values: { max: maxCount }
 						};
 					}
 					break;
@@ -633,8 +640,8 @@ export function checkComponentMovability(entries: ReferentialEntries): boolean {
 		return false;
 	}
 
-	// minCount is the mapped limit object. Compare its value. See utils/repeatLimits.ts.
-	const minCount = parentField.validations?.minCount?.value ?? 0;
+	// minCount value. A missing minimum is 0. See utils/repeatLimits.ts.
+	const minCount = getRepeatMinimum(parentField.validations?.minCount?.value);
 
 	if (parentField.type === 'node-selector') {
 		return (
