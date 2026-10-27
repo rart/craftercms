@@ -44,7 +44,7 @@ import {
 import { RefObject } from 'react';
 import { Subject } from 'rxjs';
 import { atom } from 'jotai';
-import { emptyFieldScope, type FormVisibilityState } from '../FormsEngine/lib/formVisibility';
+import { createFormVisibilityAtoms } from '../FormsEngine/lib/formVisibility';
 import { createParsedValueForField } from '../FormsEngine/lib/valueRetrievers';
 import { toBooleanString, toColor } from '../../utils/string';
 import { getXmlBuilder, valueSerializersLookup } from '../FormsEngine/lib/valueSerializers';
@@ -565,8 +565,7 @@ export const createStableFormContextProps = (
 			minimizeAfterSave: undefined,
 			// Field validation atoms always read this, even where no form controller attaches.
 			relevanceVersion: atom(0),
-			formVisibility: atom<FormVisibilityState>({ active: emptyFieldScope(), launch: null }),
-			pendingScrollFieldId: atom(null as unknown as string | null)
+			...createFormVisibilityAtoms()
 		},
 		changedFieldIds: null,
 		fieldUpdates$: null,

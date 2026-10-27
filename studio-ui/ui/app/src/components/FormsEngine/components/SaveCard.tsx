@@ -30,7 +30,7 @@ import { useDispatch } from 'react-redux';
 import { pushConfirmDialog, pushErrorDialog } from '../../../utils/system';
 import { popDialog } from '../../../state/actions/dialogStack';
 import { nanoid } from 'nanoid';
-import { applySaveClick, claimSaveClick, type CompletedSaveRead } from '../lib/formVisibility';
+import type { SaveFormResult } from '../lib/useSaveForm';
 import type { ApiResponse } from '../../../models/ApiResponse';
 
 const messages = defineMessages({
@@ -43,15 +43,14 @@ export interface SaveCardProps {
 	isEmbedded: boolean;
 	setSaveAsDraft: (value: boolean) => void;
 	/**
-	 * Fresh validity read for a completed Save. A hidden error is opened in place.
-	 * `valid` writes. `invalid` is the cannot-proceed dialog. `revealed` writes nothing.
+	 * Runs the save. `revealed` opened a hidden field and wrote nothing.
+	 * `invalid` is the cannot-proceed dialog. `saved` started a write.
 	 */
-	onRevealHiddenInvalid: () => Promise<CompletedSaveRead>;
-	onSave: (e: MouseEvent, draft?: boolean) => void;
+	onSave: (e: MouseEvent, draft?: boolean) => Promise<SaveFormResult | void>;
 }
 
 export function SaveCard(props: SaveCardProps) {
-	const { isEmbedded, isStackedForm, isRepeatMode, setSaveAsDraft, onRevealHiddenInvalid, onSave } = props;
+	const { isEmbedded, isStackedForm, isRepeatMode, setSaveAsDraft, onSave } = props;
 	const stableFormContext = useContext(StableFormContext);
 	const isSubmitting = useAtomValue(stableFormContext.atoms.isSubmitting);
 	const [versionComment, setVersionComment] = useAtom(stableFormContext.atoms.versionComment);
@@ -61,7 +60,7 @@ export function SaveCard(props: SaveCardProps) {
 	const disableSave = !isEmbedded && !isRepeatMode && (isSubmitting || !versionComment);
 	const { formatMessage } = useIntl();
 	const dispatch = useDispatch();
-	const revealInFlight = useRef(false);
+	const saveInFlight = useRef(false);
 
 	const handleSetCloseAfterSave = (checked: boolean) => {
 		if (checked) {
@@ -92,17 +91,21 @@ export function SaveCard(props: SaveCardProps) {
 			})
 		);
 	};
-	const handleSave = async (e: MouseEvent, type: 'save' | 'saveDraft', draft?: boolean) => {
-		if (!claimSaveClick(revealInFlight.current, type, setSaveAsDraft)) return;
-		const result = await applySaveClick({ inFlight: revealInFlight, type, read: onRevealHiddenInvalid });
-		if (result.effect === 'draft' || result.effect === 'write') onSave(e, draft);
-		else if (result.effect === 'cannotProceed') showCannotProceed();
-		else if (result.effect === 'error') {
+	const handleSave = async (e: MouseEvent, draft?: boolean) => {
+		if (saveInFlight.current) return;
+		saveInFlight.current = true;
+		setSaveAsDraft(Boolean(draft));
+		try {
+			const status = await onSave(e, draft);
+			if (status === 'invalid') showCannotProceed();
+		} catch (error) {
 			dispatch(
 				pushErrorDialog({
-					props: { error: saveReadError(result.error, formatMessage(messages.saveReadFailed)) }
+					props: { error: saveReadError(error, formatMessage(messages.saveReadFailed)) }
 				})
 			);
+		} finally {
+			saveInFlight.current = false;
 		}
 	};
 
@@ -156,7 +159,7 @@ export function SaveCard(props: SaveCardProps) {
 								? formatMessage({ defaultMessage: 'Done' })
 								: formatMessage({ defaultMessage: 'Save' }),
 						callback: (e) => {
-							handleSave(e, 'save');
+							handleSave(e);
 						}
 					},
 					{
@@ -166,7 +169,7 @@ export function SaveCard(props: SaveCardProps) {
 								? formatMessage({ defaultMessage: 'Done (Draft)' })
 								: formatMessage({ defaultMessage: 'Save Draft' }),
 						callback: (e) => {
-							handleSave(e, 'saveDraft', true);
+							handleSave(e, true);
 						}
 					}
 				]}

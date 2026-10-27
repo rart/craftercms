@@ -18,7 +18,7 @@ import React, { RefObject, SyntheticEvent, useContext, useMemo, useState } from 
 import { ContentTypeField } from '../../../models';
 import type { ContentTypeSection } from '../../../models/ContentType';
 import { FormsEngineAtoms, ItemMetaContext, StableFormContext } from '../lib/formsEngineContext';
-import { getScrollContainer } from '../lib/formUtils';
+import { commitFormVisibility, getScrollContainer } from '../lib/formUtils';
 import useDebouncedInput from '../../../hooks/useDebouncedInput';
 import { TreeItem } from '@mui/x-tree-view/TreeItem';
 import SearchBar from '../../SearchBar';
@@ -28,7 +28,7 @@ import { atom, useAtomValue, useSetAtom, useStore as useJotaiStore } from 'jotai
 import { FormattedMessage, useIntl } from 'react-intl';
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
-import { isScopeActive, openFullForm, returnToLaunchScope, scopeFieldCounts } from '../lib/formVisibility';
+import { isScopeActive, revealField, returnToLaunchScope, scopeFieldCounts } from '../lib/formVisibility';
 import { hasFieldValidator, isEmptyValue, isFieldRequired } from '../lib/validators';
 import { immutableEmptyArray } from '../../../utils/array';
 import useLoadableAtom from '../lib/useLoadableAtom';
@@ -39,7 +39,8 @@ import { XmlKeys } from '../lib/formConsts';
 
 export interface TableOfContentsProps {
 	containerRef: RefObject<HTMLDivElement>;
-	fieldsToRender?: ContentTypeField[];
+	/** Flat field list for a repeat-item editor, which has no sections. */
+	fields?: ContentTypeField[];
 	/** When provided (full form), ToC sections follow the same filtered field lists as the form body. */
 	sections?: ContentTypeSection[];
 	/**
@@ -49,7 +50,7 @@ export interface TableOfContentsProps {
 	countFieldIds?: string[];
 }
 
-export function TableOfContents({ containerRef, fieldsToRender, sections, countFieldIds }: TableOfContentsProps) {
+export function TableOfContents({ containerRef, fields, sections, countFieldIds }: TableOfContentsProps) {
 	const store = useJotaiStore();
 	const atoms = useContext(StableFormContext).atoms;
 	const contentType = useContext(ItemMetaContext).contentType;
@@ -95,7 +96,7 @@ export function TableOfContents({ containerRef, fieldsToRender, sections, countF
 	const [searchFieldValue, setSearchFieldValue] = useState('');
 	const [filteredFields, setFilteredFields] = useState<ContentTypeField[]>(null);
 	const contentTypeFieldsArray =
-		fieldsToRender ??
+		fields ??
 		contentTypeSections.flatMap((section) =>
 			section.fields.map((fieldId) => contentTypeFields[fieldId]).filter(Boolean)
 		);
@@ -139,7 +140,7 @@ export function TableOfContents({ containerRef, fieldsToRender, sections, countF
 					expandedItems={expandedSectionIds}
 				>
 					{filteredFields?.map(createFieldTreeItem) ??
-						fieldsToRender?.map(createFieldTreeItem) ??
+						fields?.map(createFieldTreeItem) ??
 						contentTypeSections.map((section) => (
 							<TreeItem
 								key={section.id}
@@ -158,7 +159,7 @@ export function TableOfContents({ containerRef, fieldsToRender, sections, countF
 	);
 }
 
-function FieldScopeNotice({ countFieldIds }: { countFieldIds: string[] }) {
+export function FieldScopeNotice({ countFieldIds }: { countFieldIds: string[] }) {
 	const { formatMessage } = useIntl();
 	const store = useJotaiStore();
 	const stableForm = useContext(StableFormContext);
@@ -171,7 +172,7 @@ function FieldScopeNotice({ countFieldIds }: { countFieldIds: string[] }) {
 		scopeFieldIds: visibility.active.fieldIds
 	});
 	return (
-		<Box sx={{ mb: 1 }}>
+		<Box role="status" sx={{ mb: 1 }}>
 			<Typography variant="body2" color="textSecondary">
 				{viewingFullForm
 					? formatMessage({ defaultMessage: 'Showing all {total, plural, one {# field} other {# fields}}' }, { total })
@@ -185,10 +186,12 @@ function FieldScopeNotice({ countFieldIds }: { countFieldIds: string[] }) {
 				sx={{ px: 0, minWidth: 0 }}
 				onClick={() => {
 					const current = store.get(stableForm.atoms.formVisibility);
-					store.set(
-						stableForm.atoms.formVisibility,
-						viewingFullForm ? returnToLaunchScope(current) : openFullForm(current)
-					);
+					if (viewingFullForm) {
+						commitFormVisibility(store.set, stableForm.atoms, returnToLaunchScope(current));
+						return;
+					}
+					const reveal = revealField(current);
+					commitFormVisibility(store.set, stableForm.atoms, reveal.state);
 				}}
 			>
 				{viewingFullForm ? (

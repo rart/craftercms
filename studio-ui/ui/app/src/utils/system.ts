@@ -106,6 +106,14 @@ export function consolidateSx(...sxs: SxProps<Theme>[]): SxProps<Theme> {
 	return sxs.flatMap((item) => item ?? []);
 }
 
+/**
+ * Chooses the legacy dialog or Forms Engine 2.
+ *
+ * When #9213 removes the legacy engine, `showContentFormAction` should call
+ * {@link formsEnginePropsFromLaunch} the way this function does. That PR's
+ * `ShowContentFormProps` still needs `index` and the save-result `draft` / `action`
+ * fields. Drop its hardcoded `'saveAndClose'` and `fieldToScroll: selectedFields[0]`.
+ */
 export function pickShowContentFormAction(oldProps: LegacyFormDialogProps) {
 	const useLegacy = window.localStorage.getItem('useLegacyFormEngine') === 'true';
 	const dialogId = nanoid();

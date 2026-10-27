@@ -26,7 +26,6 @@ import React, {
 	useCallback,
 	useContext,
 	useEffect,
-	useLayoutEffect,
 	useMemo,
 	useRef,
 	useState
@@ -120,7 +119,7 @@ import {
 	XmlKeys
 } from './lib/formConsts';
 import FormLayout from './components/FormLayout';
-import TableOfContents from './components/TableOfContents';
+import TableOfContents, { FieldScopeNotice } from './components/TableOfContents';
 import CreateModeHeader from './components/CreateModeHeader';
 import RepeatModeHeader from './components/RepeatModeHeader';
 import EditModeHeader from './components/EditModeHeader';
@@ -158,7 +157,7 @@ import {
 	runFormControllerCleanup
 } from './formControllers/runtime';
 import { createEmbeddedRelevanceResolver } from './formControllers/relevance';
-import { fieldVisibility, resolveLaunchVisibility, unsupportedRepeatIndexWarning } from './lib/formVisibility';
+import { childFields, fieldVisibility } from './lib/formVisibility';
 
 export interface FormSavePromiseResult {
 	close: boolean;
@@ -174,12 +173,6 @@ export interface BaseProps extends Partial<UpdateModeProps & RepeatModeProps & C
 	onMinimize?: EnhancedDialogProps['onMinimize'];
 	onFullScreen?: EnhancedDialogProps['onFullScreen'];
 	onCancelFullScreen?: EnhancedDialogProps['onCancelFullScreen'];
-	/**
-	 * Fields this form instance owns. Set by the repeat-item editor (its subfields).
-	 * A launch subset is `fieldIds`, not this prop: that scope keeps the section structure
-	 * and can be cleared without leaving the form.
-	 */
-	fieldsToRender?: ContentTypeField[];
 	/**
 	 * Experience Builder `selectedFields`: show only these fields. Dotted ids (`articles_o.headline_s`)
 	 * select the base field. Resolved against the content type once it is loaded.
@@ -313,7 +306,7 @@ function FormBootstrap(props: FormsEngineProps) {
 		const { create: _create, ...rest } = props;
 		return { ...rest, update: { path: savedCreatePath } };
 	}, [props, savedCreatePath]);
-	const { create, update, repeat, fieldsToRender, readonly: readonlyProp, stackIndex = 0, isDialog } = effectiveProps;
+	const { create, update, repeat, readonly: readonlyProp, stackIndex = 0, isDialog } = effectiveProps;
 	const siteId = useActiveSiteId();
 	const dispatch = useDispatch();
 	const contentTypesById = useContentTypes();
@@ -479,8 +472,9 @@ function FormBootstrap(props: FormsEngineProps) {
 				expandedStateBySectionId: buildSectionExpandedStateAtoms(contentType.sections),
 				fileName: createFileNameAtom('', stableFormContextRef)
 			});
+			const repeatFields = childFields(contentType.fields[repeat.fieldId]);
 			const seedValues = repeat.values ? { ...repeat.values } : {};
-			preloadControlPluginsForFields(siteId, fieldsToRender, seedValues, contentTypesById).then((failures) => {
+			preloadControlPluginsForFields(siteId, repeatFields, seedValues, contentTypesById).then((failures) => {
 				if (disposed) return;
 				const validatorsData = {
 					siteId,
@@ -501,14 +495,14 @@ function FormBootstrap(props: FormsEngineProps) {
 				};
 				const values = repeat.values
 					? seedValues
-					: createParsedValuesObject(fieldsToRender, {}, contentTypesById, atomValueCreator, customControls);
+					: createParsedValuesObject(repeatFields, {}, contentTypesById, atomValueCreator, customControls);
 
 				const descriptors = resolveControlDescriptors(customControls);
 				const additionalFieldsIds: string[] = [];
 				// If repeat.values was provided, `createCleanValuesObject` didn't run; hence, atomValueCreator needs to be run manually.
 				if (repeat.values) {
 					// First gather all additional fields ids from the provided values
-					(fieldsToRender ?? []).forEach((field) => {
+					repeatFields.forEach((field) => {
 						const descriptor = descriptors[field.type];
 						if (!descriptor) return;
 						additionalFieldsIds.push(...getAdditionalFieldsIdsFromDescriptor(field.id, descriptor));
@@ -577,6 +571,8 @@ function FormBootstrap(props: FormsEngineProps) {
 						locked,
 						lockError,
 						affectedPackages,
+						fieldIds: effectRefs.current.effectiveProps.fieldIds,
+						repeatIndex: effectRefs.current.effectiveProps.repeatIndex,
 						update,
 						parentStackData,
 						stableFormContextRef,
@@ -615,14 +611,22 @@ function FormBootstrap(props: FormsEngineProps) {
 				lockError: null,
 				affectedPackages: null
 			});
-			const atoms: FormsEngineAtoms = createFormsEngineAtoms(effectRefs.current.username, {
-				lockResult: lockResultAtom,
-				readonly: atom(false),
-				expandedStateBySectionId: buildSectionExpandedStateAtoms(contentType.sections),
-				fileName: createFileNameAtom('', stableFormContextRef),
-				// Default version comment for new content.
-				versionComment: atom(generateDefaultCreationComment('', formatMessage))
-			});
+			const atoms: FormsEngineAtoms = createFormsEngineAtoms(
+				effectRefs.current.username,
+				{
+					lockResult: lockResultAtom,
+					readonly: atom(false),
+					expandedStateBySectionId: buildSectionExpandedStateAtoms(contentType.sections),
+					fileName: createFileNameAtom('', stableFormContextRef),
+					// Default version comment for new content.
+					versionComment: atom(generateDefaultCreationComment('', formatMessage))
+				},
+				{
+					selectedFields: effectRefs.current.effectiveProps.fieldIds,
+					index: effectRefs.current.effectiveProps.repeatIndex,
+					fields: contentType.fields
+				}
+			);
 			const contentObject = createObjectWithSystemProps(contentType);
 			const initCreateForm = (failures: ControlPluginPreloadFailure[] = []) => {
 				if (disposed) return;
@@ -713,12 +717,20 @@ function FormBootstrap(props: FormsEngineProps) {
 						lockError: requirements.lockError,
 						affectedPackages: requirements.affectedPackages
 					});
-					const atoms = createFormsEngineAtoms(effectRefs.current.username, {
-						lockResult: lockResultAtom,
-						readonly: createReadonlyAtom(lockResultAtom),
-						expandedStateBySectionId: buildSectionExpandedStateAtoms(requirements.contentType.sections),
-						fileName: createFileNameAtom(requirements.item.path, stableFormContextRef)
-					});
+					const atoms = createFormsEngineAtoms(
+						effectRefs.current.username,
+						{
+							lockResult: lockResultAtom,
+							readonly: createReadonlyAtom(lockResultAtom),
+							expandedStateBySectionId: buildSectionExpandedStateAtoms(requirements.contentType.sections),
+							fileName: createFileNameAtom(requirements.item.path, stableFormContextRef)
+						},
+						{
+							selectedFields: effectRefs.current.effectiveProps.fieldIds,
+							index: effectRefs.current.effectiveProps.repeatIndex,
+							fields: requirements.contentType.fields
+						}
+					);
 					preloadControlPluginsForFields(
 						siteId,
 						requirements.contentType.fields,
@@ -778,7 +790,6 @@ function FormBootstrap(props: FormsEngineProps) {
 		customControls,
 		dispatch,
 		effectRefs,
-		fieldsToRender,
 		formatMessage,
 		formsStackData,
 		readonlyProp,
@@ -834,9 +845,6 @@ function FormOrchestrator(props: FormsEngineProps) {
 		repeat,
 		stackIndex = 0,
 		stackTransitionEnded,
-		fieldsToRender,
-		fieldIds,
-		repeatIndex,
 		fieldToScroll,
 		isDialog = false,
 		onSave,
@@ -882,35 +890,6 @@ function FormOrchestrator(props: FormsEngineProps) {
 	const contentTypeFields = contentType.fields;
 	// Re-render when the controller publishes a deny-list. The list itself lives on the stack entry.
 	useAtomValue(atoms.relevanceVersion);
-	const launchScopeInstalled = useRef(false);
-	useLayoutEffect(() => {
-		if (isRepeatMode || launchScopeInstalled.current) return;
-		launchScopeInstalled.current = true;
-		const knownFieldIds = new Set(Object.keys(contentType.fields ?? {}));
-		const repeatFieldIds = new Set(
-			Object.values(contentType.fields ?? {})
-				.filter((field) => field.type === 'repeat')
-				.map((field) => field.id)
-		);
-		const resolved = resolveLaunchVisibility({
-			selectedFields: fieldIds,
-			index: repeatIndex,
-			knownFieldIds,
-			repeatFieldIds
-		});
-		if (resolved.unmatchedFieldIds?.length) {
-			const ids = resolved.unmatchedFieldIds.join(', ');
-			console.warn(
-				resolved.state.active.fieldIds
-					? `Content form launch ignored unknown field ids (${ids}).`
-					: `Content form launch field ids matched no fields (${ids}). Opening the full form.`
-			);
-		}
-		if (resolved.unsupportedRepeatIndex) {
-			console.warn(unsupportedRepeatIndexWarning(resolved.unsupportedRepeatIndex));
-		}
-		store.set(atoms.formVisibility, resolved.state);
-	}, [atoms.formVisibility, contentType.fields, fieldIds, isRepeatMode, repeatIndex, store]);
 	const visibility = useAtomValue(atoms.formVisibility);
 	const scopeFieldIds = isRepeatMode ? null : visibility.active.fieldIds;
 	const formSections = useMemo(() => {
@@ -939,10 +918,14 @@ function FormOrchestrator(props: FormsEngineProps) {
 				.filter((section) => section.fields.length > 0),
 		[formSections, irrelevantFieldPaths, repeat?.fieldId, scopeFieldIds]
 	);
+	const repeatOwnedFields = useMemo(
+		() => (isRepeatMode ? childFields(contentType.fields[repeat?.fieldId]) : []),
+		[contentType.fields, isRepeatMode, repeat?.fieldId]
+	);
 	const repeatFields = useMemo(
 		() =>
 			isRepeatMode
-				? (fieldsToRender ?? []).filter(
+				? repeatOwnedFields.filter(
 						(field) =>
 							fieldVisibility({
 								fieldId: field.id,
@@ -952,13 +935,13 @@ function FormOrchestrator(props: FormsEngineProps) {
 							}) === 'visible'
 					)
 				: undefined,
-		[fieldsToRender, irrelevantFieldPaths, isRepeatMode, repeat?.fieldId]
+		[irrelevantFieldPaths, isRepeatMode, repeat?.fieldId, repeatOwnedFields]
 	);
 	const countFieldIds = useMemo(() => formSections.flatMap((section) => section.fields), [formSections]);
 	const useCollapsedToC = useAtomValue(atoms.useCollapsedToC);
 	const tableOfContents = (
 		<TableOfContents
-			fieldsToRender={isRepeatMode ? repeatFields : undefined}
+			fields={isRepeatMode ? repeatFields : undefined}
 			sections={isRepeatMode ? undefined : visibleSections}
 			countFieldIds={isRepeatMode || !visibility.launch ? undefined : countFieldIds}
 			containerRef={containerRef}
@@ -966,7 +949,7 @@ function FormOrchestrator(props: FormsEngineProps) {
 	);
 	const effectRefs = useUpdateRefs({
 		// Comments name every changed field, including ones the launch scope is hiding.
-		fieldsToRender: isRepeatMode ? fieldsToRender : Object.values(contentTypeFields),
+		commentFields: isRepeatMode ? repeatOwnedFields : Object.values(contentTypeFields),
 		versionCommentAtom: stableFormContext.atoms.versionComment,
 		fileNameAtom: stableFormContext.atoms.fileName,
 		lockStatus
@@ -1026,7 +1009,7 @@ function FormOrchestrator(props: FormsEngineProps) {
 			}
 			const newMessage = generateDefaultChangesComment(
 				contentType.fields,
-				effectRefs.current.fieldsToRender,
+				effectRefs.current.commentFields,
 				changedFieldIds,
 				store.get(versionCommentAtom).trim()
 			);
@@ -1160,13 +1143,12 @@ function FormOrchestrator(props: FormsEngineProps) {
 
 	const onCloseHandler = isStackedForm ? onCloseProp : enhancedDialogOnClose;
 
-	const { save: saveFn, revealHiddenInvalid } = useSaveForm({
+	const { save: saveFn } = useSaveForm({
 		onSave,
 		isEmbedded,
 		isStackedForm,
 		isCreateMode,
 		isRepeatMode,
-		fieldsToRender,
 		createPath: Boolean(create?.path) ? pathInSite : undefined, // pathInSite is the result of processing the create path with macros.
 		onClose: () => onCloseHandler(null, null),
 		onMinimize: () => props.onMinimize?.()
@@ -1347,6 +1329,7 @@ function FormOrchestrator(props: FormsEngineProps) {
 						</StickyBox>
 					</Grid>
 					<Grid size={useCollapsedToC ? 8.3 : 7} className="space-y" data-area-id="formBody">
+						{useCollapsedToC && !openDrawerSidebar && <FieldScopeNotice countFieldIds={countFieldIds} />}
 						{affectedPackages && (
 							<Alert
 								severity="warning"
@@ -1405,7 +1388,7 @@ function FormOrchestrator(props: FormsEngineProps) {
 						) : (
 							visibleSections.map((section, sectionIndex) => (
 								<SectionAccordion
-									key={sectionIndex}
+									key={section.id}
 									section={section}
 									slotProps={{
 										transition: {
@@ -1456,8 +1439,7 @@ function FormOrchestrator(props: FormsEngineProps) {
 										isStackedForm={isStackedForm}
 										isRepeatMode={isRepeatMode}
 										setSaveAsDraft={setSaveAsDraftAction}
-										onRevealHiddenInvalid={revealHiddenInvalid}
-										onSave={(e, draft) => saveFn(draft)}
+										onSave={(_event, draft) => saveFn(draft)}
 									/>
 									{!isCreateMode && // There's no locking on create mode
 										(!isRepeatMode || (isRepeatMode && repeat.values)) && // No point in the "unlock" button for new repeat items

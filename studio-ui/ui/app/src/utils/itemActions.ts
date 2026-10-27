@@ -509,10 +509,10 @@ export const itemActionDispatcher = ({
 						site,
 						path,
 						authoringBase,
-						onSaveSuccess: ({ action, draft }) => {
+						onSaveSuccess: ({ draft }) => {
 							const followUps = saveSuccessFollowUps(
 								draft,
-								showEditItemSuccessNotification({ action }),
+								showEditItemSuccessNotification(),
 								onActionSuccess ? [onActionSuccess] : []
 							);
 							if (followUps.length) dispatch(batchActions(followUps));

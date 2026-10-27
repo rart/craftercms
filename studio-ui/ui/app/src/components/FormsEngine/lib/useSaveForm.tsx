@@ -27,6 +27,7 @@ import {
 	StableFormContext
 } from './formsEngineContext';
 import {
+	commitFormVisibility,
 	composePathForType,
 	createObjectWithSystemProps,
 	extractAtomValues,
@@ -37,7 +38,7 @@ import {
 } from './formUtils';
 import { FormSavePromiseResult, FormsEngineProps } from '../FormsEngine';
 import { contentFormSaveAction } from '../../../utils/contentFormLaunch';
-import { completedSaveRead, hiddenInvalidReveal } from './formVisibility';
+import { childFields, decideSaveReveal } from './formVisibility';
 import { XmlKeys } from './formConsts';
 import { fromString } from '../../../utils/xml';
 import {
@@ -53,7 +54,7 @@ import { buildContentXml } from './valueSerializers';
 import { flushSync } from 'react-dom';
 import LookupTable from '../../../models/LookupTable';
 import { checkMinimumSaveRequirementsFulfilled, isInternalNameValid } from './validators';
-import ContentType, { ContentTypeField } from '../../../models/ContentType';
+import ContentType from '../../../models/ContentType';
 import { cancelPackages } from '../../../services/workflow';
 import { switchMap } from 'rxjs';
 import { validateActionPolicy } from '../../../services/sites';
@@ -76,8 +77,6 @@ export interface UseSaveFormProps {
 	isEmbedded: boolean;
 	/** True when this form was opened via pushForm on top of another form. */
 	isStackedForm?: boolean;
-	/** Repeat stacked forms: sub-fields of the repeat group (same set as bootstrap). */
-	fieldsToRender?: ContentTypeField[];
 	onBeforeSave?: FormsEngineProps['onSave'];
 	onSave?: FormsEngineProps['onSave'];
 	onClose?(): void;
@@ -87,22 +86,16 @@ export interface UseSaveFormProps {
 const wrapOnSaveProp: (onSaveProp: FormsEngineProps['onSave']) => FormsEngineProps['onSave'] = (onSaveProp) => (args) =>
 	onSaveProp?.(args) ?? Promise.resolve({ close: false });
 
+/** What `save` tells the Save card. A plugin or policy block returns void instead. */
+export type SaveFormResult = 'revealed' | 'invalid' | 'saved';
+
 export function useSaveForm(props: UseSaveFormProps) {
 	const jotai = useJotaiStore();
 	const store = useReduxStore<GlobalState>();
 	const dispatch = useDispatch();
 	const { formatMessage } = useIntl();
 	const siteId = useActiveSiteId();
-	const {
-		isEmbedded,
-		isStackedForm = false,
-		isRepeatMode,
-		isCreateMode,
-		onClose,
-		onMinimize,
-		createPath,
-		fieldsToRender
-	} = props;
+	const { isEmbedded, isStackedForm = false, isRepeatMode, isCreateMode, onClose, onMinimize, createPath } = props;
 	const { id, contentType, contentObject, path: itemPath } = useContext(ItemMetaContext);
 	const isPage = contentType.type === 'page';
 	const stableFormContext = useContext(StableFormContext);
@@ -129,29 +122,7 @@ export function useSaveForm(props: UseSaveFormProps) {
 		const invalidFieldIds = fields.flatMap(({ fieldId }, index) => (states[index]?.isValid ? [] : [fieldId]));
 		return { isFormInvalid: invalidFieldIds.length > 0, invalidFieldIds };
 	};
-	/** Opens a hidden error in place. True when the scope changed and nothing should be written. */
-	const applyHiddenInvalidReveal = (draft: boolean | undefined, invalidFieldIds: readonly string[]) => {
-		// Repeat commits and explicit drafts write, hidden errors included.
-		if (isRepeatMode || draft === true) return false;
-		const reveal = hiddenInvalidReveal({
-			visibility: jotai.get(stableFormContext.atoms.formVisibility),
-			invalidFieldIds,
-			sectionOrder: contentType.sections?.flatMap((section) => section.fields) ?? [],
-			irrelevantFieldPaths: stableFormContext.formControllerState?.irrelevantFieldPaths
-		});
-		if (!reveal) return false;
-		jotai.set(stableFormContext.atoms.formVisibility, reveal.state);
-		jotai.set(stableFormContext.atoms.pendingScrollFieldId, reveal.fieldId);
-		return true;
-	};
-	const revealHiddenInvalid = async () => {
-		const { isFormInvalid, invalidFieldIds } = await readCurrentValidity();
-		return completedSaveRead({
-			hasHiddenInvalid: applyHiddenInvalidReveal(false, invalidFieldIds),
-			isFormInvalid
-		});
-	};
-	const save = async (draft?: boolean) => {
+	const save = async (draft?: boolean): Promise<SaveFormResult | void> => {
 		// Get before the first await so a second call cannot re-enter preload or onBeforeSave.
 		if (jotai.get(stableFormContext.atoms.isSubmitting)) {
 			return;
@@ -220,9 +191,8 @@ export function useSaveForm(props: UseSaveFormProps) {
 			// Prior save-time failures are safe to clear; `controlPluginCache` drops failed entries so retry works.
 			stableFormContext.affectedPluginControlFields = [];
 			let values = extractAtomValues(jotai, stableFormContext.atoms.valueByFieldId);
-			// Put system properties in before creating the XML
-			let { isFormInvalid, invalidFieldIds } = await readCurrentValidity();
-			let saveAsDraft = draft || isFormInvalid;
+			// Set after the single validity read. A completed save of an invalid form does not reach the write.
+			let saveAsDraft = draft === true;
 
 			const onSavePromiseHandler = ({ close }: FormSavePromiseResult) => {
 				if (saveAsDraft) {
@@ -255,8 +225,8 @@ export function useSaveForm(props: UseSaveFormProps) {
 			// Re-walk current values (incl. embeds added after open) so serializers exist before XML build.
 			// Runs before the repeat early-return so a failed bootstrap preload can retry on save in
 			// repeat stacked forms as well as create/edit/embedded.
-			// Repeat mode: only the repeat item's fields (fieldsToRender). Root/embedded: full content type.
-			const fieldsForPluginPreload = isRepeatMode ? fieldsToRender : contentType.fields;
+			// Repeat mode: that field's children. Root/embedded: the whole content type.
+			const fieldsForPluginPreload = isRepeatMode ? childFields(contentType.fields[repeatFieldId]) : contentType.fields;
 			const preloadPluginsOrBlock = async (currentValues: LookupTable<unknown>) => {
 				const pluginPreloadFailures = await preloadControlPluginsForFields(
 					siteId,
@@ -313,16 +283,37 @@ export function useSaveForm(props: UseSaveFormProps) {
 				if (!(await preloadPluginsOrBlock(values))) {
 					return;
 				}
-				({ isFormInvalid, invalidFieldIds } = await readCurrentValidity());
-				saveAsDraft = draft || isFormInvalid;
 			}
 
-			// A completed save still validates every field. An error the author cannot see opens
-			// in place and nothing is written. An explicit draft writes those errors.
-			if (applyHiddenInvalidReveal(draft, invalidFieldIds)) {
+			// One read, after onBeforeSave can change values. A rejected read is the Save card's error dialog.
+			let validity: Awaited<ReturnType<typeof readCurrentValidity>>;
+			try {
+				validity = await readCurrentValidity();
+			} catch (readError) {
 				setIsSubmitting(false);
-				return;
+				const error = readError instanceof Error ? readError : new Error(String(readError));
+				(error as Error & { formsEngineSaveRead?: boolean }).formsEngineSaveRead = true;
+				throw error;
 			}
+			const decision = decideSaveReveal({
+				draft: draft === true,
+				isRepeatMode,
+				visibility: jotai.get(stableFormContext.atoms.formVisibility),
+				invalidFieldIds: validity.invalidFieldIds,
+				sectionOrder: contentType.sections?.flatMap((section) => section.fields) ?? [],
+				irrelevantFieldPaths: stableFormContext.formControllerState?.irrelevantFieldPaths,
+				parentPath: repeatFieldId
+			});
+			if (decision.status === 'revealed' && decision.reveal) {
+				commitFormVisibility(jotai.set, stableFormContext.atoms, decision.reveal.state, decision.reveal.fieldId);
+				setIsSubmitting(false);
+				return 'revealed';
+			}
+			if (decision.status === 'invalid') {
+				setIsSubmitting(false);
+				return 'invalid';
+			}
+			saveAsDraft = draft === true || validity.isFormInvalid;
 
 			// `onBeforeSave` may have changed `file-name`; the render-time snapshot is stale from here on.
 			const currentFileName = jotai.get(stableFormContext.atoms.fileName);
@@ -333,7 +324,7 @@ export function useSaveForm(props: UseSaveFormProps) {
 					onSavePromiseHandler,
 					showSaveError
 				);
-				return;
+				return 'saved';
 			}
 
 			// Repository writes report the checkbox action and whether the item was stored as a draft.
@@ -379,7 +370,7 @@ export function useSaveForm(props: UseSaveFormProps) {
 						onSavePromiseHandler,
 						showSaveError
 					);
-					return;
+					return 'saved';
 				}
 
 				// Root embedded: merge the component into the parent document and write the parent.
@@ -440,7 +431,7 @@ export function useSaveForm(props: UseSaveFormProps) {
 				} else {
 					saveEmbeddedContent();
 				}
-				return;
+				return 'saved';
 			}
 			let path: string;
 			let renamePath: string;
@@ -604,12 +595,16 @@ export function useSaveForm(props: UseSaveFormProps) {
 				},
 				error: showSaveError
 			});
+			return 'saved';
 		} catch (error) {
+			if (error && typeof error === 'object' && (error as { formsEngineSaveRead?: boolean }).formsEngineSaveRead) {
+				throw error;
+			}
 			showSaveError(error as AjaxError | Error);
 		}
 	};
 
-	return { save, revealHiddenInvalid };
+	return { save };
 }
 
 function complementValuesWithSystemProps(

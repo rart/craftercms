@@ -42,7 +42,8 @@ import {
 	useStableGlobalApiContext
 } from '../lib/formsEngineContext';
 import { useAtomValue, useStore as useJotaiStore } from 'jotai';
-import { isScopeActive, openFullForm } from '../lib/formVisibility';
+import { isScopeActive, revealField } from '../lib/formVisibility';
+import { commitFormVisibility } from '../lib/formUtils';
 import { translateIfMessageDescriptor } from '../../ContentTypeManagement/utils';
 import useLoadableAtom from '../lib/useLoadableAtom';
 import { XmlKeys } from '../lib/formConsts';
@@ -213,8 +214,8 @@ export const FormsEngineField = forwardRef<HTMLDivElement, FormsEngineFieldProps
 								{scopeActive && (
 									<MenuItem
 										onClick={() => {
-											jotai.set(atoms.formVisibility, openFullForm(jotai.get(atoms.formVisibility)));
-											jotai.set(atoms.pendingScrollFieldId, field.id);
+											const reveal = revealField(jotai.get(atoms.formVisibility), field.id);
+											commitFormVisibility(jotai.set, atoms, reveal.state, reveal.fieldId);
 										}}
 									>
 										<ListItemText>

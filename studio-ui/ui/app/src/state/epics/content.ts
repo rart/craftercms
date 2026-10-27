@@ -68,6 +68,7 @@ import {
 	unblockUI
 } from '../actions/system';
 import { batchActions } from '../actions/misc';
+import { saveSuccessFollowUps } from '../../utils/contentFormLaunch';
 import {
 	getItemGroovyPath,
 	getItemTemplatePath,
@@ -235,7 +236,8 @@ const content: CrafterCMSEpic[] = [
 								path,
 								authoringBase: state.env.authoringBase,
 								onSaveSuccess: ({ draft }) => {
-									if (draft !== true) store.dispatch(payload.onSuccess);
+									const followUps = saveSuccessFollowUps(draft, payload.onSuccess, []);
+									if (followUps.length) store.dispatch(batchActions(followUps));
 								}
 							})
 						])

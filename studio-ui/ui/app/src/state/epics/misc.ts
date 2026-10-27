@@ -55,12 +55,10 @@ const epics = [
 							path,
 							authoringBase: state.env.authoringBase,
 							changeTemplate: newContentTypeId,
-							onSaveSuccess: ({ action, draft }) =>
+							onSaveSuccess: ({ draft }) =>
 								store.dispatch(
 									batchActions(
-										saveSuccessFollowUps(draft, showEditItemSuccessNotification({ action }), [
-											reloadContentItem({ path })
-										])
+										saveSuccessFollowUps(draft, showEditItemSuccessNotification(), [reloadContentItem({ path })])
 									)
 								)
 						})

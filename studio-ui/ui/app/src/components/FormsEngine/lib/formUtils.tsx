@@ -68,7 +68,13 @@ import useActiveSiteId from '../../../hooks/useActiveSiteId';
 import { areAllPairsEqual } from '../../../utils/array';
 import { deserializeContentDoc } from './valueRetrievers';
 import { buildContentXml } from './valueSerializers';
-import { emptyFieldScope, fieldVisibility, type FormVisibilityState } from './formVisibility';
+import {
+	childFields,
+	createFormVisibilityAtoms,
+	fieldVisibility,
+	type FormVisibilityState,
+	visibilityFromLaunch
+} from './formVisibility';
 import { createEmbeddedRelevanceResolver } from '../formControllers/relevance';
 import useUpdateRefs from '../../../hooks/useUpdateRefs';
 import ApiResponse from '../../../models/ApiResponse';
@@ -93,6 +99,13 @@ export function getScrollContainer(container: HTMLElement): HTMLElement {
 	return mainContent instanceof HTMLElement ? mainContent : container;
 }
 
+function focusField(field: HTMLElement): void {
+	const inner = field.querySelector<HTMLElement>('input, textarea, select, [contenteditable="true"]');
+	const target = inner ?? field;
+	if (target === field && !field.hasAttribute('tabindex')) field.tabIndex = -1;
+	target.focus({ preventScroll: true });
+}
+
 /**
  * Scrolls to a field after the form body layout settles (e.g. lazy controls, RTEs, images).
  * Observes `[data-area-id="formBody"]` — the content that grows — not the fixed-height scroll container.
@@ -105,10 +118,12 @@ export function scrollToFieldWhenSettled(
 ): () => void {
 	const formBody = root.querySelector('[data-area-id="formBody"]');
 	const scroll = () => {
-		(formBody
+		const field = formBody
 			? formBody.querySelector(`[data-field-id="${fieldId}"]`)
-			: root.querySelector(`[data-field-id="${fieldId}"]`)
-		)?.scrollIntoView({ behavior: 'instant', block: 'center', inline: 'nearest' });
+			: root.querySelector(`[data-field-id="${fieldId}"]`);
+		if (!(field instanceof HTMLElement)) return;
+		field.scrollIntoView({ behavior: 'instant', block: 'center', inline: 'nearest' });
+		focusField(field);
 	};
 
 	if (!formBody) {
@@ -626,8 +641,14 @@ export function fetchUpdateRequirements({
  **/
 export function createFormsEngineAtoms(
 	username: string,
-	mixin: Partial<FormsEngineAtoms> & Pick<FormsEngineAtoms, 'readonly' | 'lockResult' | 'fileName'>
+	mixin: Partial<FormsEngineAtoms> & Pick<FormsEngineAtoms, 'readonly' | 'lockResult' | 'fileName'>,
+	launch?: {
+		selectedFields?: readonly string[];
+		index?: string | number;
+		fields: Record<string, { id: string; fields?: object | null }>;
+	}
 ): FormsEngineAtoms {
+	const visibility = visibilityFromLaunch(launch);
 	const atoms: FormsEngineAtoms = {
 		isSubmitting: atom(false),
 		hasPendingChanges: atom(false),
@@ -649,12 +670,23 @@ export function createFormsEngineAtoms(
 		}) as unknown as AtomWithStorage,
 		...mixin,
 		relevanceVersion: atom(0),
-		formVisibility: atom<FormVisibilityState>({ active: emptyFieldScope(), launch: null }),
-		// `null` is assignable to a read function when strictNullChecks is off, which would
-		// pick jotai's read-only overload. The assertion keeps this a writable atom.
-		pendingScrollFieldId: atom(null as unknown as string | null)
+		...createFormVisibilityAtoms(visibility.state, visibility.scrollFieldId)
 	};
 	return atoms;
+}
+
+/** The one write for a visibility change: scope notice, View in form, and a hidden-invalid save. */
+export function commitFormVisibility(
+	set: <Value>(atom: PrimitiveAtom<Value>, value: Value) => void,
+	atoms: {
+		formVisibility: PrimitiveAtom<FormVisibilityState>;
+		pendingScrollFieldId: PrimitiveAtom<string | null>;
+	},
+	next: FormVisibilityState,
+	scrollFieldId?: string
+): void {
+	set(atoms.formVisibility, next);
+	if (scrollFieldId) set(atoms.pendingScrollFieldId, scrollFieldId);
 }
 
 /**
@@ -776,7 +808,7 @@ export function useValidateFormProps(props: Partial<FormsEngineProps>): void {
 	const siteId = useActiveSiteId();
 	const previousProps = usePreviousValue(props);
 	const propsChangedRef = useRef(false);
-	const { create, update, repeat, fieldsToRender, fieldIds, repeatIndex, readonly } = props;
+	const { create, update, repeat, fieldIds, repeatIndex, readonly } = props;
 	if (!siteId) {
 		throw NoSiteIdError;
 	} else if (
@@ -796,7 +828,6 @@ export function useValidateFormProps(props: Partial<FormsEngineProps>): void {
 			// Note: Make sure to include all relevant props here
 			!areAllPairsEqual([
 				[create, previousProps.create],
-				[fieldsToRender, previousProps.fieldsToRender],
 				[fieldIds, previousProps.fieldIds],
 				[repeatIndex, previousProps.repeatIndex],
 				[readonly, previousProps.readonly],
@@ -1063,6 +1094,8 @@ export function prepareEmbeddedItemForm(props: {
 	lockError: ApiResponse;
 	affectedPackages: PublishPackage[];
 	update: FormsEngineProps['update'];
+	fieldIds?: string[];
+	repeatIndex?: string | number;
 	parentStackData: StableFormContextProps;
 	stableFormContextRef: RefObject<StableFormContextProps>;
 	parentPathInSite: string;
@@ -1074,6 +1107,8 @@ export function prepareEmbeddedItemForm(props: {
 		username,
 		contentType,
 		update,
+		fieldIds,
+		repeatIndex,
 		parentStackData,
 		stableFormContextRef,
 		parentPathInSite,
@@ -1089,12 +1124,16 @@ export function prepareEmbeddedItemForm(props: {
 		lockError,
 		affectedPackages
 	});
-	const atoms = createFormsEngineAtoms(username, {
-		lockResult: lockResultAtom,
-		readonly: createReadonlyAtom(lockResultAtom),
-		expandedStateBySectionId: buildSectionExpandedStateAtoms(contentType.sections),
-		fileName: createFileNameAtom('', stableFormContextRef, update.modelId)
-	});
+	const atoms = createFormsEngineAtoms(
+		username,
+		{
+			lockResult: lockResultAtom,
+			readonly: createReadonlyAtom(lockResultAtom),
+			expandedStateBySectionId: buildSectionExpandedStateAtoms(contentType.sections),
+			fileName: createFileNameAtom('', stableFormContextRef, update.modelId)
+		},
+		{ selectedFields: fieldIds, index: repeatIndex, fields: contentType.fields }
+	);
 	const values = { ...update.values };
 	delete values[XmlKeys.fileName];
 	const validatorsData: ValidatorsData = {

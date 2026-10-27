@@ -14,6 +14,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+import { atom, type PrimitiveAtom } from 'jotai';
+
 /**
  * Why a field is or isn't on screen. Relevance and launch scope both feed this,
  * and they are not the same kind of hidden:
@@ -42,6 +44,19 @@ export interface FormVisibilityState {
 	active: FormFieldScope;
 	/** Set when the form was opened on a subset, so the author can return to it. */
 	launch: FormFieldScope | null;
+}
+
+/**
+ * True when `fieldId` (qualified by `parentPath` for a repeat subfield) is on the controller deny-list.
+ * A flat id match is not used for subfields: `title_s` hidden in one repeat group must not hide `title_s` in another.
+ */
+export function isFieldPathIrrelevant(
+	irrelevantFieldPaths: ReadonlySet<string> | null | undefined,
+	fieldId: string,
+	parentPath?: string
+): boolean {
+	if (!irrelevantFieldPaths?.size) return false;
+	return irrelevantFieldPaths.has(parentPath ? `${parentPath}.${fieldId}` : fieldId);
 }
 
 export function emptyFieldScope(): FormFieldScope {
@@ -87,12 +102,39 @@ export function unsupportedRepeatIndexWarning(index: string | number): string {
 	return `Nested repeat indexes such as "${index}" are not supported. The form opens without limiting to one repeat item.`;
 }
 
+export function repeatIndexIgnoredWarning(index: string | number): string {
+	return `Repeat item index ${index} was ignored because the selected fields do not include a field with child fields.`;
+}
+
+/** Developer-facing lines for a launch. Callers log them once, when the visibility atoms are created. */
+export function launchScopeWarnings(resolved: ResolvedLaunchScope): string[] {
+	const warnings: string[] = [];
+	if (resolved.unmatchedFieldIds?.length) {
+		const ids = resolved.unmatchedFieldIds.join(', ');
+		warnings.push(
+			resolved.state.active.fieldIds
+				? `Content form launch ignored unknown field ids (${ids}).`
+				: `Content form launch field ids matched no fields (${ids}). Opening the full form.`
+		);
+	}
+	if (resolved.unsupportedRepeatIndex) warnings.push(unsupportedRepeatIndexWarning(resolved.unsupportedRepeatIndex));
+	if (resolved.ignoredRepeatIndex) warnings.push(repeatIndexIgnoredWarning(resolved.ignoredRepeatIndex));
+	return warnings;
+}
+
 export interface ResolvedLaunchScope {
 	state: FormVisibilityState;
 	/** Selected ids that are not fields of this content type. */
 	unmatchedFieldIds?: string[];
 	/** Present when `index` was nested. The form does not apply an item scope. */
 	unsupportedRepeatIndex?: string;
+	/** A numeric index was given, but no selected field has child fields. */
+	ignoredRepeatIndex?: string;
+	/**
+	 * First requested field when the selection matches nothing and the form opens in full.
+	 * The scroller ignores it when that id is not in the form.
+	 */
+	scrollFieldId?: string;
 }
 
 /**
@@ -113,22 +155,48 @@ export function resolveLaunchVisibility(args: {
 
 	let repeatItem: RepeatItemScope | null = null;
 	let unsupportedRepeatIndex: string | undefined;
+	let ignoredRepeatIndex: string | undefined;
 	if (args.index !== undefined && isNestedRepeatIndex(args.index)) {
 		unsupportedRepeatIndex = String(args.index);
-	} else if (fieldIds) {
+	} else {
 		const repeatIndex = normalizeRepeatIndex(args.index);
 		if (repeatIndex !== undefined) {
-			const repeatFieldId = fieldIds.find((id) => args.repeatFieldIds.has(id));
+			const repeatFieldId = fieldIds?.find((id) => args.repeatFieldIds.has(id));
 			if (repeatFieldId) repeatItem = { fieldId: repeatFieldId, index: repeatIndex };
+			else ignoredRepeatIndex = String(args.index);
 		}
 	}
 
 	const active: FormFieldScope = { fieldIds, repeatItem };
+	// A selection that matches nothing still names the first requested field. The scroller
+	// uses it only when that field is actually in the form.
+	const scrollFieldId = !fieldIds && requested?.length ? baseFieldId(requested[0]) : undefined;
 	return {
 		state: { active, launch: isScopeActive(active) ? { fieldIds, repeatItem } : null },
 		...(unmatched?.length ? { unmatchedFieldIds: unmatched } : {}),
-		...(unsupportedRepeatIndex ? { unsupportedRepeatIndex } : {})
+		...(unsupportedRepeatIndex ? { unsupportedRepeatIndex } : {}),
+		...(ignoredRepeatIndex ? { ignoredRepeatIndex } : {}),
+		...(scrollFieldId ? { scrollFieldId } : {})
 	};
+}
+
+/** A field that holds child fields can be limited to one item. Repeat groups do; a plain input does not. */
+export function hasChildFields(field: { fields?: object | null } | null | undefined): boolean {
+	return Boolean(field?.fields && Object.keys(field.fields).length > 0);
+}
+
+export function childFields<T>(field: { fields?: Record<string, T> | null } | null | undefined): T[] {
+	return field?.fields ? Object.values(field.fields) : [];
+}
+
+export function itemGroupFieldIds(
+	fields: Record<string, { id: string; fields?: object | null }> | null | undefined
+): Set<string> {
+	return new Set(
+		Object.values(fields ?? {})
+			.filter((field) => hasChildFields(field))
+			.map((field) => field.id)
+	);
 }
 
 export function fieldVisibility(args: {
@@ -139,8 +207,7 @@ export function fieldVisibility(args: {
 	/** Null when the form is not limited to a subset. */
 	scopeFieldIds: readonly string[] | null;
 }): FieldVisibility {
-	const qualified = args.parentPath ? `${args.parentPath}.${args.fieldId}` : args.fieldId;
-	if (args.irrelevantFieldPaths?.has(qualified)) return 'irrelevant';
+	if (isFieldPathIrrelevant(args.irrelevantFieldPaths, args.fieldId, args.parentPath)) return 'irrelevant';
 	if (
 		args.scopeFieldIds &&
 		!args.scopeFieldIds.includes(args.fieldId) &&
@@ -249,7 +316,7 @@ export function hiddenInvalidReveal(args: {
 		parentPath: args.parentPath,
 		scopeFieldIds: args.visibility.active.fieldIds
 	});
-	if (fieldId) return { state: openFullForm(args.visibility), fieldId };
+	if (fieldId) return revealField(args.visibility, fieldId);
 	const repeatItem = args.visibility.active.repeatItem;
 	if (repeatItem && args.invalidFieldIds.includes(repeatItem.fieldId)) {
 		return { state: clearRepeatItemScope(args.visibility), fieldId: repeatItem.fieldId };
@@ -257,62 +324,69 @@ export function hiddenInvalidReveal(args: {
 	return undefined;
 }
 
-/** A completed Save click after a fresh validity read. Drafts do not come through here. */
-export type CompletedSaveRead = 'revealed' | 'invalid' | 'valid';
-
 /**
- * Decision for a completed Save click. `hiddenInvalidReveal` has already run.
- * A hidden error is revealed and nothing is written. A visible error is the
- * cannot-proceed dialog. A valid read writes. The debounced `invalidForm`
- * flag is not an input, so fixing the last visible error and saving immediately writes.
+ * Opens the full form and, when `fieldId` is set, names that field to scroll to.
+ * The scope notice, View in form, and a hidden-invalid save all go through this.
  */
-export function completedSaveRead(args: { hasHiddenInvalid: boolean; isFormInvalid: boolean }): CompletedSaveRead {
-	if (args.hasHiddenInvalid) return 'revealed';
-	if (args.isFormInvalid) return 'invalid';
-	return 'valid';
+export function revealField(state: FormVisibilityState, fieldId?: string): HiddenInvalidReveal {
+	return fieldId ? { state: openFullForm(state), fieldId } : { state: openFullForm(state), fieldId: '' };
 }
 
-/**
- * Drops a click that arrives while a validity read is in flight, before draft
- * state changes. An accepted click records whether this save is a draft.
- * Returns false when the click was ignored.
- */
-export function claimSaveClick(
-	inFlight: boolean,
-	type: 'save' | 'saveDraft',
-	setSaveAsDraft: (draft: boolean) => void
-): boolean {
-	if (inFlight) return false;
-	setSaveAsDraft(type === 'saveDraft');
-	return true;
-}
-
-/** What one Save or Save as draft click should do after the in-flight guard. */
-export type SaveClickEffect =
-	{ effect: 'ignore' | 'draft' | 'write' | 'cannotProceed' | 'revealed' } | { effect: 'error'; error: unknown };
+export type SaveRevealStatus = 'revealed' | 'invalid' | 'write';
 
 /**
- * One Save or Save as draft click. A click that arrives while a validity read is
- * in flight is ignored. A rejected read reports the error and does not write.
- * The in-flight flag is always cleared.
+ * One validity read, one decision. A draft writes. A completed save that is hiding
+ * an error reveals it and does not write. A completed save whose errors are on screen
+ * is the cannot-proceed dialog. Repeat-item editors have no launch scope to open.
  */
-export async function applySaveClick(args: {
-	inFlight: { current: boolean };
-	type: 'save' | 'saveDraft';
-	read: () => Promise<CompletedSaveRead>;
-}): Promise<SaveClickEffect> {
-	if (args.inFlight.current) return { effect: 'ignore' };
-	// Drafts are allowed to be invalid, including fields the launch scope is hiding.
-	if (args.type === 'saveDraft') return { effect: 'draft' };
-	args.inFlight.current = true;
-	try {
-		const outcome = await args.read();
-		if (outcome === 'invalid') return { effect: 'cannotProceed' };
-		if (outcome === 'valid') return { effect: 'write' };
-		return { effect: 'revealed' };
-	} catch (error) {
-		return { effect: 'error', error };
-	} finally {
-		args.inFlight.current = false;
+export function decideSaveReveal(args: {
+	draft: boolean;
+	isRepeatMode: boolean;
+	visibility: FormVisibilityState;
+	invalidFieldIds: readonly string[];
+	sectionOrder: readonly string[];
+	irrelevantFieldPaths?: ReadonlySet<string> | null;
+	parentPath?: string;
+}): { status: SaveRevealStatus; reveal?: HiddenInvalidReveal } {
+	if (!args.draft && !args.isRepeatMode) {
+		const reveal = hiddenInvalidReveal(args);
+		if (reveal?.fieldId) return { status: 'revealed', reveal };
 	}
+	if (!args.draft && args.invalidFieldIds.length > 0) return { status: 'invalid' };
+	return { status: 'write' };
+}
+
+/**
+ * Visibility atoms for one form. `scroll` is a `string | null` variable so jotai builds a
+ * writable atom: a bare `null` argument matches the read-only overload when strictNullChecks is off.
+ */
+export function createFormVisibilityAtoms(
+	initial?: FormVisibilityState,
+	scrollFieldId?: string | null
+): {
+	formVisibility: PrimitiveAtom<FormVisibilityState>;
+	pendingScrollFieldId: PrimitiveAtom<string | null>;
+} {
+	const scroll: string | null = scrollFieldId ?? null;
+	return {
+		formVisibility: atom<FormVisibilityState>(initial ?? { active: emptyFieldScope(), launch: null }),
+		pendingScrollFieldId: atom(scroll)
+	};
+}
+
+/** Resolves a launch and logs its warnings. Repeat-item editors pass no launch. */
+export function visibilityFromLaunch(launch?: {
+	selectedFields?: readonly string[];
+	index?: string | number;
+	fields: Record<string, { id: string; fields?: object | null }>;
+}): { state: FormVisibilityState; scrollFieldId?: string } {
+	if (!launch) return { state: { active: emptyFieldScope(), launch: null } };
+	const resolved = resolveLaunchVisibility({
+		selectedFields: launch.selectedFields,
+		index: launch.index,
+		knownFieldIds: new Set(Object.keys(launch.fields)),
+		repeatFieldIds: itemGroupFieldIds(launch.fields)
+	});
+	for (const warning of launchScopeWarnings(resolved)) console.warn(warning);
+	return { state: resolved.state, scrollFieldId: resolved.scrollFieldId };
 }

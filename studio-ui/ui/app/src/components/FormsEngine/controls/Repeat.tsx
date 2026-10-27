@@ -92,7 +92,6 @@ export function Repeat(props: RepeatProps) {
 	const handleEditItem = (event: ReactMouseEvent, item: RepeatItem, index: number) => {
 		api.pushForm({
 			repeat: { fieldId: field.id, values: item, index },
-			fieldsToRender: Object.values(field.fields),
 			onSave(result) {
 				const nextValue = value.concat();
 				nextValue.splice(index, 1, result.values);
@@ -104,7 +103,6 @@ export function Repeat(props: RepeatProps) {
 	const handleAddItem: IconButtonProps['onClick'] = (e) => {
 		api.pushForm({
 			repeat: { fieldId: field.id },
-			fieldsToRender: Object.values(field.fields),
 			onSave(result) {
 				setValue(value.concat(result.values));
 				return Promise.resolve({ close: true });
