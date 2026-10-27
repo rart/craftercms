@@ -370,7 +370,12 @@ export function createFieldAtoms(
 			fileName: formContextRef.current.atoms.fileName ? get(formContextRef.current.atoms.fileName) : '',
 			// Read at validation time. `validatorsData` is captured at bootstrap, before relevance exists.
 			irrelevantFieldPaths: formContextRef.current.formControllerState?.irrelevantFieldPaths,
-			resolveEmbeddedRelevance: validatorsData?.resolveEmbeddedRelevance
+			resolveEmbeddedRelevance: validatorsData?.resolveEmbeddedRelevance,
+			// Item-count fields compare min and max. Reading the partner subscribes this atom to it.
+			getValue: (fieldId: string) => {
+				const partner = formContextRef.current.atoms?.valueByFieldId?.[fieldId];
+				return partner ? get(partner) : undefined;
+			}
 		});
 	});
 	return [valueAtom, validationAtom];
@@ -392,8 +397,20 @@ export function createFileNameAtom(
 	formContextRef: RefObject<FieldTrackingContext>,
 	initialValue?: string
 ): PrimitiveAtom<string> {
-	const initial = initialValue ?? (path ? getFileNameValueFromPath(path, isPagePath(path)) : '');
+	const initial = initialValue ?? fileNameFromItemPath(path);
 	return createTrackedFileNameAtom(initial, formContextRef);
+}
+
+/** Site root index. Its file name is fixed, so a blank file name is allowed there. */
+export const rootPagePath = '/site/website/index.xml';
+
+/**
+ * File name for an item path. {@link createFileNameAtom} starts here when no initial value is given.
+ * The home page, and a form that has no path yet, are blank.
+ */
+export function fileNameFromItemPath(path?: string | null): string {
+	if (!path) return '';
+	return getFileNameValueFromPath(path, isPagePath(path));
 }
 
 /**
@@ -406,7 +423,7 @@ export function createFileNameAtom(
  */
 export const getBasePath = (path: string, isPage: boolean): string => {
 	// If home page
-	if (path === '/site/website/index.xml' && isPage) return '/site/website/';
+	if (path === rootPagePath && isPage) return '/site/website/';
 
 	const pathParts = path.split('/');
 	return isPage
@@ -424,7 +441,7 @@ export const getBasePath = (path: string, isPage: boolean): string => {
  */
 export const getFileNameValueFromPath = (path: string, isPage: boolean): string => {
 	// If home page, return empty string
-	if (path === '/site/website/index.xml' && isPage) return '';
+	if (path === rootPagePath && isPage) return '';
 
 	const basePath = getBasePath(path, isPage);
 	return path.replace(basePath, '').replace(isPage ? '/index.xml' : '.xml', '');

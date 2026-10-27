@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007-2024 Crafter Software Corporation. All Rights Reserved.
+ * Copyright (C) 2007-2026 Crafter Software Corporation. All Rights Reserved.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 3 as published by
@@ -26,7 +26,7 @@ import List from '@mui/material/List';
 import ListItemText from '@mui/material/ListItemText';
 import ListItemSecondaryAction from '@mui/material/ListItemSecondaryAction';
 import ListItemButton from '@mui/material/ListItemButton';
-import { FormattedMessage } from 'react-intl';
+import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import Tooltip from '@mui/material/Tooltip';
 import { lazy, MouseEvent as ReactMouseEvent, Suspense, useMemo, useState } from 'react';
 import Avatar, { avatarClasses } from '@mui/material/Avatar';
@@ -38,6 +38,18 @@ import SortableListSkeleton from '../components/SortableListSkeleton';
 import type { TItem } from '../components/SortableList';
 import FieldBox from '../components/FieldBox';
 import { buttonClasses } from '@mui/material/Button';
+import {
+	countLimitValue,
+	getRepeatMinimum,
+	isRepeatAddDisabled,
+	isRepeatRemoveDisabled
+} from '../../../utils/countLimits';
+const repeatMessages = defineMessages({
+	addItems: { defaultMessage: 'Add items' },
+	maxReached: { defaultMessage: 'Maximum of {max, plural, one {# item} other {# items}} reached' },
+	deleteItem: { defaultMessage: 'Delete' },
+	minRequired: { defaultMessage: 'At least {min, plural, one {# item is} other {# items are}} required' }
+});
 
 export type RepeatItem = Record<string, unknown>;
 
@@ -64,16 +76,37 @@ function getRepeatItemSummary(item: RepeatItem): string {
 		.join(' | ');
 }
 
+/** Repeating group. Add stops at maxCount; delete stops at minCount. See utils/countLimits.ts. */
 export function Repeat(props: RepeatProps) {
 	const { field, value, setValue, readonly, autoFocus } = props;
+	const { formatMessage } = useIntl();
 	const [sortMode, setSortMode] = useState(false);
 	const useTouchSorting = useMemo(() => isTouchDevice(), []);
 	const handleCancelReorder = () => setSortMode(false);
 	const onReorder = () => setSortMode(true);
 	const api = useStableGlobalApiContext();
-	const hasContent = value.length;
+	const count = value.length;
+	const hasContent = count;
+	// minCount/maxCount are the mapped limits. 0 is unlimited. See utils/countLimits.ts.
+	const maxCount = countLimitValue(field.validations?.maxCount?.value);
+	const minCount = countLimitValue(field.validations?.minCount?.value);
+	const minimum = getRepeatMinimum(minCount);
+	const isAddDisabled = isRepeatAddDisabled(Boolean(readonly), count, maxCount);
+	const isRemoveDisabled = isRepeatRemoveDisabled(Boolean(readonly), count, minCount);
+	const addTooltip = readonly
+		? ''
+		: isAddDisabled
+			? formatMessage(repeatMessages.maxReached, { max: maxCount ?? 0 })
+			: formatMessage(repeatMessages.addItems);
+	const deleteTooltip = readonly
+		? ''
+		: isRemoveDisabled
+			? formatMessage(repeatMessages.minRequired, { min: minimum })
+			: formatMessage(repeatMessages.deleteItem);
+	/** Removes one item unless the repeat is already at its minimum. */
 	const handleRemoveItem = (event: ReactMouseEvent, index: number) => {
 		event.stopPropagation();
+		if (isRemoveDisabled) return;
 		const nextValue = value.concat();
 		nextValue.splice(index, 1);
 		setValue(nextValue);
@@ -90,7 +123,9 @@ export function Repeat(props: RepeatProps) {
 			}
 		});
 	};
-	const handleAddItem: IconButtonProps['onClick'] = (e) => {
+	/** Opens a new repeat item unless adding is disabled. */
+	const handleAddItem: IconButtonProps['onClick'] = () => {
+		if (isAddDisabled) return;
 		api.pushForm({
 			repeat: { fieldId: field.id },
 			fieldsToRender: Object.values(field.fields),
@@ -100,7 +135,6 @@ export function Repeat(props: RepeatProps) {
 			}
 		});
 	};
-	const isAddDisabled = readonly || field.validations.maxCount?.value >= value;
 	const sortList = useMemo<Array<TItem<RepeatItem>>>(
 		() => (sortMode ? value.map((i, index) => ({ key: String(index), value: getRepeatItemTitle(i), data: i })) : []),
 		[sortMode, value]
@@ -124,14 +158,22 @@ export function Repeat(props: RepeatProps) {
 			</Dialog>
 			<FormsEngineField
 				field={field}
-				min={field.validations.minCount?.value}
-				max={field.validations.maxCount?.value}
-				length={value.length}
+				min={minCount}
+				max={maxCount}
+				length={count}
 				action={
-					<Tooltip title={isAddDisabled ? '' : <FormattedMessage defaultMessage="Add items" />}>
-						<IconButton size="small" color="primary" onClick={handleAddItem} autoFocus={autoFocus}>
-							<AddRounded fontSize="small" />
-						</IconButton>
+					<Tooltip title={addTooltip}>
+						<span>
+							<IconButton
+								size="small"
+								color="primary"
+								onClick={handleAddItem}
+								autoFocus={autoFocus}
+								disabled={isAddDisabled}
+							>
+								<AddRounded fontSize="small" />
+							</IconButton>
+						</span>
 					</Tooltip>
 				}
 				menuOptions={[{ id: 'reorder', text: <FormattedMessage defaultMessage="Reorder Items" /> }]}
@@ -146,7 +188,7 @@ export function Repeat(props: RepeatProps) {
 							{value.map((item, index) => (
 								<ListItemButton
 									key={index}
-									divider={index !== value.length - 1}
+									divider={index !== count - 1}
 									onClick={(e) => handleEditItem(e, item, index)}
 								>
 									<ListItemText
@@ -168,10 +210,16 @@ export function Repeat(props: RepeatProps) {
 													<EditOutlined fontSize="small" />
 												</IconButton>
 											</Tooltip>
-											<Tooltip title={<FormattedMessage defaultMessage="Delete" />}>
-												<IconButton size="small" onClick={(e) => handleRemoveItem(e, index)}>
-													<DeleteOutlined fontSize="small" />
-												</IconButton>
+											<Tooltip title={deleteTooltip}>
+												<span onClick={(event) => event.stopPropagation()}>
+													<IconButton
+														size="small"
+														disabled={isRemoveDisabled}
+														onClick={(e) => handleRemoveItem(e, index)}
+													>
+														<DeleteOutlined fontSize="small" />
+													</IconButton>
+												</span>
 											</Tooltip>
 										</ListItemSecondaryAction>
 									)}
@@ -179,24 +227,26 @@ export function Repeat(props: RepeatProps) {
 							))}
 						</List>
 					) : (
-						<>
-							<StackedButton
-								onClick={handleAddItem}
-								disabled={isAddDisabled}
-								sx={{
-									[`&.${buttonClasses.disabled} .${avatarClasses.root}`]: {
-										opacity: 0.7,
-										color: 'action.disabled',
-										bgcolor: 'action.disabled'
-									}
-								}}
-							>
-								<Avatar variant="circular">
-									<AddRounded />
-								</Avatar>
-								<FormattedMessage defaultMessage="Add" />
-							</StackedButton>
-						</>
+						<Tooltip title={addTooltip}>
+							<span>
+								<StackedButton
+									onClick={handleAddItem}
+									disabled={isAddDisabled}
+									sx={{
+										[`&.${buttonClasses.disabled} .${avatarClasses.root}`]: {
+											opacity: 0.7,
+											color: 'action.disabled',
+											bgcolor: 'action.disabled'
+										}
+									}}
+								>
+									<Avatar variant="circular">
+										<AddRounded />
+									</Avatar>
+									<FormattedMessage defaultMessage="Add" />
+								</StackedButton>
+							</span>
+						</Tooltip>
 					)}
 				</FieldBox>
 			</FormsEngineField>

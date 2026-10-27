@@ -25,7 +25,7 @@ import SearchBar from '../../SearchBar';
 import { SimpleTreeView } from '@mui/x-tree-view/SimpleTreeView';
 import Box from '@mui/material/Box';
 import { atom, useAtomValue, useSetAtom, useStore as useJotaiStore } from 'jotai';
-import { hasFieldValidator, isEmptyValue, isFieldRequired } from '../lib/validators';
+import { hasFieldValidator, hasValidationKeyValidator, isEmptyValue, isFieldRequired } from '../lib/validators';
 import { immutableEmptyArray } from '../../../utils/array';
 import useLoadableAtom from '../lib/useLoadableAtom';
 import Skeleton from '@mui/material/Skeleton';
@@ -174,7 +174,7 @@ function TreeItemLabelContent({
 	const validityData = useLoadableAtom(validationAtom);
 	const isValid = validityData.state === 'hasData' ? validityData?.data.isValid : true;
 	const isRequired = isFieldRequired(field);
-	const hasValidator = hasFieldValidator(field.type);
+	const hasValidator = hasFieldValidator(field.type) || hasValidationKeyValidator(field);
 	return (
 		<Box
 			sx={{
