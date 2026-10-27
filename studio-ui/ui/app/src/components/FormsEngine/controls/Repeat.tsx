@@ -39,10 +39,10 @@ import type { TItem } from '../components/SortableList';
 import FieldBox from '../components/FieldBox';
 import { buttonClasses } from '@mui/material/Button';
 import {
+	countLimitValue,
 	getRepeatMinimum,
 	isRepeatAddDisabled,
-	isRepeatRemoveDisabled,
-	readNumericLimit
+	isRepeatRemoveDisabled
 } from '../../../utils/repeatLimits';
 const repeatMessages = defineMessages({
 	addItems: { defaultMessage: 'Add items' },
@@ -87,15 +87,16 @@ export function Repeat(props: RepeatProps) {
 	const api = useStableGlobalApiContext();
 	const count = value.length;
 	const hasContent = count;
-	const maxCount = field.validations?.maxCount?.value;
-	const minCount = field.validations?.minCount?.value;
+	// minCount/maxCount are the mapped limits. 0 is unlimited. See utils/repeatLimits.ts.
+	const maxCount = countLimitValue(field.validations?.maxCount?.value);
+	const minCount = countLimitValue(field.validations?.minCount?.value);
 	const minimum = getRepeatMinimum(minCount);
 	const isAddDisabled = isRepeatAddDisabled(Boolean(readonly), count, maxCount);
 	const isRemoveDisabled = isRepeatRemoveDisabled(Boolean(readonly), count, minCount);
 	const addTooltip = readonly
 		? ''
 		: isAddDisabled
-			? formatMessage(repeatMessages.maxReached, { max: readNumericLimit(maxCount) ?? 0 })
+			? formatMessage(repeatMessages.maxReached, { max: maxCount ?? 0 })
 			: formatMessage(repeatMessages.addItems);
 	const deleteTooltip = readonly
 		? ''

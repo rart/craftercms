@@ -64,7 +64,7 @@ describe('repeat minOccurs/maxOccurs mapping', () => {
 		assert.equal(getRepeatMinimum(field.validations.minCount?.value), 1);
 	});
 
-	it('treats * , blank, and 0 as unlimited, and falls back to the property when the element is blank', () => {
+	it('treats * , blank, and 0 as unlimited, and falls back to the property when the element is blank or invalid', () => {
 		const starred = parsedField({
 			id: 'starred_o',
 			title: 'Starred',
@@ -75,9 +75,9 @@ describe('repeat minOccurs/maxOccurs mapping', () => {
 			properties: { property: [property('minOccurs', '2'), property('maxOccurs', '4')] },
 			fields: { field: [] }
 		});
-		assert.equal(starred.validations.minCount, undefined);
+		assert.equal(starred.validations.minCount?.value, 2);
 		assert.equal(starred.validations.maxCount, undefined);
-		assert.equal(starred.properties.minOccurs.value, 0);
+		assert.equal(starred.properties.minOccurs.value, 2);
 		assert.equal(starred.properties.maxOccurs.value, '*');
 
 		const fromProperty = parsedField({
@@ -120,19 +120,88 @@ describe('repeat minOccurs/maxOccurs mapping', () => {
 		assert.equal(getRepeatMinimum(field.validations.minCount?.value), 0);
 	});
 
-	it('rejects invalid repeat limits', () => {
+	it('treats a maximum of 0 as unlimited', () => {
 		const field = parsedField({
-			id: 'invalid_o',
-			title: 'Invalid',
+			id: 'capped_o',
+			title: 'Capped',
 			description: '',
 			type: 'repeat',
-			minOccurs: '0.5',
-			maxOccurs: '3abc',
-			properties: { property: [property('minOccurs', '2'), property('maxOccurs', '-1')] },
+			maxOccurs: '0',
+			properties: { property: [property('maxOccurs', '4')] },
 			fields: { field: [] }
 		});
-		assert.equal(field.validations.minCount, undefined);
 		assert.equal(field.validations.maxCount, undefined);
+		assert.equal(field.properties.maxOccurs.value, '*');
+	});
+
+	it('falls back from an invalid element and warns when nothing is usable', () => {
+		const warnings: string[] = [];
+		const original = console.warn;
+		console.warn = (message?: unknown) => {
+			warnings.push(String(message));
+		};
+		try {
+			const field = parsedField({
+				id: 'invalid_o',
+				title: 'Invalid',
+				description: '',
+				type: 'repeat',
+				minOccurs: '0.5',
+				maxOccurs: '3abc',
+				properties: { property: [property('minOccurs', '2'), property('maxOccurs', '-1')] },
+				fields: { field: [] }
+			});
+			assert.equal(field.validations.minCount?.value, 2);
+			assert.equal(field.validations.maxCount, undefined);
+			assert.equal(
+				warnings.some(
+					(warning) => warning.includes('/page/article') && warning.includes('invalid_o') && warning.includes('max')
+				),
+				true
+			);
+			assert.equal(
+				warnings.some((warning) => warning.includes('min item-count')),
+				false
+			);
+		} finally {
+			console.warn = original;
+		}
+	});
+});
+
+describe('checkbox group minSize constraint', () => {
+	it('maps the constraint to minCount and keeps 0 for the editor', () => {
+		const limited = parsedField({
+			id: 'topics_o',
+			title: 'Topics',
+			description: '',
+			type: 'checkbox-group',
+			constraints: { constraint: { name: 'minSize', value: '2', type: 'int' } }
+		});
+		assert.equal(limited.validations.minCount?.value, 2);
+		assert.equal(limited.validations.maxCount, undefined);
+		assert.equal(limited.validations.minSize, undefined);
+		assert.equal(limited.storedMinSize, 2);
+
+		const zero = parsedField({
+			id: 'topics_o',
+			title: 'Topics',
+			description: '',
+			type: 'checkbox-group',
+			constraints: { constraint: { name: 'minSize', value: '0', type: 'int' } }
+		});
+		assert.equal(zero.validations.minCount, undefined);
+		assert.equal(zero.validations.minSize, undefined);
+		assert.equal(zero.storedMinSize, 0);
+
+		const blank = parsedField({
+			id: 'topics_o',
+			title: 'Topics',
+			description: '',
+			type: 'checkbox-group'
+		});
+		assert.equal(blank.validations.minCount, undefined);
+		assert.equal(blank.storedMinSize, undefined);
 	});
 });
 
@@ -147,7 +216,7 @@ describe('node selector minSize/maxSize mapping', () => {
 		});
 		assert.equal(limited.validations.minCount?.value, 1);
 		assert.equal(limited.validations.maxCount?.value, 3);
-		assert.equal(limited.validations.required?.value, true);
+		assert.equal(limited.validations.required, undefined);
 
 		const unlimited = parsedField({
 			id: 'files_o',
@@ -158,7 +227,7 @@ describe('node selector minSize/maxSize mapping', () => {
 		});
 		assert.equal(unlimited.validations.minCount, undefined);
 		assert.equal(unlimited.validations.maxCount, undefined);
-		assert.equal(unlimited.validations.required?.value, false);
+		assert.equal(unlimited.validations.required, undefined);
 
 		const blank = parsedField({
 			id: 'blank_o',

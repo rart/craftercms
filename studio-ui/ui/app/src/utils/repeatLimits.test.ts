@@ -17,44 +17,103 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
-	countLimitsFromNodeSelector,
-	countLimitsFromRepeat,
+	checkboxGroupConstraintValue,
 	countLimitValue,
+	countLimitsFromStorage,
 	getRepeatMinimum,
 	getRepeatOccurrenceViolations,
+	isItemCountMaxEditorValue,
+	isItemCountMinEditorValue,
+	isItemCountRangeValid,
 	isRepeatAddDisabled,
 	isRepeatRemoveDisabled,
-	nodeSelectorCountLimit,
 	repeatLimitEditorValues,
 	repeatOccursXmlValues
 } from './repeatLimits.ts';
 
-describe('countLimitsFromRepeat', () => {
+const fieldContext = { contentTypeId: '/page/article', fieldId: 'accounts_o' };
+
+describe('countLimitsFromStorage', () => {
 	it('lets the element win over the property', () => {
-		assert.deepEqual(countLimitsFromRepeat('1', '0', '*', '4'), { minCount: 1 });
-		assert.deepEqual(countLimitsFromRepeat('2', '9', '3', '8'), { minCount: 2, maxCount: 3 });
+		assert.deepEqual(countLimitsFromStorage({ minElement: '1', minProperty: '0', maxElement: '*', maxProperty: '4' }), {
+			minCount: 1
+		});
+		assert.deepEqual(countLimitsFromStorage({ minElement: '2', minProperty: '9', maxElement: '3', maxProperty: '8' }), {
+			minCount: 2,
+			maxCount: 3
+		});
 	});
 
 	it('uses the property when the element is blank', () => {
-		assert.deepEqual(countLimitsFromRepeat(undefined, '5', '', '4'), { minCount: 5, maxCount: 4 });
-		assert.deepEqual(countLimitsFromRepeat('  ', 2, undefined, 6), { minCount: 2, maxCount: 6 });
+		assert.deepEqual(countLimitsFromStorage({ minProperty: '5', maxElement: '', maxProperty: '4' }), {
+			minCount: 5,
+			maxCount: 4
+		});
+		assert.deepEqual(countLimitsFromStorage({ minElement: '  ', minProperty: 2, maxProperty: 6 }), {
+			minCount: 2,
+			maxCount: 6
+		});
 	});
 
-	it('treats 0 and blank as no minimum, and * and blank as no maximum', () => {
-		assert.deepEqual(countLimitsFromRepeat('0', '4', '*', '3'), {});
-		assert.deepEqual(countLimitsFromRepeat(undefined, undefined, undefined, undefined), {});
-		assert.deepEqual(countLimitsFromRepeat(undefined, '0', ' * ', '9'), {});
+	it('treats 0 as unlimited for every control, including a repeat maximum', () => {
+		assert.deepEqual(
+			countLimitsFromStorage({ minElement: '0', minProperty: '4', maxElement: '*', maxProperty: '3' }),
+			{}
+		);
+		assert.deepEqual(countLimitsFromStorage({ maxElement: '0', maxProperty: '*' }), {});
+		assert.deepEqual(countLimitsFromStorage({ minProperty: '0', maxProperty: '0' }), {});
+		assert.deepEqual(countLimitsFromStorage({ minProperty: 2, maxProperty: 0 }), { minCount: 2 });
+		assert.deepEqual(countLimitsFromStorage({ minProperty: '2' }), { minCount: 2 });
 	});
 
-	it('rejects fractions, trailing junk, and negatives', () => {
-		assert.deepEqual(countLimitsFromRepeat('0.5', '2', '3abc', '4'), {});
-		assert.deepEqual(countLimitsFromRepeat('-1', '2', -1, '4'), {});
+	it('treats an invalid value as blank and falls back to the property', () => {
+		assert.deepEqual(
+			countLimitsFromStorage({ minElement: '0.5', minProperty: '2', maxElement: '3abc', maxProperty: '4' }),
+			{ minCount: 2, maxCount: 4 }
+		);
+		assert.deepEqual(countLimitsFromStorage({ minElement: '-1', minProperty: '2', maxElement: -1, maxProperty: '4' }), {
+			minCount: 2,
+			maxCount: 4
+		});
+		assert.deepEqual(
+			countLimitsFromStorage({ minElement: '*', minProperty: '2', maxElement: ' * ', maxProperty: '4' }),
+			{
+				minCount: 2
+			}
+		);
 		assert.equal(isRepeatAddDisabled(false, 0, '-1'), false);
-		assert.equal(isRepeatAddDisabled(false, 0, -1), false);
+		assert.equal(isRepeatAddDisabled(false, 1, 0), false);
 	});
 
-	it('keeps a repeat maximum of 0', () => {
-		assert.deepEqual(countLimitsFromRepeat(undefined, undefined, '0', '*'), { maxCount: 0 });
+	it('warns when nothing is usable, and stays quiet for a blank limit', () => {
+		const warnings: string[] = [];
+		const original = console.warn;
+		console.warn = (message?: unknown) => {
+			warnings.push(String(message));
+		};
+		try {
+			assert.deepEqual(
+				countLimitsFromStorage(
+					{ minElement: '-1', minProperty: '3abc', maxElement: '0.5', maxProperty: '' },
+					fieldContext
+				),
+				{}
+			);
+			assert.equal(warnings.length, 2);
+			assert.match(warnings.join('\n'), /\/page\/article/);
+			assert.match(warnings.join('\n'), /accounts_o/);
+			assert.match(warnings.join('\n'), /min/);
+			assert.match(warnings.join('\n'), /max/);
+
+			warnings.length = 0;
+			assert.deepEqual(countLimitsFromStorage({ minElement: '', maxElement: undefined }, fieldContext), {});
+			assert.equal(warnings.length, 0);
+
+			assert.deepEqual(countLimitsFromStorage({ minElement: 'nope', minProperty: '1' }), { minCount: 1 });
+			assert.equal(warnings.length, 0);
+		} finally {
+			console.warn = original;
+		}
 	});
 
 	it('writes TB1 defaults for the editor and the XML', () => {
@@ -63,33 +122,53 @@ describe('countLimitsFromRepeat', () => {
 		assert.deepEqual(repeatOccursXmlValues(undefined, ''), { minOccurs: '0', maxOccurs: '*' });
 		assert.deepEqual(repeatOccursXmlValues(1, '*'), { minOccurs: '1', maxOccurs: '*' });
 		assert.deepEqual(repeatOccursXmlValues('2', 4), { minOccurs: '2', maxOccurs: '4' });
+		assert.deepEqual(repeatOccursXmlValues(0, 0), { minOccurs: '0', maxOccurs: '*' });
+	});
+
+	it('keeps a stored checkbox minimum of 0 for the constraint', () => {
+		assert.equal(checkboxGroupConstraintValue('0'), 0);
+		assert.equal(checkboxGroupConstraintValue('2'), 2);
+		assert.equal(checkboxGroupConstraintValue(''), undefined);
+		assert.equal(checkboxGroupConstraintValue('3abc'), undefined);
 	});
 });
 
-describe('countLimitsFromNodeSelector', () => {
-	it('treats 0 and blank as unlimited', () => {
-		assert.deepEqual(countLimitsFromNodeSelector('0', '0'), {});
-		assert.deepEqual(countLimitsFromNodeSelector(0, ''), {});
-		assert.deepEqual(countLimitsFromNodeSelector(undefined, undefined), {});
-		assert.equal(nodeSelectorCountLimit(0), undefined);
-		assert.equal(nodeSelectorCountLimit(''), undefined);
+describe('item count editor values', () => {
+	it('accepts a minimum of 0 and rejects a maximum of 0', () => {
+		assert.equal(isItemCountMinEditorValue(''), true);
+		assert.equal(isItemCountMinEditorValue(0), true);
+		assert.equal(isItemCountMinEditorValue('2'), true);
+		assert.equal(isItemCountMinEditorValue('-1'), false);
+		assert.equal(isItemCountMinEditorValue('1.5'), false);
+
+		assert.equal(isItemCountMaxEditorValue(''), true);
+		assert.equal(isItemCountMaxEditorValue(undefined), true);
+		assert.equal(isItemCountMaxEditorValue('*'), true);
+		assert.equal(isItemCountMaxEditorValue(' * '), true);
+		assert.equal(isItemCountMaxEditorValue('1'), true);
+		assert.equal(isItemCountMaxEditorValue(4), true);
+		assert.equal(isItemCountMaxEditorValue('0'), false);
+		assert.equal(isItemCountMaxEditorValue(0), false);
+		assert.equal(isItemCountMaxEditorValue('abc'), false);
+		assert.equal(isItemCountMaxEditorValue('2.5'), false);
+		assert.equal(isItemCountMaxEditorValue('3abc'), false);
 	});
 
-	it('keeps a positive minimum and maximum', () => {
-		assert.deepEqual(countLimitsFromNodeSelector('1', '3'), { minCount: 1, maxCount: 3 });
-		assert.deepEqual(countLimitsFromNodeSelector(2, 0), { minCount: 2 });
-	});
-
-	it('rejects invalid values', () => {
-		assert.deepEqual(countLimitsFromNodeSelector('3abc', '0.5'), {});
-		assert.deepEqual(countLimitsFromNodeSelector('-1', '*'), {});
+	it('rejects a minimum greater than the maximum when both are set', () => {
+		assert.equal(isItemCountRangeValid(2, 4), true);
+		assert.equal(isItemCountRangeValid(4, 4), true);
+		assert.equal(isItemCountRangeValid(5, 3), false);
+		assert.equal(isItemCountRangeValid(0, 3), true);
+		assert.equal(isItemCountRangeValid(5, '*'), true);
+		assert.equal(isItemCountRangeValid(5, ''), true);
+		assert.equal(isItemCountRangeValid('2', '1'), false);
 	});
 });
 
 describe('countLimitValue', () => {
-	it('keeps a limit of 0 and treats nullish values as unlimited', () => {
-		assert.equal(countLimitValue(0), 0);
-		assert.equal(countLimitValue('0'), 0);
+	it('treats 0 and nullish values as unlimited', () => {
+		assert.equal(countLimitValue(0), undefined);
+		assert.equal(countLimitValue('0'), undefined);
 		assert.equal(countLimitValue(3), 3);
 		assert.equal(countLimitValue(undefined), undefined);
 		assert.equal(countLimitValue(null), undefined);
@@ -168,6 +247,7 @@ describe('getRepeatOccurrenceViolations', () => {
 		assert.deepEqual(getRepeatOccurrenceViolations(100, undefined, undefined), []);
 		assert.deepEqual(getRepeatOccurrenceViolations(100, 0, '*'), []);
 		assert.deepEqual(getRepeatOccurrenceViolations(100, null, null), []);
+		assert.deepEqual(getRepeatOccurrenceViolations(5, 0, 0), []);
 	});
 
 	it('reads numeric strings', () => {

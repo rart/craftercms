@@ -428,7 +428,7 @@ export function runDropTargetsValidations(dropTargets: ICERecord[]): LookupTable
 			const validation = validations[key];
 			switch (validation.id) {
 				case 'minCount': {
-					// 0 is a real minimum. See utils/repeatLimits.ts.
+					// 0 is unlimited. See utils/repeatLimits.ts.
 					const minCount = countLimitValue(validation.value);
 					if (minCount != null && collection.length < minCount) {
 						validationResult[validation.id] = {
@@ -440,7 +440,7 @@ export function runDropTargetsValidations(dropTargets: ICERecord[]): LookupTable
 					break;
 				}
 				case 'maxCount': {
-					// 0 is a real cap. See utils/repeatLimits.ts.
+					// 0 is unlimited. See utils/repeatLimits.ts.
 					const maxCount = countLimitValue(validation.value);
 					if (maxCount != null && collection.length >= maxCount) {
 						validationResult[validation.id] = {
@@ -640,7 +640,7 @@ export function checkComponentMovability(entries: ReferentialEntries): boolean {
 		return false;
 	}
 
-	// minCount value. A missing minimum is 0. See utils/repeatLimits.ts.
+	// minCount value. A missing minimum, including 0, is 0. See utils/repeatLimits.ts.
 	const minCount = getRepeatMinimum(parentField.validations?.minCount?.value);
 
 	if (parentField.type === 'node-selector') {

@@ -285,7 +285,7 @@ export const systemValidationsNames = [
 	'fileBrowseRepo'
 ];
 
-// minSize/maxSize and minOccurs/maxOccurs are mapped in utils/repeatLimits.ts.
+// Item-count storage (minOccurs/maxOccurs, minSize/maxSize, checkbox minSize) is mapped in utils/repeatLimits.ts.
 export const systemValidationsKeysMap = {
 	maxlength: 'maxLength',
 	contentTypes: 'allowedContentTypes',

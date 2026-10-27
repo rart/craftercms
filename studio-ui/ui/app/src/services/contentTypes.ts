@@ -36,8 +36,9 @@ import { CONTENT_TYPE_JSON, get, getBinary, getGlobalHeaders, post } from '../ut
 import { catchError, finalize, map, switchMap } from 'rxjs/operators';
 import { createLookupTable, nou, toQueryString } from '../utils/object';
 import {
-	countLimitsFromNodeSelector,
-	countLimitsFromRepeat,
+	checkboxGroupConstraintValue,
+	checkboxGroupLimitNames,
+	countLimitsFromStorage,
 	nodeSelectorLimitNames,
 	repeatLimitEditorValues,
 	repeatLimitNames,
@@ -255,6 +256,10 @@ function rawLegacyPropertyValue(legacyField: LegacyFormDefinitionField, name: st
 	return asArray(legacyField.properties?.property).find((prop) => prop.name === name)?.value;
 }
 
+function rawLegacyConstraintValue(legacyField: LegacyFormDefinitionField, name: string): unknown {
+	return asArray(legacyField.constraints?.constraint).find((constraint) => constraint.name === name)?.value;
+}
+
 /** Writes virtual minCount/maxCount. Absent means unlimited. See utils/repeatLimits.ts. */
 function assignCountLimits(field: ContentTypeField, limits: CountLimits): void {
 	if (limits.minCount == null) delete field.validations.minCount;
@@ -269,7 +274,8 @@ function parseLegacyFormDefinitionFields(
 	currentFieldLookup: LookupTable<ContentTypeField>,
 	dropTargetsLookup: LookupTable<DataSource>,
 	sectionFieldIds?: Array<string>,
-	dataSources?: LegacyDataSource[]
+	dataSources?: LegacyDataSource[],
+	contentTypeId?: string
 ): void {
 	asArray<LegacyFormDefinitionField>(legacyFieldsToBeParsed).forEach((legacyField) => {
 		// FE2 TODO: Changed the camelizing of file-name and internal-name
@@ -343,16 +349,8 @@ function parseLegacyFormDefinitionFields(
 					}
 					break;
 				case 'minSize':
-					if (value) {
-						const n = Number.parseInt(value, 10);
-						if (!Number.isNaN(n)) {
-							field.validations.minSize = {
-								id: 'minSize',
-								value: Math.max(0, n),
-								level: 'required'
-							};
-						}
-					}
+					// Checkbox groups map this constraint to minCount. It is not a runtime validation.
+					// See utils/repeatLimits.ts.
 					break;
 				default:
 					console.log(`[parseLegacyFormDef] Unhandled constraint "${legacyProp.name}"`, legacyProp);
@@ -365,11 +363,14 @@ function parseLegacyFormDefinitionFields(
 				field.fields = {};
 				// Count limits: utils/repeatLimits.ts. A required constraint is not a minimum.
 				delete field.validations.required;
-				const limits = countLimitsFromRepeat(
-					legacyField?.minOccurs,
-					rawLegacyPropertyValue(legacyField, repeatLimitNames.min),
-					legacyField?.maxOccurs,
-					rawLegacyPropertyValue(legacyField, repeatLimitNames.max)
+				const limits = countLimitsFromStorage(
+					{
+						minElement: legacyField?.minOccurs,
+						minProperty: rawLegacyPropertyValue(legacyField, repeatLimitNames.min),
+						maxElement: legacyField?.maxOccurs,
+						maxProperty: rawLegacyPropertyValue(legacyField, repeatLimitNames.max)
+					},
+					{ contentTypeId, fieldId }
 				);
 				assignCountLimits(field, limits);
 				// TB2 edits the properties. Store the element-winning values so load and save agree.
@@ -386,7 +387,14 @@ function parseLegacyFormDefinitionFields(
 					type: 'string',
 					value: editorValues.maxOccurs
 				};
-				parseLegacyFormDefinitionFields(legacyField.fields.field, field.fields, dropTargetsLookup, null, dataSources);
+				parseLegacyFormDefinitionFields(
+					legacyField.fields.field,
+					field.fields,
+					dropTargetsLookup,
+					null,
+					dataSources,
+					contentTypeId
+				);
 				break;
 			}
 			case 'node-selector':
@@ -394,20 +402,27 @@ function parseLegacyFormDefinitionFields(
 					...field.validations,
 					...getFieldValidations(propertyProp, dropTargetsLookup)
 				};
-				// Count limits: utils/repeatLimits.ts. 0 is unlimited and is not stored.
+				// Count limits: utils/repeatLimits.ts. A positive minCount is the required marker, not a stored constraint.
 				assignCountLimits(
 					field,
-					countLimitsFromNodeSelector(
-						rawLegacyPropertyValue(legacyField, nodeSelectorLimitNames.min),
-						rawLegacyPropertyValue(legacyField, nodeSelectorLimitNames.max)
+					countLimitsFromStorage(
+						{
+							minProperty: rawLegacyPropertyValue(legacyField, nodeSelectorLimitNames.min),
+							maxProperty: rawLegacyPropertyValue(legacyField, nodeSelectorLimitNames.max)
+						},
+						{ contentTypeId, fieldId }
 					)
 				);
-				field.validations.required = {
-					id: 'required',
-					value: Boolean(field.validations.minCount?.value),
-					level: 'required'
-				};
 				break;
+			case 'checkbox-group': {
+				// Count limits: utils/repeatLimits.ts. The minSize constraint is not a runtime validation.
+				const rawMin = rawLegacyConstraintValue(legacyField, checkboxGroupLimitNames.min);
+				delete field.validations.minSize;
+				const storedMin = checkboxGroupConstraintValue(rawMin);
+				if (storedMin != null) field.storedMinSize = storedMin;
+				assignCountLimits(field, countLimitsFromStorage({ minProperty: rawMin }, { contentTypeId, fieldId }));
+				break;
+			}
 			case 'input':
 			case 'textarea':
 			case 'numeric-input':
@@ -484,7 +499,8 @@ export function parseLegacyFormDefinition(definition: LegacyFormDefinition): Con
 			fields,
 			dropTargetsLookup,
 			fieldIds,
-			legacyDataSourceArray
+			legacyDataSourceArray,
+			definition['content-type']
 		);
 
 		sections.push({

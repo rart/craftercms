@@ -40,7 +40,14 @@ import type { CheckboxGroupProps } from '../controls/CheckboxGroup';
 import { macroCreatorLookupTable } from '../../ContentTypeManagement/controls/PathWithMacroCreator';
 import { getPluginControlValidator } from '../controls/registry';
 import { isFieldPathIrrelevant } from '../formControllers/runtime';
-import { getRepeatOccurrenceViolations, nodeSelectorCountLimit } from '../../../utils/repeatLimits';
+import {
+	countLimitValue,
+	getRepeatOccurrenceViolations,
+	isItemCountMaxEditorValue,
+	isItemCountMinEditorValue,
+	isItemCountRangeValid,
+	itemCountEditorPartner
+} from '../../../utils/repeatLimits';
 
 export interface ValidatorMetaData {
 	siteId: string;
@@ -65,6 +72,8 @@ export interface ValidatorMetaData {
 		component: Record<string, unknown>,
 		path?: string
 	): Promise<Set<string> | null>;
+	/** Current value of another field in the same form. Item-count editors use it for min ≤ max. */
+	getValue?(fieldId: string): unknown;
 }
 export type ValidatorFunctionDef = (
 	field: ContentTypeField,
@@ -109,7 +118,11 @@ export const validatorsMap: Partial<Record<BuiltInControlType | DescriptorContro
 	'input-phone': (field, currentValue, messages) => inputPhoneValidator(field, currentValue as string, messages),
 	'path-with-macro-creator': (field, currentValue, messages) =>
 		pathWithMacroValidator(field, currentValue as string, messages),
-	variable: (field, currentValue, messages, meta) => variableValidator(field, currentValue as string, messages, meta)
+	variable: (field, currentValue, messages, meta) => variableValidator(field, currentValue as string, messages, meta),
+	// Item-count editor fields. `string` so a repeat maximum can be '*'; `int` for the numeric bounds.
+	// See utils/repeatLimits.ts. Fields without an itemCount marker are unchanged.
+	string: (field, currentValue, messages, meta) => itemCountEditorValidator(field, currentValue, messages, meta),
+	int: (field, currentValue, messages, meta) => itemCountEditorValidator(field, currentValue, messages, meta)
 };
 
 // TODO: Fix FormatXMLElementFn generics
@@ -123,8 +136,12 @@ export interface FieldValidityState {
 	messages: FieldValidityMessage[];
 }
 
+/** Site root index. Its file name is fixed, so a blank file-name is allowed there. */
+const rootPagePath = '/site/website/index.xml';
+
 /**
  * Validates the uniqueness of a file name within a specific site and path.
+ * A blank name is required except on the site root index. The value is `meta.fileName`.
  *
  * @param {ContentTypeField} field - The field metadata for the file name being validated.
  * @param {string} _ - Unused parameter, representing the current value of the field.
@@ -134,6 +151,7 @@ export interface FieldValidityState {
  * or `false` if it is invalid.
  *
  */
+
 export async function fileNameValidator(
 	field: ContentTypeField,
 	_: string,
@@ -142,6 +160,12 @@ export async function fileNameValidator(
 ): Promise<boolean> {
 	const siteId: string = meta.siteId;
 	const currentValue = meta.fileName;
+	const isRootIndex = meta.itemMeta?.path === rootPagePath;
+	// The file name lives on meta.fileName. It is required except on the site root index.
+	if (isEmptyValue(field, currentValue) && (isFieldRequired(field) || !isRootIndex)) {
+		messages?.push(defineMessage({ defaultMessage: 'This field is required.' }));
+		return false;
+	}
 
 	if (nou(currentValue)) return false;
 
@@ -166,7 +190,7 @@ export async function fileNameValidator(
 /**
  * Built-in map first (including explicit `undefined` = no type validator).
  * Plugin contributions only for types absent from the built-in map.
- * Required/empty checks stay in {@link validateFieldValue}, not here.
+ * The required constraint stays in {@link validateFieldValue}. The file-name root exception stays in {@link fileNameValidator}.
  */
 export function getFieldValidator(fieldType: string): ValidatorFunctionDef | undefined {
 	if (Object.hasOwn(validatorsMap, fieldType)) {
@@ -195,25 +219,84 @@ export async function validateFieldValue(
 	currentValue: unknown,
 	meta: ValidatorMetaData
 ): Promise<FieldValidityState> {
-	const validateValue = field.id === 'file-name' ? meta.fileName : currentValue;
 	const messages: FieldValidityState['messages'] = [];
-	const isRequired = isFieldRequired(field);
-	const isEmpty = isEmptyValue(field, validateValue);
+	const isEmpty = isEmptyValue(field, currentValue);
+	const requiredByConstraint = Boolean(field.validations?.required?.value);
+	// A positive minCount is reported by the occurrence check. Don't add a second "required" message.
+	const minimum = countLimitValue(field.validations?.minCount?.value);
 
-	// If it's required, and the value is empty, then it's invalid. For file-name, if path is root it's ok to be empty.
-	// Repeats use minCount/maxCount (utils/repeatLimits.ts), not the required constraint.
-	if (
-		field.type !== 'repeat' &&
-		(isRequired || (field.id === 'file-name' && meta.itemMeta.path !== '/site/website/index.xml')) &&
-		isEmpty
-	) {
+	// A required constraint with an empty value is invalid. Control-specific rules stay in that control's validator.
+	if (requiredByConstraint && isEmpty && minimum == null) {
 		messages.push(defineMessage({ defaultMessage: 'This field is required.' }));
 		return Promise.resolve({ isValid: false, messages });
 	}
 	const validator = getFieldValidator(field.type);
 	// If there's a validator, run it. If not, it's valid.
-	const isValid = nnou(validator) ? await validator(field, validateValue, messages, meta) : true;
+	const isValid = nnou(validator) ? await validator(field, currentValue, messages, meta) : true;
 	return Promise.resolve({ isValid, messages });
+}
+
+const minItemsMessage = defineMessage({ defaultMessage: 'At least {minCount} item(s) are required.' });
+const maxItemsMessage = defineMessage({ defaultMessage: 'No more than {maxCount} item(s) are allowed.' });
+
+/** Same occurrence errors for every item-count control. See utils/repeatLimits.ts. */
+function pushItemCountViolations(
+	messages: FieldValidityState['messages'],
+	count: number,
+	field: ContentTypeField
+): boolean {
+	const minCount = countLimitValue(getValidationValue(field.validations, 'minCount'));
+	const maxCount = countLimitValue(getValidationValue(field.validations, 'maxCount'));
+	const violations = getRepeatOccurrenceViolations(count, minCount, maxCount);
+	for (const violation of violations) {
+		if (violation.kind === 'min') {
+			messages?.push([minItemsMessage, { minCount: violation.limit }]);
+		} else {
+			messages?.push([maxItemsMessage, { maxCount: violation.limit }]);
+		}
+	}
+	return violations.length === 0;
+}
+
+function itemCountRole(field: ContentTypeField): 'min' | 'max' | undefined {
+	const value = (field.validations as { itemCount?: { value?: unknown } } | undefined)?.itemCount?.value;
+	return value === 'min' || value === 'max' ? value : undefined;
+}
+
+/** Type Builder min/max. Blank and '*' are unlimited. 0 is not a maximum. See utils/repeatLimits.ts. */
+function itemCountEditorValidator(
+	field: ContentTypeField,
+	currentValue: unknown,
+	messages: FieldValidityState['messages'],
+	meta?: ValidatorMetaData
+): boolean {
+	const role = itemCountRole(field);
+	if (!role) return true;
+	const partnerId = itemCountEditorPartner(field.id);
+	const partner = partnerId ? meta?.getValue?.(partnerId) : undefined;
+	const formatValid =
+		role === 'max' ? isItemCountMaxEditorValue(currentValue) : isItemCountMinEditorValue(currentValue);
+	if (!formatValid) {
+		messages?.push(
+			role === 'max'
+				? field.type === 'string'
+					? defineMessage({
+							defaultMessage: "Enter '*' or an integer of 1 or more. Leave blank for no maximum."
+						})
+					: defineMessage({
+							defaultMessage: 'Enter an integer of 1 or more, or leave blank for no maximum.'
+						})
+				: defineMessage({ defaultMessage: 'Enter a non-negative integer, or leave blank for no minimum.' })
+		);
+		return false;
+	}
+	const minValue = role === 'min' ? currentValue : partner;
+	const maxValue = role === 'max' ? currentValue : partner;
+	if (!isItemCountRangeValid(minValue, maxValue)) {
+		messages?.push(defineMessage({ defaultMessage: 'Minimum cannot be greater than maximum.' }));
+		return false;
+	}
+	return true;
 }
 
 /**
@@ -241,7 +324,8 @@ export function isEmptyValue(field: ContentTypeField, currentValue: unknown): bo
  *
  */
 export function isFieldRequired(field: ContentTypeField): boolean {
-	return Boolean(field.validations?.required?.value);
+	// The marker is the required constraint, or a positive minimum. See utils/repeatLimits.ts.
+	return Boolean(field.validations?.required?.value) || countLimitValue(field.validations?.minCount?.value) != null;
 }
 
 /**
@@ -308,24 +392,7 @@ export async function repeatGroupValidator(
 	let isValid = true;
 	const items = Array.isArray(currentValue) ? currentValue : [];
 	// minCount/maxCount are the mapped limits. See utils/repeatLimits.ts.
-	const minCount = getValidationValue(field.validations, 'minCount');
-	const maxCount = getValidationValue(field.validations, 'maxCount');
-
-	// Validate repeat group restrictions (min/max occurrences). Equality is allowed.
-	for (const violation of getRepeatOccurrenceViolations(items.length, minCount, maxCount)) {
-		isValid = false;
-		if (violation.kind === 'min') {
-			messages?.push([
-				defineMessage({ defaultMessage: 'At least {minOccurs} occurrence(s) are required.' }),
-				{ minOccurs: violation.limit }
-			]);
-		} else {
-			messages?.push([
-				defineMessage({ defaultMessage: 'No more than {maxOccurs} occurrence(s) are allowed.' }),
-				{ maxOccurs: violation.limit }
-			]);
-		}
-	}
+	if (!pushItemCountViolations(messages, items.length, field)) isValid = false;
 
 	// If there are no items, return validation result (items validation is not needed if there are no items)
 	if (items.length === 0) return isValid;
@@ -473,28 +540,12 @@ export async function nodeSelectorValidator(
 	meta: ValidatorMetaData
 ): Promise<boolean> {
 	let isValid = true;
-	if (!Array.isArray(currentValue)) return isValid;
+	const items = Array.isArray(currentValue) ? currentValue : [];
 	// This set is used to keep track of visited content items during validation to prevent infinite loops in case of circular references.
 	const visited = new Set<string>();
 	// minCount/maxCount are the mapped limits. 0 is unlimited. See utils/repeatLimits.ts.
-	const minCount = nodeSelectorCountLimit(getValidationValue(field.validations, 'minCount'));
-	const maxCount = nodeSelectorCountLimit(getValidationValue(field.validations, 'maxCount'));
-	const embeddedContent = currentValue.filter((item) => nnou(item.component));
-
-	for (const violation of getRepeatOccurrenceViolations(currentValue.length, minCount, maxCount)) {
-		isValid = false;
-		if (violation.kind === 'min') {
-			messages?.push([
-				defineMessage({ defaultMessage: 'At least {minSize} item(s) are required.' }),
-				{ minSize: violation.limit }
-			]);
-		} else {
-			messages?.push([
-				defineMessage({ defaultMessage: 'No more than {maxSize} item(s) are allowed.' }),
-				{ maxSize: violation.limit }
-			]);
-		}
-	}
+	if (!pushItemCountViolations(messages, items.length, field)) isValid = false;
+	const embeddedContent = items.filter((item) => nnou(item.component));
 
 	// If there are no embedded items, return validation result (items validation is not needed if there are no items)
 	if (embeddedContent.length === 0) return isValid;
@@ -544,15 +595,9 @@ export function checkboxGroupValidator(
 	currentValue: CheckboxGroupProps['value'],
 	messages: FieldValidityMessage[]
 ) {
-	const minSelected = Number(field.validations?.minSize?.value ?? 0);
+	// minCount is the mapped limit. 0 and blank are no minimum. There is no maximum. See utils/repeatLimits.ts.
 	const selectedCount = Array.isArray(currentValue) ? currentValue.length : 0;
-	const isValid = selectedCount >= minSelected;
-	if (!isValid)
-		messages.push([
-			defineMessage({ defaultMessage: 'Please select at least the minimum required items ({minSelected}).' }),
-			{ minSelected }
-		]);
-	return isValid;
+	return pushItemCountViolations(messages, selectedCount, field);
 }
 
 export function checkboxValidator(field: ContentTypeField, currentValue: boolean, messages: FieldValidityMessage[]) {

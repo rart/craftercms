@@ -105,7 +105,7 @@ import TypeList from '../../ContentTypeManagement/components/TypeList';
 import { SearchBar } from '../../SearchBar';
 import useDebouncedInput from '../../../hooks/useDebouncedInput';
 import { filterTypesByKeywordsAndObjectType } from '../../../utils/contentType';
-import { nodeSelectorCountLimit } from '../../../utils/repeatLimits';
+import { countLimitValue } from '../../../utils/repeatLimits';
 import {
 	buildActionGroups,
 	consolidateItemActions,
@@ -631,7 +631,7 @@ function NodeSelector(props: NodeSelectorProps) {
 			/>
 		) : null;
 	// minCount/maxCount are the mapped limits. 0 is unlimited. See utils/repeatLimits.ts.
-	const maxCount = nodeSelectorCountLimit(field.validations?.maxCount?.value);
+	const maxCount = countLimitValue(field.validations?.maxCount?.value);
 	const maxLimitReached = maxCount != null && value.length >= maxCount;
 	const isAddDisabled = readonly || maxLimitReached || (!menuOptions.length && !customActions.length);
 	return (
@@ -715,7 +715,7 @@ function NodeSelector(props: NodeSelectorProps) {
 			</Dialog>
 			<FormsEngineField
 				field={field}
-				min={nodeSelectorCountLimit(field.validations?.minCount?.value)}
+				min={countLimitValue(field.validations?.minCount?.value)}
 				max={maxCount}
 				length={value.length}
 				action={

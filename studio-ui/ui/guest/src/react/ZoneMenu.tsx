@@ -213,7 +213,7 @@ export function ZoneMenu(props: ZoneMenuProps) {
 
 		if (containerHasEditAction && Boolean(collection)) {
 			const validations = nodeSelectorEntries?.field?.validations;
-			// minCount/maxCount values. 0 is a real cap. See utils/repeatLimits.ts.
+			// minCount/maxCount values. 0 is unlimited. See utils/repeatLimits.ts.
 			const maxCount = countLimitValue(validations?.maxCount?.value);
 			const minCount = countLimitValue(validations?.minCount?.value);
 			const trashableValidation = minCount == null || minCount < numOfItemsInContainerCollection;

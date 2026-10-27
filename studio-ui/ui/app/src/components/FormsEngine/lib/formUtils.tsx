@@ -370,7 +370,12 @@ export function createFieldAtoms(
 			fileName: formContextRef.current.atoms.fileName ? get(formContextRef.current.atoms.fileName) : '',
 			// Read at validation time. `validatorsData` is captured at bootstrap, before relevance exists.
 			irrelevantFieldPaths: formContextRef.current.formControllerState?.irrelevantFieldPaths,
-			resolveEmbeddedRelevance: validatorsData?.resolveEmbeddedRelevance
+			resolveEmbeddedRelevance: validatorsData?.resolveEmbeddedRelevance,
+			// Item-count fields compare min and max. Reading the partner subscribes this atom to it.
+			getValue: (fieldId: string) => {
+				const partner = formContextRef.current.atoms?.valueByFieldId?.[fieldId];
+				return partner ? get(partner) : undefined;
+			}
 		});
 	});
 	return [valueAtom, validationAtom];

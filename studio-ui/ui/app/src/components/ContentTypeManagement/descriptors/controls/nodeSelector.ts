@@ -41,17 +41,24 @@ export const nodeSelectorDescriptor: DescriptorContentType = {
 			type: 'int',
 			name: defineMessage({ defaultMessage: 'Minimum Size' }),
 			defaultValue: undefined,
+			// 0 is no minimum. See utils/repeatLimits.ts.
 			validations: {
-				minValue: createValidation('minValue', 0)
+				minValue: createValidation('minValue', 0),
+				itemCount: createValidation('itemCount', 'min')
 			}
 		},
 		maxSize: {
 			id: 'maxSize',
 			type: 'int',
 			name: defineMessage({ defaultMessage: 'Maximum Size' }),
+			description: defineMessage({
+				defaultMessage: 'Leave blank for no maximum. The value must be an integer of 1 or more.'
+			}),
 			defaultValue: undefined,
+			// 0 is not accepted. See utils/repeatLimits.ts.
 			validations: {
-				minValue: createValidation('minValue', 1)
+				minValue: createValidation('minValue', 1),
+				itemCount: createValidation('itemCount', 'max')
 			}
 		},
 		itemManager: {

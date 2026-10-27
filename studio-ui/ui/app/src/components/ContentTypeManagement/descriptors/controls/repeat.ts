@@ -14,8 +14,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-import { createVirtualSection, DescriptorContentType } from '../../utils';
-import { immutableEmptyObject } from '../../../../utils/object';
+import { createValidation, createVirtualSection, DescriptorContentType } from '../../utils';
 import { defineMessage } from 'react-intl';
 
 export const repeatDescriptor: DescriptorContentType = {
@@ -34,16 +33,27 @@ export const repeatDescriptor: DescriptorContentType = {
 			id: 'minOccurs',
 			type: 'int',
 			name: defineMessage({ defaultMessage: 'Minimum Occurrences' }),
+			description: defineMessage({
+				defaultMessage: 'Enter 0 or leave blank for no minimum.'
+			}),
 			defaultValue: 0,
-			validations: immutableEmptyObject
+			// See utils/repeatLimits.ts.
+			validations: {
+				itemCount: createValidation('itemCount', 'min')
+			}
 		},
 		maxOccurs: {
 			id: 'maxOccurs',
-			// '*' means no maximum. See utils/repeatLimits.ts.
+			// '*' or blank means no maximum. 0 is not accepted. See utils/repeatLimits.ts.
 			type: 'string',
 			name: defineMessage({ defaultMessage: 'Maximum Occurrences' }),
+			description: defineMessage({
+				defaultMessage: "Use '*' or leave blank for no maximum. Any other value must be an integer of 1 or more."
+			}),
 			defaultValue: '*',
-			validations: immutableEmptyObject
+			validations: {
+				itemCount: createValidation('itemCount', 'max')
+			}
 		}
 	},
 	metadata: {
