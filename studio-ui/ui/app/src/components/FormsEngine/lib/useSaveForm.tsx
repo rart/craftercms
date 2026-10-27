@@ -37,7 +37,7 @@ import {
 } from './formUtils';
 import { FormSavePromiseResult, FormsEngineProps } from '../FormsEngine';
 import { contentFormSaveAction } from '../../../utils/contentFormLaunch';
-import { hiddenInvalidReveal } from './formVisibility';
+import { hiddenInvalidReveal, scopedSaveGate } from './formVisibility';
 import { XmlKeys } from './formConsts';
 import { fromString } from '../../../utils/xml';
 import {
@@ -117,7 +117,43 @@ export function useSaveForm(props: UseSaveFormProps) {
 	const { setRenamedPath, triggerReload, setSavedCreatePath } = useContext(RenamedPathContext);
 	const initialFileName = itemPath ? getFileNameValueFromPath(itemPath, isPage) : '';
 	const item = useContext(ItemContext);
-	return async (draft?: boolean) => {
+	const repeatFieldId = isRepeatMode ? stableFormContext.props?.repeat?.fieldId : undefined;
+	const readCurrentValidity = async () => {
+		// Out-of-scope fields stay in this list. Only controller-irrelevant fields are skipped.
+		const fields = relevantFieldValidations(
+			stableFormContext.atoms.validationByFieldId,
+			stableFormContext.formControllerState?.irrelevantFieldPaths,
+			repeatFieldId
+		);
+		const states = await Promise.all(fields.map(({ atom: validityAtom }) => jotai.get(validityAtom)));
+		const invalidFieldIds = fields.flatMap(({ fieldId }, index) => (states[index]?.isValid ? [] : [fieldId]));
+		return { isFormInvalid: invalidFieldIds.length > 0, invalidFieldIds };
+	};
+	/** Opens a hidden error in place. True when the scope changed and nothing should be written. */
+	const applyHiddenInvalidReveal = (draft: boolean | undefined, invalidFieldIds: readonly string[]) => {
+		if (isRepeatMode) return false;
+		const reveal = hiddenInvalidReveal({
+			visibility: jotai.get(stableFormContext.atoms.formVisibility),
+			invalidFieldIds,
+			sectionOrder: contentType.sections?.flatMap((section) => section.fields) ?? [],
+			irrelevantFieldPaths: stableFormContext.formControllerState?.irrelevantFieldPaths
+		});
+		// Drafts write. Only a completed save stops here to show the hidden error.
+		if (
+			scopedSaveGate({ draft: draft === true, invalidForm: false, hasHiddenInvalid: Boolean(reveal) }) !== 'reveal' ||
+			!reveal
+		) {
+			return false;
+		}
+		jotai.set(stableFormContext.atoms.formVisibility, reveal.state);
+		jotai.set(stableFormContext.atoms.pendingScrollFieldId, reveal.fieldId);
+		return true;
+	};
+	const revealHiddenInvalid = async () => {
+		const { invalidFieldIds } = await readCurrentValidity();
+		return applyHiddenInvalidReveal(false, invalidFieldIds);
+	};
+	const save = async (draft?: boolean) => {
 		// Get before the first await so a second call cannot re-enter preload or onBeforeSave.
 		if (jotai.get(stableFormContext.atoms.isSubmitting)) {
 			return;
@@ -186,20 +222,8 @@ export function useSaveForm(props: UseSaveFormProps) {
 			// Prior save-time failures are safe to clear; `controlPluginCache` drops failed entries so retry works.
 			stableFormContext.affectedPluginControlFields = [];
 			let values = extractAtomValues(jotai, stableFormContext.atoms.valueByFieldId);
-			const repeatFieldId = isRepeatMode ? stableFormContext.props?.repeat?.fieldId : undefined;
-			const readValidity = async () => {
-				// Out-of-scope fields stay in this list. Only controller-irrelevant fields are skipped.
-				const fields = relevantFieldValidations(
-					stableFormContext.atoms.validationByFieldId,
-					stableFormContext.formControllerState?.irrelevantFieldPaths,
-					repeatFieldId
-				);
-				const states = await Promise.all(fields.map(({ atom }) => jotai.get(atom)));
-				const invalidFieldIds = fields.flatMap(({ fieldId }, index) => (states[index]?.isValid ? [] : [fieldId]));
-				return { isFormInvalid: invalidFieldIds.length > 0, invalidFieldIds };
-			};
 			// Put system properties in before creating the XML
-			let { isFormInvalid, invalidFieldIds } = await readValidity();
+			let { isFormInvalid, invalidFieldIds } = await readCurrentValidity();
 			let saveAsDraft = draft || isFormInvalid;
 
 			const onSavePromiseHandler = ({ close }: FormSavePromiseResult) => {
@@ -291,26 +315,15 @@ export function useSaveForm(props: UseSaveFormProps) {
 				if (!(await preloadPluginsOrBlock(values))) {
 					return;
 				}
-				({ isFormInvalid, invalidFieldIds } = await readValidity());
+				({ isFormInvalid, invalidFieldIds } = await readCurrentValidity());
 				saveAsDraft = draft || isFormInvalid;
 			}
 
-			// A scoped form still validates every field. An error the author cannot see — a field
-			// outside the launch scope, or a repeat field limited to one item — opens that
-			// scope in place and scrolls to the field. Nothing is written.
-			if (!isRepeatMode) {
-				const reveal = hiddenInvalidReveal({
-					visibility: jotai.get(stableFormContext.atoms.formVisibility),
-					invalidFieldIds,
-					sectionOrder: contentType.sections?.flatMap((section) => section.fields) ?? [],
-					irrelevantFieldPaths: stableFormContext.formControllerState?.irrelevantFieldPaths
-				});
-				if (reveal) {
-					jotai.set(stableFormContext.atoms.formVisibility, reveal.state);
-					jotai.set(stableFormContext.atoms.pendingScrollFieldId, reveal.fieldId);
-					setIsSubmitting(false);
-					return;
-				}
+			// A completed save still validates every field. An error the author cannot see opens
+			// in place and nothing is written. An explicit draft writes those errors.
+			if (applyHiddenInvalidReveal(draft, invalidFieldIds)) {
+				setIsSubmitting(false);
+				return;
 			}
 
 			// `onBeforeSave` may have changed `file-name`; the render-time snapshot is stale from here on.
@@ -597,6 +610,8 @@ export function useSaveForm(props: UseSaveFormProps) {
 			showSaveError(error as AjaxError | Error);
 		}
 	};
+
+	return { save, revealHiddenInvalid };
 }
 
 function complementValuesWithSystemProps(

@@ -1160,7 +1160,7 @@ function FormOrchestrator(props: FormsEngineProps) {
 
 	const onCloseHandler = isStackedForm ? onCloseProp : enhancedDialogOnClose;
 
-	const saveFn = useSaveForm({
+	const { save: saveFn, revealHiddenInvalid } = useSaveForm({
 		onSave,
 		isEmbedded,
 		isStackedForm,
@@ -1457,6 +1457,7 @@ function FormOrchestrator(props: FormsEngineProps) {
 										isRepeatMode={isRepeatMode}
 										setSaveAsDraft={setSaveAsDraftAction}
 										invalidForm={invalidForm}
+										onRevealHiddenInvalid={revealHiddenInvalid}
 										onSave={(e, draft) => saveFn(draft)}
 									/>
 									{!isCreateMode && // There's no locking on create mode

@@ -174,8 +174,11 @@ function FieldScopeNotice({ countFieldIds }: { countFieldIds: string[] }) {
 		<Box sx={{ mb: 1 }}>
 			<Typography variant="body2" color="textSecondary">
 				{viewingFullForm
-					? formatMessage({ defaultMessage: 'Showing all {total} fields' }, { total })
-					: formatMessage({ defaultMessage: 'Showing {showing} of {total} fields' }, { showing, total })}
+					? formatMessage({ defaultMessage: 'Showing all {total, plural, one {# field} other {# fields}}' }, { total })
+					: formatMessage(
+							{ defaultMessage: 'Showing {showing} of {total, plural, one {# field} other {# fields}}' },
+							{ showing, total }
+						)}
 			</Typography>
 			<Button
 				size="small"

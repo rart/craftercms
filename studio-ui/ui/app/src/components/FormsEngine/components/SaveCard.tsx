@@ -30,6 +30,7 @@ import { useDispatch } from 'react-redux';
 import { pushConfirmDialog } from '../../../utils/system';
 import { popDialog } from '../../../state/actions/dialogStack';
 import { nanoid } from 'nanoid';
+import { scopedSaveGate } from '../lib/formVisibility';
 
 export interface SaveCardProps {
 	isRepeatMode: boolean;
@@ -37,11 +38,16 @@ export interface SaveCardProps {
 	isEmbedded: boolean;
 	setSaveAsDraft: (value: boolean) => void;
 	invalidForm: boolean;
+	/**
+	 * Completed save, form invalid: open a hidden error before the cannot-proceed dialog.
+	 * Resolves true when the scope changed. The caller then does not write.
+	 */
+	onRevealHiddenInvalid?: () => Promise<boolean> | boolean;
 	onSave: (e: MouseEvent, draft?: boolean) => void;
 }
 
 export function SaveCard(props: SaveCardProps) {
-	const { isEmbedded, isStackedForm, isRepeatMode, setSaveAsDraft, invalidForm, onSave } = props;
+	const { isEmbedded, isStackedForm, isRepeatMode, setSaveAsDraft, invalidForm, onRevealHiddenInvalid, onSave } = props;
 	const stableFormContext = useContext(StableFormContext);
 	const isSubmitting = useAtomValue(stableFormContext.atoms.isSubmitting);
 	const [versionComment, setVersionComment] = useAtom(stableFormContext.atoms.versionComment);
@@ -64,26 +70,31 @@ export function SaveCard(props: SaveCardProps) {
 		}
 		setMinimizeAfterSave(checked);
 	};
-	const handleSave = (e: MouseEvent, type: 'save' | 'saveDraft', draft?: boolean) => {
+	const showCannotProceed = () => {
+		const dialogId = nanoid();
+		dispatch(
+			pushConfirmDialog({
+				id: dialogId,
+				props: {
+					title: formatMessage({ defaultMessage: 'Cannot Proceed' }),
+					body: formatMessage({
+						defaultMessage:
+							'You cannot save until all form requirements are satisfied. If you still want to save, you can use the Save as draft option, but required fields left blank may cause errors when previewed or deployed.'
+					}),
+					cancelButtonText: formatMessage({ defaultMessage: 'Ok' }),
+					onCancel: () => dispatch(popDialog({ id: dialogId }))
+				}
+			})
+		);
+	};
+	const handleSave = async (e: MouseEvent, type: 'save' | 'saveDraft', draft?: boolean) => {
+		// Drafts are allowed to be invalid, including fields the launch scope is hiding.
 		if (type === 'save' && invalidForm) {
-			const dialogId = nanoid();
-			dispatch(
-				pushConfirmDialog({
-					id: dialogId,
-					props: {
-						title: formatMessage({ defaultMessage: 'Cannot Proceed' }),
-						body: formatMessage({
-							defaultMessage:
-								'You cannot save until all form requirements are satisfied. If you still want to save, you can use the Save as draft option, but required fields left blank may cause errors when previewed or deployed.'
-						}),
-						cancelButtonText: formatMessage({ defaultMessage: 'Ok' }),
-						onCancel: () => dispatch(popDialog({ id: dialogId }))
-					}
-				})
-			);
-		} else {
-			onSave(e, draft);
+			const revealed = (await onRevealHiddenInvalid?.()) ?? false;
+			if (scopedSaveGate({ draft: false, invalidForm, hasHiddenInvalid: revealed }) === 'block') showCannotProceed();
+			return;
 		}
+		onSave(e, draft);
 	};
 
 	return (

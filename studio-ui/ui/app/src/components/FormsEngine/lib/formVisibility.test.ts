@@ -29,6 +29,7 @@ import {
 	resolveLaunchVisibility,
 	returnToLaunchScope,
 	scopeFieldCounts,
+	scopedSaveGate,
 	unsupportedRepeatIndexWarning,
 	visibleRepeatItems
 } from './formVisibility.ts';
@@ -248,5 +249,36 @@ describe('hiddenInvalidReveal', () => {
 			}),
 			undefined
 		);
+	});
+});
+
+describe('Save versus Save as draft when a scoped field is invalid off screen', () => {
+	const visibility = resolveLaunchVisibility({
+		selectedFields: ['title_s'],
+		knownFieldIds: known,
+		repeatFieldIds: repeats
+	}).state;
+	const hiddenError = {
+		visibility,
+		invalidFieldIds: ['body_html'],
+		sectionOrder: ['title_s', 'body_html']
+	};
+
+	it('a completed save opens the scope and does not write or show cannot-proceed', () => {
+		const reveal = hiddenInvalidReveal(hiddenError);
+		assert.ok(reveal);
+		assert.equal(isScopeActive(reveal.state.active), false);
+		assert.equal(reveal.fieldId, 'body_html');
+		assert.equal(scopedSaveGate({ draft: false, invalidForm: true, hasHiddenInvalid: true }), 'reveal');
+	});
+
+	it('an explicit draft skips the reveal so the write proceeds', () => {
+		assert.ok(hiddenInvalidReveal(hiddenError));
+		assert.equal(scopedSaveGate({ draft: true, invalidForm: true, hasHiddenInvalid: true }), 'write');
+	});
+
+	it('a completed save whose errors are already visible shows cannot-proceed', () => {
+		assert.equal(hiddenInvalidReveal({ ...hiddenError, invalidFieldIds: ['title_s'] }), undefined);
+		assert.equal(scopedSaveGate({ draft: false, invalidForm: true, hasHiddenInvalid: false }), 'block');
 	});
 });

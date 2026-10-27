@@ -256,3 +256,20 @@ export function hiddenInvalidReveal(args: {
 	}
 	return undefined;
 }
+
+/**
+ * What to do with a save click once `hiddenInvalidReveal` has been consulted.
+ * An explicit draft writes, hidden errors included. A completed save that is
+ * hiding an error reveals it and does not write. A completed save whose errors
+ * are already on screen is the cannot-proceed dialog.
+ */
+export function scopedSaveGate(args: {
+	draft: boolean;
+	invalidForm: boolean;
+	hasHiddenInvalid: boolean;
+}): 'reveal' | 'block' | 'write' {
+	if (args.draft) return 'write';
+	if (args.hasHiddenInvalid) return 'reveal';
+	if (args.invalidForm) return 'block';
+	return 'write';
+}
