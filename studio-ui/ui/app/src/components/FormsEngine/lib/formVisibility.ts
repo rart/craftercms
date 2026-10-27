@@ -272,6 +272,21 @@ export function completedSaveRead(args: { hasHiddenInvalid: boolean; isFormInval
 	return 'valid';
 }
 
+/**
+ * Drops a click that arrives while a validity read is in flight, before draft
+ * state changes. An accepted click records whether this save is a draft.
+ * Returns false when the click was ignored.
+ */
+export function claimSaveClick(
+	inFlight: boolean,
+	type: 'save' | 'saveDraft',
+	setSaveAsDraft: (draft: boolean) => void
+): boolean {
+	if (inFlight) return false;
+	setSaveAsDraft(type === 'saveDraft');
+	return true;
+}
+
 /** What one Save or Save as draft click should do after the in-flight guard. */
 export type SaveClickEffect =
 	{ effect: 'ignore' | 'draft' | 'write' | 'cannotProceed' | 'revealed' } | { effect: 'error'; error: unknown };

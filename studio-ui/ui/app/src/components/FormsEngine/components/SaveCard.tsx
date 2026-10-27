@@ -15,7 +15,7 @@
  */
 
 import { useAtom, useAtomValue } from 'jotai';
-import { FormattedMessage, useIntl } from 'react-intl';
+import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import React, { MouseEvent, useContext, useRef } from 'react';
 import { StableFormContext } from '../lib/formsEngineContext';
 import Paper from '@mui/material/Paper';
@@ -30,8 +30,12 @@ import { useDispatch } from 'react-redux';
 import { pushConfirmDialog, pushErrorDialog } from '../../../utils/system';
 import { popDialog } from '../../../state/actions/dialogStack';
 import { nanoid } from 'nanoid';
-import { applySaveClick, type CompletedSaveRead } from '../lib/formVisibility';
+import { applySaveClick, claimSaveClick, type CompletedSaveRead } from '../lib/formVisibility';
 import type { ApiResponse } from '../../../models/ApiResponse';
+
+const messages = defineMessages({
+	saveReadFailed: { defaultMessage: 'The form could not be checked before saving.' }
+});
 
 export interface SaveCardProps {
 	isRepeatMode: boolean;
@@ -89,11 +93,16 @@ export function SaveCard(props: SaveCardProps) {
 		);
 	};
 	const handleSave = async (e: MouseEvent, type: 'save' | 'saveDraft', draft?: boolean) => {
+		if (!claimSaveClick(revealInFlight.current, type, setSaveAsDraft)) return;
 		const result = await applySaveClick({ inFlight: revealInFlight, type, read: onRevealHiddenInvalid });
 		if (result.effect === 'draft' || result.effect === 'write') onSave(e, draft);
 		else if (result.effect === 'cannotProceed') showCannotProceed();
 		else if (result.effect === 'error') {
-			dispatch(pushErrorDialog({ props: { error: saveReadError(result.error) } }));
+			dispatch(
+				pushErrorDialog({
+					props: { error: saveReadError(result.error, formatMessage(messages.saveReadFailed)) }
+				})
+			);
 		}
 	};
 
@@ -147,7 +156,6 @@ export function SaveCard(props: SaveCardProps) {
 								? formatMessage({ defaultMessage: 'Done' })
 								: formatMessage({ defaultMessage: 'Save' }),
 						callback: (e) => {
-							setSaveAsDraft(false);
 							handleSave(e, 'save');
 						}
 					},
@@ -158,7 +166,6 @@ export function SaveCard(props: SaveCardProps) {
 								? formatMessage({ defaultMessage: 'Done (Draft)' })
 								: formatMessage({ defaultMessage: 'Save Draft' }),
 						callback: (e) => {
-							setSaveAsDraft(true);
 							handleSave(e, 'saveDraft', true);
 						}
 					}
@@ -178,10 +185,10 @@ export function SaveCard(props: SaveCardProps) {
 	);
 }
 
-function saveReadError(error: unknown): ApiResponse {
+function saveReadError(error: unknown, fallbackMessage: string): ApiResponse {
 	if (error instanceof Error) return { message: error.message };
 	if (error && typeof error === 'object') return error as ApiResponse;
-	return { message: 'The form could not be checked before saving.' };
+	return { message: fallbackMessage };
 }
 
 export default SaveCard;

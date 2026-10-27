@@ -20,6 +20,7 @@ import {
 	baseFieldId,
 	fieldVisibility,
 	applySaveClick,
+	claimSaveClick,
 	clearRepeatItemScope,
 	firstOutOfScopeInvalidField,
 	hiddenInvalidReveal,
@@ -287,8 +288,16 @@ describe('Save versus Save as draft when a scoped field is invalid off screen', 
 describe('Save clicks while a validity read is in flight', () => {
 	it('ignores Save and Save as draft until the read settles, then clears the flag', async () => {
 		const inFlight = { current: false };
+		let draft = true;
 		let reads = 0;
 		let release!: (value: 'valid') => void;
+		assert.equal(
+			claimSaveClick(inFlight.current, 'save', (value) => {
+				draft = value;
+			}),
+			true
+		);
+		assert.equal(draft, false);
 		const first = applySaveClick({
 			inFlight,
 			type: 'save',
@@ -300,6 +309,13 @@ describe('Save clicks while a validity read is in flight', () => {
 			}
 		});
 		assert.equal(inFlight.current, true);
+		assert.equal(
+			claimSaveClick(inFlight.current, 'saveDraft', (value) => {
+				draft = value;
+			}),
+			false
+		);
+		assert.equal(draft, false);
 		const duringSave = await applySaveClick({
 			inFlight,
 			type: 'save',
@@ -322,6 +338,13 @@ describe('Save clicks while a validity read is in flight', () => {
 		release('valid');
 		assert.deepEqual(await first, { effect: 'write' });
 		assert.equal(inFlight.current, false);
+		assert.equal(
+			claimSaveClick(inFlight.current, 'saveDraft', (value) => {
+				draft = value;
+			}),
+			true
+		);
+		assert.equal(draft, true);
 	});
 
 	it('a rejected validity read reports the error and does not write', async () => {
