@@ -104,8 +104,6 @@ import {
 	getTargetHeight,
 	internalLockContentService,
 	internalUnlockContentService,
-	applyFileNameFormValue,
-	fileNameFromItemPath,
 	prepareEmbeddedItemForm,
 	scrollToFieldWhenSettled,
 	setFieldAtoms,
@@ -456,12 +454,11 @@ function FormBootstrap(props: FormsEngineProps) {
 				lockError: parentLockResult.lockError,
 				affectedPackages: parentLockResult.affectedPackages
 			});
-			const fileName = '';
 			const atoms = createFormsEngineAtoms(effectRefs.current.username, {
 				lockResult: lockResultAtom,
 				readonly: createReadonlyAtom(lockResultAtom),
 				expandedStateBySectionId: buildSectionExpandedStateAtoms(contentType.sections),
-				fileName: createFileNameAtom('', stableFormContextRef, fileName)
+				fileName: createFileNameAtom('', stableFormContextRef)
 			});
 			const seedValues = repeat.values ? { ...repeat.values } : {};
 			preloadControlPluginsForFields(siteId, fieldsToRender, seedValues, contentTypesById).then((failures) => {
@@ -471,7 +468,6 @@ function FormBootstrap(props: FormsEngineProps) {
 					contentTypesById,
 					resolveEmbeddedRelevance: createEmbeddedRelevanceResolver(siteId)
 				};
-				const repeatItemPath = parentPath ?? null;
 				const atomValueCreator: Parameters<typeof createParsedValuesObject>[3] = (fieldId, value, isAdditional) => {
 					setFieldAtoms(
 						stableFormContextRef,
@@ -481,9 +477,7 @@ function FormBootstrap(props: FormsEngineProps) {
 						atoms,
 						value,
 						validatorsData,
-						isAdditional,
-						repeatItemPath,
-						fileName
+						isAdditional
 					);
 				};
 				const values = repeat.values
@@ -512,7 +506,6 @@ function FormBootstrap(props: FormsEngineProps) {
 						atomValueCreator(fieldId, values[fieldId], isAdditional);
 					});
 				}
-				applyFileNameFormValue(values, fileName);
 
 				const xmlDoc = fromString(parentStackData.itemMeta.contentXml ?? '');
 				const fieldId = repeat.fieldId;
@@ -603,12 +596,11 @@ function FormBootstrap(props: FormsEngineProps) {
 				lockError: null,
 				affectedPackages: null
 			});
-			const fileName = '';
 			const atoms: FormsEngineAtoms = createFormsEngineAtoms(effectRefs.current.username, {
 				lockResult: lockResultAtom,
 				readonly: atom(false),
 				expandedStateBySectionId: buildSectionExpandedStateAtoms(contentType.sections),
-				fileName: createFileNameAtom('', stableFormContextRef, fileName),
+				fileName: createFileNameAtom('', stableFormContextRef),
 				// Default version comment for new content.
 				versionComment: atom(generateDefaultCreationComment('', formatMessage))
 			});
@@ -635,15 +627,11 @@ function FormBootstrap(props: FormsEngineProps) {
 							atoms,
 							value,
 							validatorsData,
-							isAdditional,
-							// Create has no item path yet, so the name starts blank and is required.
-							null,
-							fileName
+							isAdditional
 						);
 					},
 					customControls
 				);
-				if (!create.embedded) applyFileNameFormValue(values, fileName);
 				const { [XmlKeys.fileName]: _, ...valuesWithoutFileName } = values;
 
 				const objectId = contentObject[XmlKeys.modelId] as string;
@@ -706,12 +694,11 @@ function FormBootstrap(props: FormsEngineProps) {
 						lockError: requirements.lockError,
 						affectedPackages: requirements.affectedPackages
 					});
-					const fileName = fileNameFromItemPath(requirements.item.path);
 					const atoms = createFormsEngineAtoms(effectRefs.current.username, {
 						lockResult: lockResultAtom,
 						readonly: createReadonlyAtom(lockResultAtom),
 						expandedStateBySectionId: buildSectionExpandedStateAtoms(requirements.contentType.sections),
-						fileName: createFileNameAtom(requirements.item.path, stableFormContextRef, fileName)
+						fileName: createFileNameAtom(requirements.item.path, stableFormContextRef)
 					});
 					preloadControlPluginsForFields(
 						siteId,
@@ -738,14 +725,11 @@ function FormBootstrap(props: FormsEngineProps) {
 									atoms,
 									value,
 									validatorsData,
-									isAdditional,
-									requirements.item.path,
-									fileName
+									isAdditional
 								);
 							},
 							customControls
 						);
-						applyFileNameFormValue(values, fileName);
 
 						initializeState(
 							atoms,

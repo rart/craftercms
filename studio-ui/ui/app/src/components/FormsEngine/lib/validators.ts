@@ -27,7 +27,8 @@ import {
 	getBasePath,
 	getPropertyValue,
 	getValidationValue,
-	processAdditionalFieldMacro
+	processAdditionalFieldMacro,
+	rootPagePath
 } from './formUtils';
 import { firstValueFrom } from 'rxjs';
 import { isPagePath, withIndex } from '../../../utils/path';
@@ -144,28 +145,36 @@ export interface FieldValidityState {
 }
 
 /**
- * Validates that a file name is unique within its site and folder.
- * Required is the field's own constraint, applied by {@link validateFieldValue}.
- * The value is the field value. Form build seeds that from the item path.
+ * File-name rules: required, then uniqueness.
+ * The name is {@link ValidatorMetaData.fileName}, the atom this control edits. The raw field value is not read.
+ * A blank name is invalid except on the home page, where it is allowed unless the stored required constraint says so.
  *
  * @param {ContentTypeField} field - The field metadata for the file name being validated.
- * @param {string} currentValue - The file name to validate.
+ * @param {string} _currentValue - Unused. This control does not validate the raw field value.
  * @param {FieldValidityState['messages']} messages - An array to store validation messages.
- * @param {ValidatorMetaData} meta - Metadata containing site ID and item context.
+ * @param {ValidatorMetaData} meta - Metadata containing site ID, the file-name atom, and item context.
  * @returns {Promise<boolean> | boolean} - A promise resolving to `true` if the file name is valid,
  * or `false` if it is invalid.
  *
  */
 
 export async function fileNameValidator(
-	_field: ContentTypeField,
-	currentValue: string,
+	field: ContentTypeField,
+	_currentValue: string,
 	messages: FieldValidityState['messages'],
 	meta: ValidatorMetaData
 ): Promise<boolean> {
 	const siteId: string = meta.siteId;
-
-	if (nou(currentValue)) return false;
+	// Single source: the file-name atom. createFileNameAtom derives it from the path. The raw field value is ignored.
+	const currentValue = meta.fileName;
+	const blank = isEmptyValue(field, currentValue);
+	const storedRequired = Boolean(field.validations?.required?.value);
+	// Blank is invalid, except on the home page, where it is allowed unless the stored constraint requires it.
+	if (blank && (meta.itemMeta?.path !== rootPagePath || storedRequired)) {
+		messages?.push(defineMessage({ defaultMessage: 'This field is required.' }));
+		return false;
+	}
+	if (blank) return true;
 
 	const initialPath = meta.itemMeta.path ?? meta.itemMeta.pathInSite;
 	const isPage = isPagePath(withIndex(initialPath));

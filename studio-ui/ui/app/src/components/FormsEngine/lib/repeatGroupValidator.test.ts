@@ -23,11 +23,9 @@ import type { FieldValidityMessage } from './validators.ts';
 const { checkboxGroupValidator, isFieldRequired, nodeSelectorValidator, repeatGroupValidator, validateFieldValue } =
 	await import('./validators.ts');
 const {
-	applyFileNameFormValue,
 	createFileNameAtom,
 	createFormsEngineAtoms,
 	createFormStackData,
-	fileNameFieldForForm,
 	fileNameFromItemPath,
 	rootPagePath,
 	setFieldAtoms
@@ -40,7 +38,8 @@ const { createStore, atom } = await import('jotai');
  * and it does not also produce "This field is required."
  * The Type Builder editor check runs from the itemCount validation, not from the string or int control type.
  * A validations key is used only when it is an own key of the validator map, so constructor is not a validator.
- * File name: a non-root item is required; the site root index /site/website/index.xml keeps its stored constraint.
+ * File name: the file-name atom is the only value. A blank name is invalid except on /site/website/index.xml,
+ * where blank is allowed unless the stored required constraint says otherwise. The asterisk is that stored constraint.
  */
 
 const meta = {
@@ -225,73 +224,85 @@ describe('fileNameValidator', () => {
 		};
 	}
 
-	function nameMeta(path: string, fileName: string) {
+	function nameMeta(path: string | undefined, fileName: string) {
 		return { ...meta, fileName, itemMeta: { path } };
 	}
 
-	// Given no stored required constraint, about/index.xml is required and /site/website/index.xml is not. A stored constraint still requires the root index.
+	// Given a blank file-name atom, a page under the site is invalid and the home page is valid. The field itself is not marked required, so the asterisk stays off. One required message, not two.
 	it('requires a file name except on the site root index', async () => {
 		const stored = fileNameField(false);
-		const nonRoot = fileNameFieldForForm(stored, aboutPath);
 		assert.equal(isFieldRequired(stored), false);
-		assert.equal(isFieldRequired(nonRoot), true);
-		const missing = await validateFieldValue(nonRoot, '', nameMeta(aboutPath, ''));
+		const missing = await validateFieldValue(stored, 'left-over-xml', nameMeta(aboutPath, ''));
 		assert.equal(missing.isValid, false);
 		assert.deepEqual(missing.messages.map(messageOf), [{ text: 'This field is required.' }]);
 
-		const root = fileNameFieldForForm(fileNameField(false), rootPagePath);
-		assert.equal(isFieldRequired(root), false);
-		const rootResult = await validateFieldValue(root, '', nameMeta(rootPagePath, ''));
+		const rootResult = await validateFieldValue(stored, '', nameMeta(rootPagePath, ''));
 		assert.equal(rootResult.isValid, true);
 		assert.deepEqual(rootResult.messages, []);
 
-		const rootRequired = fileNameFieldForForm(fileNameField(true), rootPagePath);
-		assert.equal(isFieldRequired(rootRequired), true);
-		const rootRequiredResult = await validateFieldValue(rootRequired, '', nameMeta(rootPagePath, ''));
-		assert.equal(rootRequiredResult.isValid, false);
-		assert.deepEqual(rootRequiredResult.messages.map(messageOf), [{ text: 'This field is required.' }]);
+		const noPath = await validateFieldValue(stored, '', nameMeta(undefined, ''));
+		assert.equal(noPath.isValid, false);
+		assert.deepEqual(noPath.messages.map(messageOf), [{ text: 'This field is required.' }]);
 	});
 
-	// Given XML with an empty file-name and path /site/website/about/index.xml, both atoms start as "about", so the required check passes.
-	it('seeds the value atom from the item path, so an empty xml file-name with path name about is valid', async () => {
-		const fileName = fileNameFromItemPath(aboutPath) || '';
-		assert.equal(fileName, 'about');
-		assert.equal(fileNameFromItemPath(rootPagePath) || '', '');
-		const values = { 'file-name': '' };
-		applyFileNameFormValue(values, fileName);
-		assert.equal(values['file-name'], 'about');
+	// Given the home page and a stored required constraint, a blank name is invalid and the asterisk is on. The message is still only the one required message.
+	it('keeps a stored required constraint on the home page', async () => {
+		const stored = fileNameField(true);
+		assert.equal(isFieldRequired(stored), true);
+		const result = await validateFieldValue(stored, 'ignored-xml', nameMeta(rootPagePath, '  '));
+		assert.equal(result.isValid, false);
+		assert.deepEqual(result.messages.map(messageOf), [{ text: 'This field is required.' }]);
+		// The field value is also blank, so the generic required check runs. It still contributes one message, not a second.
+		const fromEmptyValue = await validateFieldValue(stored, '', nameMeta(rootPagePath, ''));
+		assert.deepEqual(fromEmptyValue.messages.map(messageOf), [{ text: 'This field is required.' }]);
+	});
+
+	// Given an edit of /site/website/about/index.xml, the file-name atom starts as "about" from the path. The xml field value stays empty and is not copied onto that atom. The unchanged name is valid.
+	it('reads the file-name atom, which an edit derives from the path', async () => {
+		assert.equal(fileNameFromItemPath(aboutPath), 'about');
+		assert.equal(fileNameFromItemPath(rootPagePath), '');
+		assert.equal(fileNameFromItemPath(''), '');
 
 		const formContextRef = { current: createFormStackData() };
 		const atoms = createFormsEngineAtoms('author', {
 			lockResult: atom({ locked: true, lockError: null, affectedPackages: null }),
 			readonly: atom(false),
-			fileName: createFileNameAtom(aboutPath, formContextRef, fileName)
+			fileName: createFileNameAtom(aboutPath, formContextRef)
 		});
 		formContextRef.current.atoms = atoms;
 		formContextRef.current.itemMeta = { path: aboutPath } as never;
-		const stored = fileNameField(true);
+		const stored = fileNameField(false);
 		const contentType = { id: '/page/article', name: 'Article', fields: { 'file-name': stored } } as never;
-		// The xml value is empty. The same computed name seeds both atoms.
-		setFieldAtoms(
-			formContextRef,
-			contentType,
-			contentType.fields,
-			'file-name',
-			atoms,
-			'',
-			undefined,
-			false,
-			aboutPath,
-			fileName
-		);
-		assert.equal(isFieldRequired(stored), true);
+		setFieldAtoms(formContextRef, contentType, contentType.fields, 'file-name', atoms, '');
+		assert.equal(isFieldRequired(stored), false);
 
 		const store = createStore();
 		assert.equal(store.get(atoms.fileName), 'about');
-		assert.equal(store.get(atoms.valueByFieldId['file-name']), 'about');
+		assert.equal(store.get(atoms.valueByFieldId['file-name']), '');
 		const validity = await store.get(atoms.validationByFieldId['file-name']);
 		assert.equal(validity.isValid, true);
 		assert.deepEqual(validity.messages, []);
+	});
+
+	// Given a create form, there is no path yet, so the file-name atom starts blank and the name is invalid.
+	it('starts a new item with a blank name, which is invalid', async () => {
+		const formContextRef = { current: createFormStackData() };
+		const atoms = createFormsEngineAtoms('author', {
+			lockResult: atom({ locked: true, lockError: null, affectedPackages: null }),
+			readonly: atom(false),
+			fileName: createFileNameAtom('', formContextRef)
+		});
+		formContextRef.current.atoms = atoms;
+		formContextRef.current.itemMeta = { path: undefined } as never;
+		const stored = fileNameField(false);
+		const contentType = { id: '/page/article', name: 'Article', fields: { 'file-name': stored } } as never;
+		setFieldAtoms(formContextRef, contentType, contentType.fields, 'file-name', atoms, '');
+
+		const store = createStore();
+		assert.equal(store.get(atoms.fileName), '');
+		const validity = await store.get(atoms.validationByFieldId['file-name']);
+		assert.equal(validity.isValid, false);
+		assert.deepEqual(validity.messages.map(messageOf), [{ text: 'This field is required.' }]);
 	});
 });
 
