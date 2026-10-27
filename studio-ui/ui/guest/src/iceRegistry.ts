@@ -562,7 +562,7 @@ export function checkComponentMovability(entries: ReferentialEntries): boolean {
 
 	const records = Array.from(registry.values());
 
-	let parentField, parentModelId, parentCollection, minCount;
+	let parentField, parentModelId, parentCollection;
 
 	// Find the parent field and it's respective container collection
 	// The array in which this model is listed on.
@@ -633,7 +633,8 @@ export function checkComponentMovability(entries: ReferentialEntries): boolean {
 		return false;
 	}
 
-	minCount = (parentField.validations && parentField.validations.minCount) || 0;
+	// minCount is the mapped limit object. Compare its value. See utils/repeatLimits.ts.
+	const minCount = parentField.validations?.minCount?.value ?? 0;
 
 	if (parentField.type === 'node-selector') {
 		return (

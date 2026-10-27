@@ -59,6 +59,7 @@ import { popDialog, pushDialog } from '../../state/actions/dialogStack';
 import type { BuiltInControlType } from '../FormsEngine/lib/controlMap';
 import { asArray } from '../../utils/array';
 import { componentsDataSourceContentTypesPropertyNames, systemValidationsKeysMap } from '../../utils/contentType';
+import { repeatOccursXmlValues, virtualCountValidationIds } from '../../utils/repeatLimits';
 import { XmlKeys } from '../FormsEngine/lib/formConsts';
 import { getPossibleTranslation } from '../../utils/i18n';
 import { FormatXMLElementFn, PrimitiveType } from 'intl-messageformat';
@@ -662,14 +663,38 @@ export function buildContentTypeXml(serializeTypeStructureObject: SerializeToXml
 }
 
 function convertFieldStructToXmlStruct(field: ContentTypeField): Required<LegacyFormDefinitionField> {
-	const minOccurs = field.properties?.minOccurs?.value as string;
-	const maxOccurs = field.properties?.maxOccurs?.value as string;
+	// Repeat limits are written from the count-limit contract (utils/repeatLimits.ts): the element
+	// and the property get the same value, with TB1 defaults (min 0, max '*'). minCount/maxCount
+	// are virtual and are not written. A stored required constraint is stripped.
+	const repeatStorage =
+		field.type === 'repeat'
+			? repeatOccursXmlValues(field.properties?.minOccurs?.value, field.properties?.maxOccurs?.value)
+			: undefined;
+	const minOccurs = repeatStorage?.minOccurs ?? (field.properties?.minOccurs?.value as string);
+	const maxOccurs = repeatStorage?.maxOccurs ?? (field.properties?.maxOccurs?.value as string);
+	const propertiesSource = repeatStorage
+		? {
+				...field.properties,
+				minOccurs: {
+					...field.properties?.minOccurs,
+					name: 'minOccurs',
+					type: 'string',
+					value: repeatStorage.minOccurs
+				},
+				maxOccurs: {
+					...field.properties?.maxOccurs,
+					name: 'maxOccurs',
+					type: 'string',
+					value: repeatStorage.maxOccurs
+				}
+			}
+		: field.properties;
 
 	// 'plugin' comes in 'field.properties'. (see ContentTypeField['properties'], but it's a separate object in the XML.
 	let plugin: LegacyFormDefinitionField['plugin'];
-	const properties: LegacyFormDefinitionField['properties'] = field.properties
+	const properties: LegacyFormDefinitionField['properties'] = propertiesSource
 		? ({
-				property: Object.entries(field.properties ?? {})
+				property: Object.entries(propertiesSource)
 					.filter(([key, value]) => {
 						if (key === 'plugin') plugin = value as LegacyFormDefinitionField['plugin'];
 						return key !== 'plugin';
@@ -678,23 +703,24 @@ function convertFieldStructToXmlStruct(field: ContentTypeField): Required<Legacy
 			} as LegacyFormDefinitionField['properties'])
 		: undefined;
 
-	const invertedSystemValidationsNames = [
+	const strippedValidationNames = [
 		...Object.values(systemValidationsKeysMap),
-		...componentsDataSourceContentTypesPropertyNames
+		...virtualCountValidationIds,
+		...componentsDataSourceContentTypesPropertyNames,
+		...(field.type === 'repeat' ? ['required'] : [])
 	];
 
-	const constraints =
+	const constraintList =
 		field.validations && Object.keys(field.validations).length > 0
-			? {
-					constraint: Object.values(field.validations)
-						.map((validation) => ({
-							name: validation.id,
-							value: validation.value,
-							type: typeof validation.value
-						}))
-						.filter((validation) => !invertedSystemValidationsNames.includes(validation.name))
-				}
-			: undefined;
+			? Object.values(field.validations)
+					.map((validation) => ({
+						name: validation.id,
+						value: validation.value,
+						type: typeof validation.value
+					}))
+					.filter((validation) => validation.name && !strippedValidationNames.includes(validation.name))
+			: [];
+	const constraints = constraintList.length > 0 ? { constraint: constraintList } : undefined;
 
 	// Note: `undefined` suppresses nodes in the XML, empty strings doesn't.
 	return {

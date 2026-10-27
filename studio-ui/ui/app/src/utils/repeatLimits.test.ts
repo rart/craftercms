@@ -17,42 +17,71 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
+	countLimitsFromNodeSelector,
+	countLimitsFromRepeat,
 	getRepeatMinimum,
 	getRepeatOccurrenceViolations,
 	isRepeatAddDisabled,
 	isRepeatRemoveDisabled,
-	parseRepeatOccursLimit
+	nodeSelectorCountLimit,
+	repeatLimitEditorValues,
+	repeatOccursXmlValues
 } from './repeatLimits.ts';
 
-describe('parseRepeatOccursLimit', () => {
-	it('maps minOccurs/maxOccurs elements onto a numeric limit', () => {
-		assert.equal(parseRepeatOccursLimit('1', '9'), 1);
-		assert.equal(parseRepeatOccursLimit('3'), 3);
-		assert.equal(parseRepeatOccursLimit(2, '9'), 2);
+describe('countLimitsFromRepeat', () => {
+	it('lets the element win over the property', () => {
+		assert.deepEqual(countLimitsFromRepeat('1', '0', '*', '4'), { minCount: 1 });
+		assert.deepEqual(countLimitsFromRepeat('2', '9', '3', '8'), { minCount: 2, maxCount: 3 });
 	});
 
-	it('treats * and blank as unlimited', () => {
-		assert.equal(parseRepeatOccursLimit('*', '4'), null);
-		assert.equal(parseRepeatOccursLimit('  *  '), null);
-		assert.equal(parseRepeatOccursLimit(undefined, '*'), null);
-		assert.equal(parseRepeatOccursLimit(undefined, null), null);
-		assert.equal(parseRepeatOccursLimit(undefined, undefined), null);
+	it('uses the property when the element is blank', () => {
+		assert.deepEqual(countLimitsFromRepeat(undefined, '5', '', '4'), { minCount: 5, maxCount: 4 });
+		assert.deepEqual(countLimitsFromRepeat('  ', 2, undefined, 6), { minCount: 2, maxCount: 6 });
 	});
 
-	it('falls back to the duplicated property when the element is missing', () => {
-		assert.equal(parseRepeatOccursLimit(undefined, '5'), 5);
-		assert.equal(parseRepeatOccursLimit('', 4), 4);
-		assert.equal(parseRepeatOccursLimit(undefined, 5), 5);
+	it('treats 0 and blank as no minimum, and * and blank as no maximum', () => {
+		assert.deepEqual(countLimitsFromRepeat('0', '4', '*', '3'), {});
+		assert.deepEqual(countLimitsFromRepeat(undefined, undefined, undefined, undefined), {});
+		assert.deepEqual(countLimitsFromRepeat(undefined, '0', ' * ', '9'), {});
 	});
 
 	it('rejects fractions, trailing junk, and negatives', () => {
-		assert.equal(parseRepeatOccursLimit('0.5'), null);
-		assert.equal(parseRepeatOccursLimit('3abc'), null);
-		assert.equal(parseRepeatOccursLimit('-1'), null);
-		assert.equal(parseRepeatOccursLimit(0.5), null);
-		assert.equal(parseRepeatOccursLimit(-1), null);
+		assert.deepEqual(countLimitsFromRepeat('0.5', '2', '3abc', '4'), {});
+		assert.deepEqual(countLimitsFromRepeat('-1', '2', -1, '4'), {});
 		assert.equal(isRepeatAddDisabled(false, 0, '-1'), false);
 		assert.equal(isRepeatAddDisabled(false, 0, -1), false);
+	});
+
+	it('keeps a repeat maximum of 0', () => {
+		assert.deepEqual(countLimitsFromRepeat(undefined, undefined, '0', '*'), { maxCount: 0 });
+	});
+
+	it('writes TB1 defaults for the editor and the XML', () => {
+		assert.deepEqual(repeatLimitEditorValues({}), { minOccurs: 0, maxOccurs: '*' });
+		assert.deepEqual(repeatLimitEditorValues({ minCount: 1, maxCount: 3 }), { minOccurs: 1, maxOccurs: '3' });
+		assert.deepEqual(repeatOccursXmlValues(undefined, ''), { minOccurs: '0', maxOccurs: '*' });
+		assert.deepEqual(repeatOccursXmlValues(1, '*'), { minOccurs: '1', maxOccurs: '*' });
+		assert.deepEqual(repeatOccursXmlValues('2', 4), { minOccurs: '2', maxOccurs: '4' });
+	});
+});
+
+describe('countLimitsFromNodeSelector', () => {
+	it('treats 0 and blank as unlimited', () => {
+		assert.deepEqual(countLimitsFromNodeSelector('0', '0'), {});
+		assert.deepEqual(countLimitsFromNodeSelector(0, ''), {});
+		assert.deepEqual(countLimitsFromNodeSelector(undefined, undefined), {});
+		assert.equal(nodeSelectorCountLimit(0), undefined);
+		assert.equal(nodeSelectorCountLimit(''), undefined);
+	});
+
+	it('keeps a positive minimum and maximum', () => {
+		assert.deepEqual(countLimitsFromNodeSelector('1', '3'), { minCount: 1, maxCount: 3 });
+		assert.deepEqual(countLimitsFromNodeSelector(2, 0), { minCount: 2 });
+	});
+
+	it('rejects invalid values', () => {
+		assert.deepEqual(countLimitsFromNodeSelector('3abc', '0.5'), {});
+		assert.deepEqual(countLimitsFromNodeSelector('-1', '*'), {});
 	});
 });
 
@@ -86,7 +115,7 @@ describe('isRepeatAddDisabled', () => {
 });
 
 describe('isRepeatRemoveDisabled', () => {
-	it('disables removal at or below the effective minimum', () => {
+	it('disables removal at or below the minimum', () => {
 		assert.equal(isRepeatRemoveDisabled(false, 1, 1), true);
 		assert.equal(isRepeatRemoveDisabled(false, 2, 1), false);
 		assert.equal(isRepeatRemoveDisabled(false, 2, 2), true);
@@ -96,18 +125,13 @@ describe('isRepeatRemoveDisabled', () => {
 		assert.equal(isRepeatRemoveDisabled(false, 1, undefined), false);
 		assert.equal(isRepeatRemoveDisabled(false, 1, null), false);
 		assert.equal(isRepeatRemoveDisabled(false, 1, 0), false);
+		assert.equal(getRepeatMinimum(undefined), 0);
+		assert.equal(getRepeatMinimum(0), 0);
+		assert.equal(getRepeatMinimum(3), 3);
 	});
 
 	it('disables removal when readonly', () => {
 		assert.equal(isRepeatRemoveDisabled(true, 3, 0), true);
-	});
-
-	it('treats a required repeat with no minCount as a minimum of 1', () => {
-		assert.equal(getRepeatMinimum(undefined, true), 1);
-		assert.equal(getRepeatMinimum(undefined, false), 0);
-		assert.equal(getRepeatMinimum(3, true), 3);
-		assert.equal(isRepeatRemoveDisabled(false, 1, undefined, true), true);
-		assert.equal(isRepeatRemoveDisabled(false, 2, undefined, true), false);
 	});
 });
 

@@ -44,8 +44,6 @@ import {
 	isRepeatRemoveDisabled,
 	readNumericLimit
 } from '../../../utils/repeatLimits';
-import { isFieldRequired } from '../lib/validators';
-
 const repeatMessages = defineMessages({
 	addItems: { defaultMessage: 'Add items' },
 	maxReached: { defaultMessage: 'Maximum of {max, plural, one {# item} other {# items}} reached' },
@@ -78,7 +76,7 @@ function getRepeatItemSummary(item: RepeatItem): string {
 		.join(' | ');
 }
 
-/** Repeating group. Add stops at the maximum; delete stops at the effective minimum. */
+/** Repeating group. Add stops at maxCount; delete stops at minCount. See utils/repeatLimits.ts. */
 export function Repeat(props: RepeatProps) {
 	const { field, value, setValue, readonly, autoFocus } = props;
 	const { formatMessage } = useIntl();
@@ -91,10 +89,9 @@ export function Repeat(props: RepeatProps) {
 	const hasContent = count;
 	const maxCount = field.validations?.maxCount?.value;
 	const minCount = field.validations?.minCount?.value;
-	const required = isFieldRequired(field);
-	const minimum = getRepeatMinimum(minCount, required);
+	const minimum = getRepeatMinimum(minCount);
 	const isAddDisabled = isRepeatAddDisabled(Boolean(readonly), count, maxCount);
-	const isRemoveDisabled = isRepeatRemoveDisabled(Boolean(readonly), count, minCount, required);
+	const isRemoveDisabled = isRepeatRemoveDisabled(Boolean(readonly), count, minCount);
 	const addTooltip = readonly
 		? ''
 		: isAddDisabled

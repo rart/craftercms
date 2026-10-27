@@ -34,14 +34,15 @@ export const repeatDescriptor: DescriptorContentType = {
 			id: 'minOccurs',
 			type: 'int',
 			name: defineMessage({ defaultMessage: 'Minimum Occurrences' }),
-			defaultValue: undefined,
+			defaultValue: 0,
 			validations: immutableEmptyObject
 		},
 		maxOccurs: {
 			id: 'maxOccurs',
-			type: 'int',
+			// '*' means no maximum. See utils/repeatLimits.ts.
+			type: 'string',
 			name: defineMessage({ defaultMessage: 'Maximum Occurrences' }),
-			defaultValue: undefined,
+			defaultValue: '*',
 			validations: immutableEmptyObject
 		}
 	},

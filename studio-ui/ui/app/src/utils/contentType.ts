@@ -126,11 +126,9 @@ export function getDefaultValue(field: ContentTypeField): string | number | bool
 	if (field.defaultValue) {
 		return field.defaultValue;
 	}
-	// Repeat prefill does not depend on the required flag alone. The effective minimum is the
-	// explicit minCount value, or 1 when the repeat is required and no minimum was set — the
-	// same rule as the Delete gate. minCount is the validation object, so the count is `.value`.
+	// Prefill to minCount.value (the validation object is not the count). See utils/repeatLimits.ts.
 	if (field.type === 'repeat') {
-		const minimum = getRepeatMinimum(field.validations.minCount?.value, Boolean(field.validations.required?.value));
+		const minimum = getRepeatMinimum(field.validations.minCount?.value);
 		if (minimum <= 0 || !field.fields) {
 			return [];
 		}
@@ -268,8 +266,6 @@ export function createConfigPathFromTypeId(contentTypeId: string): string {
 
 export const systemValidationsNames = [
 	'itemManager',
-	'minSize',
-	'maxSize',
 	'maxlength',
 	'readonly',
 	'width',
@@ -289,9 +285,8 @@ export const systemValidationsNames = [
 	'fileBrowseRepo'
 ];
 
+// minSize/maxSize and minOccurs/maxOccurs are mapped in utils/repeatLimits.ts.
 export const systemValidationsKeysMap = {
-	minSize: 'minCount',
-	maxSize: 'maxCount',
 	maxlength: 'maxLength',
 	contentTypes: 'allowedContentTypes',
 	tags: 'allowedContentTypeTags',

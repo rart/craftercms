@@ -35,7 +35,14 @@ import { defer, Observable, of, Subscription, throwError } from 'rxjs';
 import { CONTENT_TYPE_JSON, get, getBinary, getGlobalHeaders, post } from '../utils/ajax';
 import { catchError, finalize, map, switchMap } from 'rxjs/operators';
 import { createLookupTable, nou, toQueryString } from '../utils/object';
-import { parseRepeatOccursLimit } from '../utils/repeatLimits';
+import {
+	countLimitsFromNodeSelector,
+	countLimitsFromRepeat,
+	nodeSelectorLimitNames,
+	repeatLimitEditorValues,
+	repeatLimitNames,
+	type CountLimits
+} from '../utils/repeatLimits';
 import { fetchContentItems } from './content';
 import { ContentItem } from '../models/Item';
 import { fetchConfigurationDOM, writeConfiguration } from './configuration';
@@ -244,6 +251,18 @@ function getFieldDataSourceValidations(
 	return validations;
 }
 
+function rawLegacyPropertyValue(legacyField: LegacyFormDefinitionField, name: string): unknown {
+	return asArray(legacyField.properties?.property).find((prop) => prop.name === name)?.value;
+}
+
+/** Writes virtual minCount/maxCount. Absent means unlimited. See utils/repeatLimits.ts. */
+function assignCountLimits(field: ContentTypeField, limits: CountLimits): void {
+	if (limits.minCount == null) delete field.validations.minCount;
+	else field.validations.minCount = { id: 'minCount', value: limits.minCount, level: 'required' };
+	if (limits.maxCount == null) delete field.validations.maxCount;
+	else field.validations.maxCount = { id: 'maxCount', value: limits.maxCount, level: 'required' };
+}
+
 /** Maps legacy form-definition fields into the Forms Engine content-type model. */
 function parseLegacyFormDefinitionFields(
 	legacyFieldsToBeParsed: LegacyFormDefinitionField[] | LegacyFormDefinitionField,
@@ -285,15 +304,7 @@ function parseLegacyFormDefinitionFields(
 					value = legacyProp.value ? parseInt(legacyProp.value) : null;
 					break;
 				default:
-					if (
-						legacyField.type === 'repeat' &&
-						(legacyProp.name === 'minOccurs' || legacyProp.name === 'maxOccurs') &&
-						legacyProp.value === '*'
-					) {
-						value = null;
-					} else {
-						value = legacyProp.value;
-					}
+					value = legacyProp.value;
 			}
 			field.properties[legacyProp.name] = {
 				...legacyProp,
@@ -352,31 +363,29 @@ function parseLegacyFormDefinitionFields(
 		switch (legacyField.type) {
 			case 'repeat': {
 				field.fields = {};
-				// form-definition stores minOccurs/maxOccurs both as elements and as properties; Type Builder 2 writes both.
-				// Runtime validations store the numeric limits as minCount/maxCount. `*` means unlimited.
-				const min = parseRepeatOccursLimit(legacyField?.minOccurs, field.properties?.minOccurs?.value) ?? 0;
-				const max = parseRepeatOccursLimit(legacyField?.maxOccurs, field.properties?.maxOccurs?.value);
-				// A minimum above zero implies required. Keep a required constraint when minOccurs is absent,
-				// so the effective minimum stays one item instead of being cleared.
-				field.validations.required = {
-					id: 'required',
-					value: min > 0 || field.validations.required?.value === true,
-					level: 'required'
+				// Count limits: utils/repeatLimits.ts. A required constraint is not a minimum.
+				delete field.validations.required;
+				const limits = countLimitsFromRepeat(
+					legacyField?.minOccurs,
+					rawLegacyPropertyValue(legacyField, repeatLimitNames.min),
+					legacyField?.maxOccurs,
+					rawLegacyPropertyValue(legacyField, repeatLimitNames.max)
+				);
+				assignCountLimits(field, limits);
+				// TB2 edits the properties. Store the element-winning values so load and save agree.
+				const editorValues = repeatLimitEditorValues(limits);
+				field.properties[repeatLimitNames.min] = {
+					...field.properties[repeatLimitNames.min],
+					name: repeatLimitNames.min,
+					type: 'int',
+					value: editorValues.minOccurs
 				};
-				if (min > 0) {
-					field.validations.minCount = {
-						id: 'minCount',
-						value: min,
-						level: 'required'
-					};
-				}
-				if (max != null) {
-					field.validations.maxCount = {
-						id: 'maxCount',
-						value: max,
-						level: 'required'
-					};
-				}
+				field.properties[repeatLimitNames.max] = {
+					...field.properties[repeatLimitNames.max],
+					name: repeatLimitNames.max,
+					type: 'string',
+					value: editorValues.maxOccurs
+				};
 				parseLegacyFormDefinitionFields(legacyField.fields.field, field.fields, dropTargetsLookup, null, dataSources);
 				break;
 			}
@@ -385,6 +394,14 @@ function parseLegacyFormDefinitionFields(
 					...field.validations,
 					...getFieldValidations(propertyProp, dropTargetsLookup)
 				};
+				// Count limits: utils/repeatLimits.ts. 0 is unlimited and is not stored.
+				assignCountLimits(
+					field,
+					countLimitsFromNodeSelector(
+						rawLegacyPropertyValue(legacyField, nodeSelectorLimitNames.min),
+						rawLegacyPropertyValue(legacyField, nodeSelectorLimitNames.max)
+					)
+				);
 				field.validations.required = {
 					id: 'required',
 					value: Boolean(field.validations.minCount?.value),

@@ -20,7 +20,7 @@ import '../../../../test/registerTsLoader.mjs';
 import type { ContentTypeField } from '../../../models/ContentType';
 import type { FieldValidityMessage } from './validators.ts';
 
-const { repeatGroupValidator, validateFieldValue } = await import('./validators.ts');
+const { nodeSelectorValidator, repeatGroupValidator, validateFieldValue } = await import('./validators.ts');
 
 const meta = {
 	siteId: 'editorial',
@@ -76,17 +76,18 @@ describe('repeatGroupValidator', () => {
 		assert.equal(await repeatGroupValidator(field, [{}, {}, {}], [], meta), true);
 	});
 
-	it('treats a required repeat with no minCount as a minimum of 1', async () => {
+	it('does not treat a required constraint as a minimum', async () => {
 		const field = repeatField({ required: validation('required', true) });
 		const messages = [];
-		assert.equal(await repeatGroupValidator(field, [], messages, meta), false);
-		assert.deepEqual(messages.map(messageOf), [
-			{ text: 'At least {minOccurs} occurrence(s) are required.', values: { minOccurs: 1 } }
-		]);
+		assert.equal(await repeatGroupValidator(field, [], messages, meta), true);
+		assert.deepEqual(messages, []);
 	});
 
 	it('does not add the generic required message on top of the occurrence message', async () => {
-		const field = repeatField({ required: validation('required', true) });
+		const field = repeatField({
+			required: validation('required', true),
+			minCount: validation('minCount', 1)
+		});
 		const result = await validateFieldValue(field, [], meta);
 		assert.equal(result.isValid, false);
 		assert.deepEqual(result.messages.map(messageOf), [
@@ -96,5 +97,33 @@ describe('repeatGroupValidator', () => {
 			result.messages.some((message) => messageOf(message).text === 'This field is required.'),
 			false
 		);
+	});
+});
+
+describe('nodeSelectorValidator', () => {
+	function selector(validations: ContentTypeField['validations']): ContentTypeField {
+		return { id: 'articles_o', name: 'Articles', type: 'node-selector', validations };
+	}
+
+	it('reads minCount and maxCount, and treats 0 as unlimited', async () => {
+		const below = await validateFieldValue(
+			selector({ minCount: validation('minCount', 2), maxCount: validation('maxCount', 0) }),
+			[{}],
+			meta
+		);
+		assert.equal(below.isValid, false);
+		assert.equal(messageOf(below.messages[0]).text, 'At least {minSize} item(s) are required.');
+		assert.deepEqual(messageOf(below.messages[0]).values, { minSize: 2 });
+
+		const atMax = await nodeSelectorValidator(selector({ maxCount: validation('maxCount', 1) }), [{}], [], meta);
+		assert.equal(atMax, true);
+
+		const unlimited = await nodeSelectorValidator(
+			selector({ minCount: validation('minCount', 0), maxCount: validation('maxCount', 0) }),
+			[{}, {}, {}],
+			[],
+			meta
+		);
+		assert.equal(unlimited, true);
 	});
 });

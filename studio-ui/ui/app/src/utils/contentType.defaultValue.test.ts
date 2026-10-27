@@ -51,9 +51,9 @@ describe('getDefaultValue repeat prefill', () => {
 		assert.deepEqual(prefilled, [{ title_s: 'Hello' }, { title_s: 'Hello' }, { title_s: 'Hello' }]);
 	});
 
-	it('starts a required repeat with no minCount at one item, and an optional one empty', () => {
+	it('does not prefill a repeat that has no minCount, including a required one', () => {
 		const required = getDefaultValue(repeatField({ required: { id: 'required', value: true, level: 'required' } }));
-		assert.deepEqual(required, [{ title_s: 'Hello' }]);
+		assert.deepEqual(required, []);
 
 		const optional = getDefaultValue(repeatField({}));
 		assert.deepEqual(optional, []);

@@ -15,6 +15,7 @@
  */
 
 import { ControlProps } from '../types';
+import { nodeSelectorCountLimit } from '../../../utils/repeatLimits';
 import Alert from '@mui/material/Alert';
 import { FormattedMessage } from 'react-intl';
 import React, { ElementType, memo, Suspense, useCallback, useContext, useMemo } from 'react';
@@ -130,7 +131,9 @@ function ResolvedControlRenderer({
 			processPathMacros({ path, objectId: itemMeta?.id, fullParentPath: item?.path ?? itemMeta?.pathInSite }),
 		[item, itemMeta]
 	);
-	const maxCount = field.validations?.maxCount?.value as number | undefined;
+	// Node-selector maxCount of 0 is unlimited. See utils/repeatLimits.ts.
+	const storedMax = field.validations?.maxCount?.value as number | undefined;
+	const maxCount = field.type === 'node-selector' ? nodeSelectorCountLimit(storedMax) : storedMax;
 	const remainingCapacity =
 		typeof maxCount === 'number' && Array.isArray(value) ? Math.max(0, maxCount - value.length) : undefined;
 	const dataSources = useFieldDataSources({

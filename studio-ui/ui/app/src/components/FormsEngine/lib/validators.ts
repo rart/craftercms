@@ -40,7 +40,7 @@ import type { CheckboxGroupProps } from '../controls/CheckboxGroup';
 import { macroCreatorLookupTable } from '../../ContentTypeManagement/controls/PathWithMacroCreator';
 import { getPluginControlValidator } from '../controls/registry';
 import { isFieldPathIrrelevant } from '../formControllers/runtime';
-import { getRepeatMinimum, getRepeatOccurrenceViolations } from '../../../utils/repeatLimits';
+import { getRepeatOccurrenceViolations, nodeSelectorCountLimit } from '../../../utils/repeatLimits';
 
 export interface ValidatorMetaData {
 	siteId: string;
@@ -201,8 +201,7 @@ export async function validateFieldValue(
 	const isEmpty = isEmptyValue(field, validateValue);
 
 	// If it's required, and the value is empty, then it's invalid. For file-name, if path is root it's ok to be empty.
-	// Repeat groups report their own occurrence message, including when empty ("At least N occurrence(s) are required."),
-	// so the generic required check must not replace it.
+	// Repeats use minCount/maxCount (utils/repeatLimits.ts), not the required constraint.
 	if (
 		field.type !== 'repeat' &&
 		(isRequired || (field.id === 'file-name' && meta.itemMeta.path !== '/site/website/index.xml')) &&
@@ -298,7 +297,7 @@ export function dateTimeExpressionInputValidator(field, currentValue: string, me
 
 /**
  * Validates a repeat group's size against minCount/maxCount, then each item's fields.
- * A required group with no minimum still requires one item. A count equal to either bound is valid.
+ * The minimum comes only from minOccurs. A count equal to either bound is valid.
  */
 export async function repeatGroupValidator(
 	field: ContentTypeField,
@@ -308,9 +307,8 @@ export async function repeatGroupValidator(
 ): Promise<boolean> {
 	let isValid = true;
 	const items = Array.isArray(currentValue) ? currentValue : [];
-	// Runtime validations use minCount/maxCount, mapped from form-definition minOccurs/maxOccurs.
-	// A required repeat with no explicit minimum still needs at least one item.
-	const minCount = getRepeatMinimum(getValidationValue(field.validations, 'minCount'), isFieldRequired(field));
+	// minCount/maxCount are the mapped limits. See utils/repeatLimits.ts.
+	const minCount = getValidationValue(field.validations, 'minCount');
 	const maxCount = getValidationValue(field.validations, 'maxCount');
 
 	// Validate repeat group restrictions (min/max occurrences). Equality is allowed.
@@ -478,18 +476,24 @@ export async function nodeSelectorValidator(
 	if (!Array.isArray(currentValue)) return isValid;
 	// This set is used to keep track of visited content items during validation to prevent infinite loops in case of circular references.
 	const visited = new Set<string>();
-	const minSize: number = getPropertyValue(field.properties, 'minSize') as number;
-	const maxSize: number = getPropertyValue(field.properties, 'maxSize') as number;
+	// minCount/maxCount are the mapped limits. 0 is unlimited. See utils/repeatLimits.ts.
+	const minCount = nodeSelectorCountLimit(getValidationValue(field.validations, 'minCount'));
+	const maxCount = nodeSelectorCountLimit(getValidationValue(field.validations, 'maxCount'));
 	const embeddedContent = currentValue.filter((item) => nnou(item.component));
 
-	// Validate node selector restrictions (min/max occurrences)
-	if (nnou(minSize) && currentValue.length < minSize) {
-		messages?.push([defineMessage({ defaultMessage: 'At least {minSize} item(s) are required.' }), { minSize }]);
+	for (const violation of getRepeatOccurrenceViolations(currentValue.length, minCount, maxCount)) {
 		isValid = false;
-	}
-	if (nnou(maxSize) && currentValue.length > maxSize) {
-		messages?.push([defineMessage({ defaultMessage: 'No more than {maxSize} item(s) are allowed.' }), { maxSize }]);
-		isValid = false;
+		if (violation.kind === 'min') {
+			messages?.push([
+				defineMessage({ defaultMessage: 'At least {minSize} item(s) are required.' }),
+				{ minSize: violation.limit }
+			]);
+		} else {
+			messages?.push([
+				defineMessage({ defaultMessage: 'No more than {maxSize} item(s) are allowed.' }),
+				{ maxSize: violation.limit }
+			]);
+		}
 	}
 
 	// If there are no embedded items, return validation result (items validation is not needed if there are no items)
