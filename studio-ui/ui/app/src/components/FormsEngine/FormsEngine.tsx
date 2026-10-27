@@ -1178,11 +1178,11 @@ function FormOrchestrator(props: FormsEngineProps) {
 		}
 	};
 
-	const beginSettledFieldScroll = useCallback((fieldId: string) => {
+	const beginSettledFieldScroll = useCallback((fieldId: string, focus: boolean) => {
 		cancelFieldScrollRef.current?.();
 		const root = containerRef.current;
 		if (!root) return;
-		cancelFieldScrollRef.current = scrollToFieldWhenSettled(root, fieldId);
+		cancelFieldScrollRef.current = scrollToFieldWhenSettled(root, fieldId, { focus });
 	}, []);
 
 	// Monitor when sentinel element crosses the threshold
@@ -1215,6 +1215,9 @@ function FormOrchestrator(props: FormsEngineProps) {
 	// `pendingScrollFieldId`. That re-run has no target and must leave the observer in place.
 	// A later run with no target (the scope changed and the field is gone) cancels it.
 	const retainSettledScrollRef = useRef(false);
+	// Set when a reveal names a field. Survives the re-run that clears pendingScrollFieldId,
+	// then drops so a later fieldToScroll pass does not move focus.
+	const focusPendingScrollRef = useRef(false);
 	const cancelSettledScroll = useCallback(() => {
 		cancelFieldScrollRef.current?.();
 		cancelFieldScrollRef.current = null;
@@ -1225,6 +1228,9 @@ function FormOrchestrator(props: FormsEngineProps) {
 	// field that was hidden needs to be brought into view.
 	useEffect(() => {
 		const fieldId = pendingScrollFieldId || fieldToScroll;
+		const focus = Boolean(pendingScrollFieldId) || (retainSettledScrollRef.current && focusPendingScrollRef.current);
+		if (pendingScrollFieldId) focusPendingScrollRef.current = true;
+		else focusPendingScrollRef.current = false;
 		if (!fieldId || !mainContent) {
 			if (!retainSettledScrollRef.current) cancelSettledScroll();
 			retainSettledScrollRef.current = false;
@@ -1238,10 +1244,10 @@ function FormOrchestrator(props: FormsEngineProps) {
 			store.set(expandedAtom, true);
 			pendingFieldScrollRef.current = {
 				sectionId,
-				start: () => beginSettledFieldScroll(fieldId)
+				start: () => beginSettledFieldScroll(fieldId, focus)
 			};
 		} else {
-			beginSettledFieldScroll(fieldId);
+			beginSettledFieldScroll(fieldId, focus);
 		}
 		retainSettledScrollRef.current = true;
 		if (pendingScrollFieldId) store.set(atoms.pendingScrollFieldId, null);

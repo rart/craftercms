@@ -73,6 +73,7 @@ import {
 	createFormVisibilityAtoms,
 	fieldVisibility,
 	type FormVisibilityState,
+	type LaunchFieldsLookup,
 	visibilityFromLaunch
 } from './formVisibility';
 import { createEmbeddedRelevanceResolver } from '../formControllers/relevance';
@@ -99,8 +100,11 @@ export function getScrollContainer(container: HTMLElement): HTMLElement {
 	return mainContent instanceof HTMLElement ? mainContent : container;
 }
 
+const focusableControl =
+	'input:not([type=hidden]):not([aria-hidden="true"]):not([disabled]), textarea:not([disabled]), select:not([disabled]), [contenteditable="true"], [role="combobox"], [tabindex="0"]';
+
 function focusField(field: HTMLElement): void {
-	const inner = field.querySelector<HTMLElement>('input, textarea, select, [contenteditable="true"]');
+	const inner = field.querySelector<HTMLElement>(focusableControl);
 	const target = inner ?? field;
 	if (target === field && !field.hasAttribute('tabindex')) field.tabIndex = -1;
 	target.focus({ preventScroll: true });
@@ -114,7 +118,7 @@ function focusField(field: HTMLElement): void {
 export function scrollToFieldWhenSettled(
 	root: HTMLElement,
 	fieldId: string,
-	{ quietMs = 250, maxWaitMs = 2500 }: { quietMs?: number; maxWaitMs?: number } = {}
+	{ quietMs = 250, maxWaitMs = 2500, focus = false }: { quietMs?: number; maxWaitMs?: number; focus?: boolean } = {}
 ): () => void {
 	const formBody = root.querySelector('[data-area-id="formBody"]');
 	const scroll = () => {
@@ -123,7 +127,8 @@ export function scrollToFieldWhenSettled(
 			: root.querySelector(`[data-field-id="${fieldId}"]`);
 		if (!(field instanceof HTMLElement)) return;
 		field.scrollIntoView({ behavior: 'instant', block: 'center', inline: 'nearest' });
-		focusField(field);
+		// Plain `fieldToScroll` passes focus off. A reveal sets it so opening a hidden field moves focus.
+		if (focus) focusField(field);
 	};
 
 	if (!formBody) {
@@ -645,7 +650,7 @@ export function createFormsEngineAtoms(
 	launch?: {
 		selectedFields?: readonly string[];
 		index?: string | number;
-		fields: Record<string, { id: string; fields?: object | null }>;
+		fields: LaunchFieldsLookup;
 	}
 ): FormsEngineAtoms {
 	const visibility = visibilityFromLaunch(launch);
@@ -977,19 +982,19 @@ export function useUnlockOnClose(
  **/
 export function generateDefaultChangesComment(
 	contentTypeFields: LookupTable<ContentTypeField>,
-	fieldsToRenderSubset: ContentTypeField[],
+	fields: ContentTypeField[],
 	changedFieldIds: Set<string>,
 	currentMessage: string
 ): string | undefined {
-	let fieldsToRender = contentTypeFields;
-	if (fieldsToRenderSubset) {
-		fieldsToRender = {};
-		fieldsToRenderSubset.forEach((field) => {
-			fieldsToRender[field.id] = field;
+	let namedFields = contentTypeFields;
+	if (fields) {
+		namedFields = {};
+		fields.forEach((field) => {
+			namedFields[field.id] = field;
 		});
 	}
 	const fieldsChangedNames: string[] = Array.from(changedFieldIds).flatMap(
-		(fieldId) => fieldsToRender[fieldId]?.name ?? []
+		(fieldId) => namedFields[fieldId]?.name ?? []
 	);
 	const newMessage = produceChangedFieldsMessage(fieldsChangedNames);
 	if (

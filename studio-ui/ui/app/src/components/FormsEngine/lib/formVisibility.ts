@@ -180,6 +180,15 @@ export function resolveLaunchVisibility(args: {
 	};
 }
 
+/** A content-type field as the launch resolver sees it: an id, and child fields when it is a group. */
+export interface LaunchField {
+	id: string;
+	fields?: object | null;
+}
+
+/** Content-type fields passed into a launch. Shared by the atom factory and the resolver. */
+export type LaunchFieldsLookup = Record<string, LaunchField>;
+
 /** A field that holds child fields can be limited to one item. Repeat groups do; a plain input does not. */
 export function hasChildFields(field: { fields?: object | null } | null | undefined): boolean {
 	return Boolean(field?.fields && Object.keys(field.fields).length > 0);
@@ -189,9 +198,7 @@ export function childFields<T>(field: { fields?: Record<string, T> | null } | nu
 	return field?.fields ? Object.values(field.fields) : [];
 }
 
-export function itemGroupFieldIds(
-	fields: Record<string, { id: string; fields?: object | null }> | null | undefined
-): Set<string> {
+export function itemGroupFieldIds(fields: LaunchFieldsLookup | null | undefined): Set<string> {
 	return new Set(
 		Object.values(fields ?? {})
 			.filter((field) => hasChildFields(field))
@@ -294,7 +301,8 @@ export function clearRepeatItemScope(state: FormVisibilityState): FormVisibility
 
 export interface HiddenInvalidReveal {
 	state: FormVisibilityState;
-	fieldId: string;
+	/** Absent when the full form opens without a field to scroll to. */
+	fieldId?: string;
 }
 
 /**
@@ -329,15 +337,17 @@ export function hiddenInvalidReveal(args: {
  * The scope notice, View in form, and a hidden-invalid save all go through this.
  */
 export function revealField(state: FormVisibilityState, fieldId?: string): HiddenInvalidReveal {
-	return fieldId ? { state: openFullForm(state), fieldId } : { state: openFullForm(state), fieldId: '' };
+	return { state: openFullForm(state), ...(fieldId ? { fieldId } : {}) };
 }
 
 export type SaveRevealStatus = 'revealed' | 'invalid' | 'write';
 
 /**
- * One validity read, one decision. A draft writes. A completed save that is hiding
- * an error reveals it and does not write. A completed save whose errors are on screen
- * is the cannot-proceed dialog. Repeat-item editors have no launch scope to open.
+ * The reveal decision. A draft writes. A completed save that is hiding an error
+ * reveals it and does not write. A completed save whose errors are on screen is
+ * the cannot-proceed dialog. Repeat-item editors have no launch scope to open.
+ * A write that later runs `onBeforeSave` may read validity again, only to refresh
+ * the draft flag. It does not call this a second time.
  */
 export function decideSaveReveal(args: {
 	draft: boolean;
@@ -354,6 +364,54 @@ export function decideSaveReveal(args: {
 	}
 	if (!args.draft && args.invalidFieldIds.length > 0) return { status: 'invalid' };
 	return { status: 'write' };
+}
+
+/**
+ * Draft flag for a write. `onBeforeSave` may change validity; the save recomputes
+ * this from a fresh read and does not run the reveal decision again.
+ */
+export function saveAsDraftFromValidity(explicitDraft: boolean, isFormInvalid: boolean): boolean {
+	return explicitDraft || isFormInvalid;
+}
+
+export interface SaveValidity {
+	isFormInvalid: boolean;
+	invalidFieldIds: readonly string[];
+}
+
+/**
+ * Validity gate that runs before plugin preload and `onBeforeSave`.
+ * `revealed` and `invalid` stop the save. Only `write` may run those steps.
+ * A rejected read propagates to the caller.
+ */
+export async function gateSaveBeforeWrite(args: {
+	draft: boolean;
+	isRepeatMode: boolean;
+	visibility: FormVisibilityState;
+	sectionOrder: readonly string[];
+	irrelevantFieldPaths?: ReadonlySet<string> | null;
+	parentPath?: string;
+	readValidity: () => Promise<SaveValidity>;
+}): Promise<
+	| { status: 'revealed'; reveal: HiddenInvalidReveal }
+	| { status: 'invalid' }
+	| { status: 'write'; isFormInvalid: boolean }
+> {
+	const validity = await args.readValidity();
+	const decision = decideSaveReveal({
+		draft: args.draft,
+		isRepeatMode: args.isRepeatMode,
+		visibility: args.visibility,
+		invalidFieldIds: validity.invalidFieldIds,
+		sectionOrder: args.sectionOrder,
+		irrelevantFieldPaths: args.irrelevantFieldPaths,
+		parentPath: args.parentPath
+	});
+	if (decision.status === 'revealed' && decision.reveal) {
+		return { status: 'revealed', reveal: decision.reveal };
+	}
+	if (decision.status === 'invalid') return { status: 'invalid' };
+	return { status: 'write', isFormInvalid: validity.isFormInvalid };
 }
 
 /**
@@ -378,7 +436,7 @@ export function createFormVisibilityAtoms(
 export function visibilityFromLaunch(launch?: {
 	selectedFields?: readonly string[];
 	index?: string | number;
-	fields: Record<string, { id: string; fields?: object | null }>;
+	fields: LaunchFieldsLookup;
 }): { state: FormVisibilityState; scrollFieldId?: string } {
 	if (!launch) return { state: { active: emptyFieldScope(), launch: null } };
 	const resolved = resolveLaunchVisibility({

@@ -60,6 +60,9 @@ export function SaveCard(props: SaveCardProps) {
 	const disableSave = !isEmbedded && !isRepeatMode && (isSubmitting || !versionComment);
 	const { formatMessage } = useIntl();
 	const dispatch = useDispatch();
+	// Click guard. It returns before setSaveAsDraft, so a second click cannot flip the draft
+	// flag. save() also checks isSubmitting, which stays set through preload and the write
+	// after this handler has finished waiting on the validity decision.
 	const saveInFlight = useRef(false);
 
 	const handleSetCloseAfterSave = (checked: boolean) => {

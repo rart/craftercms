@@ -28,6 +28,8 @@ import {
 	baseFieldId,
 	childFields,
 	decideSaveReveal,
+	gateSaveBeforeWrite,
+	saveAsDraftFromValidity,
 	fieldVisibility,
 	clearRepeatItemScope,
 	firstOutOfScopeInvalidField,
@@ -327,12 +329,19 @@ describe('revealField', () => {
 		repeatFieldIds: repeats
 	}).state;
 
-	// View in form, the scope notice, and a hidden-invalid save share this: open the form and name the field.
+	// View in form and a hidden-invalid save open the form and name the field to scroll to.
 	it('opens the full form and names the field to scroll to', () => {
 		const reveal = revealField(visibility, 'body_html');
 		assert.equal(isScopeActive(reveal.state.active), false);
 		assert.deepEqual(reveal.state.launch?.fieldIds, ['title_s']);
 		assert.equal(reveal.fieldId, 'body_html');
+	});
+
+	// The scope notice opens the full form without pretending there is a field to scroll to.
+	it('opens the full form without a field id when none is given', () => {
+		const reveal = revealField(visibility);
+		assert.equal(isScopeActive(reveal.state.active), false);
+		assert.equal(reveal.fieldId, undefined);
 	});
 });
 
@@ -428,5 +437,67 @@ describe('save reveal decision', () => {
 		});
 		assert.equal(decision.status, 'invalid');
 		assert.equal(decision.reveal, undefined);
+	});
+});
+
+describe('save gate before the controller hook', () => {
+	const visibility = resolveLaunchVisibility({
+		selectedFields: ['title_s'],
+		knownFieldIds: known,
+		repeatFieldIds: repeats
+	}).state;
+
+	// An invalid Save reveals or blocks before plugin preload and onBeforeSave. Those steps must not run.
+	it('does not run onBeforeSave when the save reveals or blocks', async () => {
+		let beforeSaveRuns = 0;
+		const onBeforeSave = () => {
+			beforeSaveRuns += 1;
+		};
+		const gateFor = (invalidFieldIds: string[]) =>
+			gateSaveBeforeWrite({
+				draft: false,
+				isRepeatMode: false,
+				visibility,
+				sectionOrder: ['title_s', 'body_html'],
+				readValidity: async () => ({
+					isFormInvalid: invalidFieldIds.length > 0,
+					invalidFieldIds
+				})
+			});
+		const hidden = await gateFor(['body_html']);
+		const visible = await gateFor(['title_s']);
+		if (hidden.status === 'write') onBeforeSave();
+		if (visible.status === 'write') onBeforeSave();
+		assert.equal(hidden.status, 'revealed');
+		assert.equal(visible.status, 'invalid');
+		assert.equal(beforeSaveRuns, 0);
+
+		const valid = await gateFor([]);
+		if (valid.status === 'write') onBeforeSave();
+		assert.equal(valid.status, 'write');
+		assert.equal(beforeSaveRuns, 1);
+	});
+
+	// A failed validity read rejects from the gate. save() does not catch it, tag it, or reach the hook.
+	it('rejects a failed validity read before onBeforeSave', async () => {
+		await assert.rejects(
+			gateSaveBeforeWrite({
+				draft: false,
+				isRepeatMode: false,
+				visibility,
+				sectionOrder: ['title_s'],
+				readValidity: async () => {
+					throw new Error('validity read failed');
+				}
+			}),
+			/validity read failed/
+		);
+	});
+
+	// After onBeforeSave, the save only refreshes the draft flag. It does not reveal again.
+	it('recomputes the draft flag from a later read without a second reveal decision', () => {
+		assert.equal(saveAsDraftFromValidity(false, false), false);
+		assert.equal(saveAsDraftFromValidity(true, true), true);
+		assert.equal(saveAsDraftFromValidity(false, true), true);
 	});
 });

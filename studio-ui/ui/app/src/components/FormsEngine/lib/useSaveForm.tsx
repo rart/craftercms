@@ -38,7 +38,7 @@ import {
 } from './formUtils';
 import { FormSavePromiseResult, FormsEngineProps } from '../FormsEngine';
 import { contentFormSaveAction } from '../../../utils/contentFormLaunch';
-import { childFields, decideSaveReveal } from './formVisibility';
+import { childFields, gateSaveBeforeWrite, saveAsDraftFromValidity } from './formVisibility';
 import { XmlKeys } from './formConsts';
 import { fromString } from '../../../utils/xml';
 import {
@@ -123,11 +123,40 @@ export function useSaveForm(props: UseSaveFormProps) {
 		return { isFormInvalid: invalidFieldIds.length > 0, invalidFieldIds };
 	};
 	const save = async (draft?: boolean): Promise<SaveFormResult | void> => {
-		// Get before the first await so a second call cannot re-enter preload or onBeforeSave.
+		// Two guards. SaveCard's ref returns before setSaveAsDraft, so an ignored click
+		// cannot flip the draft flag while this read is in flight. isSubmitting is the
+		// write lock: it stays set through preload, onBeforeSave, and the repository write.
 		if (jotai.get(stableFormContext.atoms.isSubmitting)) {
 			return;
 		}
 		setIsSubmitting(true);
+
+		// Before plugin preload and onBeforeSave. A rejection is the Save card's error dialog.
+		let gate: Awaited<ReturnType<typeof gateSaveBeforeWrite>>;
+		try {
+			gate = await gateSaveBeforeWrite({
+				draft: draft === true,
+				isRepeatMode,
+				visibility: jotai.get(stableFormContext.atoms.formVisibility),
+				sectionOrder: contentType.sections?.flatMap((section) => section.fields) ?? [],
+				irrelevantFieldPaths: stableFormContext.formControllerState?.irrelevantFieldPaths,
+				parentPath: repeatFieldId,
+				readValidity: readCurrentValidity
+			});
+		} catch (error) {
+			setIsSubmitting(false);
+			throw error;
+		}
+		if (gate.status === 'revealed') {
+			commitFormVisibility(jotai.set, stableFormContext.atoms, gate.reveal.state, gate.reveal.fieldId);
+			setIsSubmitting(false);
+			return 'revealed';
+		}
+		if (gate.status === 'invalid') {
+			setIsSubmitting(false);
+			return 'invalid';
+		}
+		let saveAsDraft = saveAsDraftFromValidity(draft === true, gate.isFormInvalid);
 
 		const showSaveError = (error: AjaxError | Error) => {
 			setIsSubmitting(false);
@@ -191,8 +220,6 @@ export function useSaveForm(props: UseSaveFormProps) {
 			// Prior save-time failures are safe to clear; `controlPluginCache` drops failed entries so retry works.
 			stableFormContext.affectedPluginControlFields = [];
 			let values = extractAtomValues(jotai, stableFormContext.atoms.valueByFieldId);
-			// Set after the single validity read. A completed save of an invalid form does not reach the write.
-			let saveAsDraft = draft === true;
 
 			const onSavePromiseHandler = ({ close }: FormSavePromiseResult) => {
 				if (saveAsDraft) {
@@ -260,8 +287,9 @@ export function useSaveForm(props: UseSaveFormProps) {
 				return;
 			}
 
-			// Form controller may veto save after validation / plugin preload, before XML write.
-			// Repeat entries store no controller, so this is a no-op for in-memory repeat commits.
+			// A reveal or cannot-proceed already returned, before preload. The controller may still
+			// veto a save that is going to write. Repeat entries store no controller, so this is
+			// a no-op for in-memory repeat commits.
 			const hadBeforeSaveHook = Boolean(stableFormContext.formControllerState?.controller?.onBeforeSave);
 			const beforeSave = await runFormControllerBeforeSave(stableFormContext, dispatch, formatMessage);
 			if (!beforeSave.allowed) {
@@ -283,37 +311,10 @@ export function useSaveForm(props: UseSaveFormProps) {
 				if (!(await preloadPluginsOrBlock(values))) {
 					return;
 				}
+				// Re-read only to refresh the draft flag. Do not reveal or block again.
+				const afterHook = await readCurrentValidity();
+				saveAsDraft = saveAsDraftFromValidity(draft === true, afterHook.isFormInvalid);
 			}
-
-			// One read, after onBeforeSave can change values. A rejected read is the Save card's error dialog.
-			let validity: Awaited<ReturnType<typeof readCurrentValidity>>;
-			try {
-				validity = await readCurrentValidity();
-			} catch (readError) {
-				setIsSubmitting(false);
-				const error = readError instanceof Error ? readError : new Error(String(readError));
-				(error as Error & { formsEngineSaveRead?: boolean }).formsEngineSaveRead = true;
-				throw error;
-			}
-			const decision = decideSaveReveal({
-				draft: draft === true,
-				isRepeatMode,
-				visibility: jotai.get(stableFormContext.atoms.formVisibility),
-				invalidFieldIds: validity.invalidFieldIds,
-				sectionOrder: contentType.sections?.flatMap((section) => section.fields) ?? [],
-				irrelevantFieldPaths: stableFormContext.formControllerState?.irrelevantFieldPaths,
-				parentPath: repeatFieldId
-			});
-			if (decision.status === 'revealed' && decision.reveal) {
-				commitFormVisibility(jotai.set, stableFormContext.atoms, decision.reveal.state, decision.reveal.fieldId);
-				setIsSubmitting(false);
-				return 'revealed';
-			}
-			if (decision.status === 'invalid') {
-				setIsSubmitting(false);
-				return 'invalid';
-			}
-			saveAsDraft = draft === true || validity.isFormInvalid;
 
 			// `onBeforeSave` may have changed `file-name`; the render-time snapshot is stale from here on.
 			const currentFileName = jotai.get(stableFormContext.atoms.fileName);
@@ -597,9 +598,6 @@ export function useSaveForm(props: UseSaveFormProps) {
 			});
 			return 'saved';
 		} catch (error) {
-			if (error && typeof error === 'object' && (error as { formsEngineSaveRead?: boolean }).formsEngineSaveRead) {
-				throw error;
-			}
 			showSaveError(error as AjaxError | Error);
 		}
 	};

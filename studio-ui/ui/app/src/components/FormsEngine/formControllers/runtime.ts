@@ -37,8 +37,7 @@ import type { PrimitiveAtom } from 'jotai';
 import { retrieveProperty } from '../../../utils/object';
 import { showSystemNotification } from '../../../state/actions/system';
 import { getFieldFromContentType, parseFieldValuePath } from './fieldPaths';
-import { childFields, isFieldPathIrrelevant } from '../lib/formVisibility';
-export { isFieldPathIrrelevant };
+import { childFields } from '../lib/formVisibility';
 import {
 	collectRelevanceTargets,
 	createRelevanceContext,
