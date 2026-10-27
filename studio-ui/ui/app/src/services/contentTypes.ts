@@ -352,8 +352,8 @@ function parseLegacyFormDefinitionFields(
 		switch (legacyField.type) {
 			case 'repeat': {
 				field.fields = {};
-				// FE1 writes minOccurs/maxOccurs as elements and duplicates them as properties.
-				// Forms Engine stores the numeric limits as minCount/maxCount. `*` means unlimited.
+				// form-definition stores minOccurs/maxOccurs both as elements and as properties; Type Builder 2 writes both.
+				// Runtime validations store the numeric limits as minCount/maxCount. `*` means unlimited.
 				const min = parseRepeatOccursLimit(legacyField?.minOccurs, field.properties?.minOccurs?.value) ?? 0;
 				const max = parseRepeatOccursLimit(legacyField?.maxOccurs, field.properties?.maxOccurs?.value);
 				field.validations.required = {

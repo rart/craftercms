@@ -20,8 +20,8 @@ export interface RepeatOccurrenceViolation {
 }
 
 /**
- * FE1 content types store repeat limits as `minOccurs` / `maxOccurs`, both as elements on the
- * field and (duplicated) as properties. `*` and blank mean unlimited. The element wins when set.
+ * form-definition stores minOccurs/maxOccurs both as elements and as properties; Type Builder 2
+ * writes both. `*` and blank mean unlimited. The element wins when set.
  */
 export function parseRepeatOccursLimit(topLevel: unknown, propertyValue?: unknown): number | null {
 	const top = typeof topLevel === 'string' ? topLevel.trim() : topLevel;
@@ -56,8 +56,9 @@ export function getRepeatMinimum(minCount: unknown, required = false): number {
 }
 
 /**
- * FE1 disables delete when the current count is at or below `minOccurs` (default 0).
- * Readonly always disables removal. `required` matches {@link getRepeatMinimum}.
+ * Delete is disabled when the count is at or below the effective minimum (an explicit min,
+ * otherwise 1 when the repeat is required, otherwise 0). Readonly always disables removal.
+ * `required` matches {@link getRepeatMinimum}.
  */
 export function isRepeatRemoveDisabled(readonly: boolean, count: number, minCount: unknown, required = false): boolean {
 	if (readonly) return true;

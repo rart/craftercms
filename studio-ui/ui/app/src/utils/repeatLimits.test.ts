@@ -25,7 +25,7 @@ import {
 } from './repeatLimits.ts';
 
 describe('parseRepeatOccursLimit', () => {
-	it('maps FE1 minOccurs/maxOccurs elements onto a numeric limit', () => {
+	it('maps minOccurs/maxOccurs elements onto a numeric limit', () => {
 		assert.equal(parseRepeatOccursLimit('1', '9'), 1);
 		assert.equal(parseRepeatOccursLimit('3'), 3);
 		assert.equal(parseRepeatOccursLimit(2, '9'), 2);
@@ -76,7 +76,7 @@ describe('isRepeatAddDisabled', () => {
 });
 
 describe('isRepeatRemoveDisabled', () => {
-	it('disables removal at or below the minimum, matching FE1', () => {
+	it('disables removal at or below the effective minimum', () => {
 		assert.equal(isRepeatRemoveDisabled(false, 1, 1), true);
 		assert.equal(isRepeatRemoveDisabled(false, 2, 1), false);
 		assert.equal(isRepeatRemoveDisabled(false, 2, 2), true);

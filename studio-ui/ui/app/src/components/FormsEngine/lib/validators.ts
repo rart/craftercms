@@ -308,7 +308,7 @@ export async function repeatGroupValidator(
 ): Promise<boolean> {
 	let isValid = true;
 	const items = Array.isArray(currentValue) ? currentValue : [];
-	// The content-type parser stores FE1 minOccurs/maxOccurs as minCount/maxCount.
+	// Runtime validations use minCount/maxCount, mapped from form-definition minOccurs/maxOccurs.
 	// A required repeat with no explicit minimum still needs at least one item.
 	const minCount = getRepeatMinimum(getValidationValue(field.validations, 'minCount'), isFieldRequired(field));
 	const maxCount = getValidationValue(field.validations, 'maxCount');
