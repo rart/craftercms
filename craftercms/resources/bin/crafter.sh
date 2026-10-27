@@ -802,6 +802,8 @@ function destroyOpenSearchDocker() {
   # `docker rm` without -f leaves a running container in place, and the old
   # inspect check discarded its own output. Force-remove so the port is released.
   if docker inspect "$SEARCH_DOCKER_NAME" > /dev/null 2>&1; then
+    # `docker rm -f` SIGKILLs a running container. Stop first so OpenSearch can flush.
+    docker stop -t 30 "$SEARCH_DOCKER_NAME" > /dev/null 2>&1
     docker rm -f "$SEARCH_DOCKER_NAME" > /dev/null 2>&1
   fi
 }
@@ -820,7 +822,7 @@ function startSearch() {
   isModuleRunning=$?
   if [ $isModuleRunning = 0 ]; then
     if ! [[ "$OPERATING_SYSTEM" == "Linux" ]]; then
-      mkdir -p SEARCH_INDEXES_DIR
+      mkdir -p "$SEARCH_INDEXES_DIR"
       createOpenSearchDocker
       DOCKER_ID=$( docker start "$SEARCH_DOCKER_NAME" )
       echo $DOCKER_ID > $SEARCH_PID
@@ -845,7 +847,7 @@ function debugSearch() {
   isModuleRunning=$?
   if [ $isModuleRunning = 0 ]; then
         if ! [[ "$OPERATING_SYSTEM" == "Linux" ]]; then
-          mkdir -p SEARCH_INDEXES_DIR
+          mkdir -p "$SEARCH_INDEXES_DIR"
           createOpenSearchDocker
           DOCKER_ID=$( docker start "$SEARCH_DOCKER_NAME" )
           echo $DOCKER_ID > $SEARCH_PID
@@ -878,6 +880,7 @@ function stopSearch() {
 
     banner "Stop Search"
     if [ -s "$SEARCH_PID" ]; then
+      docker stop -t 30 "$(cat "$SEARCH_PID")" > /dev/null 2>&1
       docker rm -f "$(cat "$SEARCH_PID")" > /dev/null 2>&1
     fi
     destroyOpenSearchDocker
@@ -888,6 +891,7 @@ function stopSearch() {
       image=$(docker inspect --format '{{.Config.Image}}' "$id" 2>/dev/null || true)
       case "$image" in
         opensearchproject/opensearch|opensearchproject/opensearch:*)
+          docker stop -t 30 "$id" > /dev/null 2>&1
           docker rm -f "$id" > /dev/null 2>&1
           ;;
       esac
