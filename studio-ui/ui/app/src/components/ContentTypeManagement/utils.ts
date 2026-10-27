@@ -60,6 +60,7 @@ import type { BuiltInControlType } from '../FormsEngine/lib/controlMap';
 import { asArray } from '../../utils/array';
 import { componentsDataSourceContentTypesPropertyNames, systemValidationsKeysMap } from '../../utils/contentType';
 import {
+	checkboxGroupConstraintValue,
 	checkboxGroupLimitNames,
 	countLimitsFromStorage,
 	repeatOccursXmlValues,
@@ -85,7 +86,7 @@ export const CONTENT_TYPES_BASE_PATH = '/config/studio/content-types';
 const contentTypeFieldToXmlNameMap = { name: 'title', helpText: 'help' };
 
 type ContentTypeFieldProperties = keyof ContentTypeField;
-const ignoredContentTypeFieldProps: Array<ContentTypeFieldProperties> = ['sortable', 'values', 'type', 'storedMinSize'];
+const ignoredContentTypeFieldProps: Array<ContentTypeFieldProperties> = ['sortable', 'values', 'type'];
 
 export type TypePropsToEdit = Pick<
 	ContentType,
@@ -180,10 +181,6 @@ export function createTypeFieldValuesObject(field: ContentTypeField): LookupTabl
 			// See notes on `contentTypeFieldToXmlNameMap` declaration.
 			values[contentTypeFieldToXmlNameMap[property] ?? property] = field[property];
 		}
-	}
-	// The minSize constraint is the TB2 field. Runtime uses minCount. See utils/repeatLimits.ts.
-	if (field.type === 'checkbox-group' && field.storedMinSize != null) {
-		values[checkboxGroupLimitNames.min] = field.storedMinSize;
 	}
 	return values;
 }
@@ -316,10 +313,14 @@ export function reverseTypeFieldValuesObject(
 		}
 	}
 	if (field.type === 'checkbox-group') {
-		// The editor field is the minSize constraint. Refresh the virtual minimum from it.
-		const limits = countLimitsFromStorage({ minProperty: values[checkboxGroupLimitNames.min] });
+		// minSize on validations is the editor value, including 0. Refresh it and the virtual minimum together.
+		const rawMin = values[checkboxGroupLimitNames.min];
+		const storedMin = checkboxGroupConstraintValue(rawMin);
+		const limits = countLimitsFromStorage({ minProperty: rawMin });
 		const validations = fieldWithReversedValues.validations ?? {};
 		fieldWithReversedValues.validations = validations;
+		if (storedMin == null) delete validations.minSize;
+		else validations.minSize = { id: 'minSize', value: storedMin, level: 'required' };
 		if (limits.minCount == null) delete validations.minCount;
 		else validations.minCount = { id: 'minCount', value: limits.minCount, level: 'required' };
 	}
@@ -737,19 +738,6 @@ function convertFieldStructToXmlStruct(field: ContentTypeField): Required<Legacy
 					}))
 					.filter((validation) => validation.name && !strippedValidationNames.includes(validation.name))
 			: [];
-	// Parsed checkbox groups keep the constraint on storedMinSize, not on validations.minSize.
-	// See utils/repeatLimits.ts. A reversed field already has the minSize validation.
-	if (
-		field.type === 'checkbox-group' &&
-		field.storedMinSize != null &&
-		!constraintList.some((constraint) => constraint.name === checkboxGroupLimitNames.min)
-	) {
-		constraintList.push({
-			name: checkboxGroupLimitNames.min,
-			value: field.storedMinSize,
-			type: 'number'
-		});
-	}
 	const constraints = constraintList.length > 0 ? { constraint: constraintList } : undefined;
 
 	// Note: `undefined` suppresses nodes in the XML, empty strings doesn't.

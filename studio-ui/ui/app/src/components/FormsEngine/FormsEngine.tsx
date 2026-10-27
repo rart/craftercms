@@ -104,6 +104,8 @@ import {
 	getTargetHeight,
 	internalLockContentService,
 	internalUnlockContentService,
+	applyFileNameFormValue,
+	readFileNameAtom,
 	prepareEmbeddedItemForm,
 	scrollToFieldWhenSettled,
 	setFieldAtoms,
@@ -468,6 +470,7 @@ function FormBootstrap(props: FormsEngineProps) {
 					contentTypesById,
 					resolveEmbeddedRelevance: createEmbeddedRelevanceResolver(siteId)
 				};
+				const repeatItemPath = parentPath ?? null;
 				const atomValueCreator: Parameters<typeof createParsedValuesObject>[3] = (fieldId, value, isAdditional) => {
 					setFieldAtoms(
 						stableFormContextRef,
@@ -477,7 +480,8 @@ function FormBootstrap(props: FormsEngineProps) {
 						atoms,
 						value,
 						validatorsData,
-						isAdditional
+						isAdditional,
+						repeatItemPath
 					);
 				};
 				const values = repeat.values
@@ -506,6 +510,7 @@ function FormBootstrap(props: FormsEngineProps) {
 						atomValueCreator(fieldId, values[fieldId], isAdditional);
 					});
 				}
+				applyFileNameFormValue(values, readFileNameAtom(atoms.fileName));
 
 				const xmlDoc = fromString(parentStackData.itemMeta.contentXml ?? '');
 				const fieldId = repeat.fieldId;
@@ -627,11 +632,14 @@ function FormBootstrap(props: FormsEngineProps) {
 							atoms,
 							value,
 							validatorsData,
-							isAdditional
+							isAdditional,
+							// Create has no item path yet, so the name starts blank and is required.
+							null
 						);
 					},
 					customControls
 				);
+				if (!create.embedded) applyFileNameFormValue(values, readFileNameAtom(atoms.fileName));
 				const { [XmlKeys.fileName]: _, ...valuesWithoutFileName } = values;
 
 				const objectId = contentObject[XmlKeys.modelId] as string;
@@ -725,11 +733,13 @@ function FormBootstrap(props: FormsEngineProps) {
 									atoms,
 									value,
 									validatorsData,
-									isAdditional
+									isAdditional,
+									requirements.item.path
 								);
 							},
 							customControls
 						);
+						applyFileNameFormValue(values, readFileNameAtom(atoms.fileName));
 
 						initializeState(
 							atoms,

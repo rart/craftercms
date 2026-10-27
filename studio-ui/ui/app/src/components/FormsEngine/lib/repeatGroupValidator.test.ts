@@ -22,6 +22,18 @@ import type { FieldValidityMessage } from './validators.ts';
 
 const { checkboxGroupValidator, isFieldRequired, nodeSelectorValidator, repeatGroupValidator, validateFieldValue } =
 	await import('./validators.ts');
+const {
+	applyFileNameFormValue,
+	createFileNameAtom,
+	createFormsEngineAtoms,
+	createFormStackData,
+	fileNameFieldForForm,
+	fileNameFromItemPath,
+	readFileNameAtom,
+	rootPagePath,
+	setFieldAtoms
+} = await import('./formUtils.tsx');
+const { createStore, atom } = await import('jotai');
 
 const meta = {
 	siteId: 'editorial',
@@ -180,6 +192,8 @@ describe('checkboxGroupValidator', () => {
 });
 
 describe('fileNameValidator', () => {
+	const aboutPath = '/site/website/about/index.xml';
+
 	function fileNameField(required = false): ContentTypeField {
 		return {
 			id: 'file-name',
@@ -194,36 +208,55 @@ describe('fileNameValidator', () => {
 	}
 
 	it('requires a file name except on the site root index', async () => {
-		const missing = await validateFieldValue(fileNameField(false), '', nameMeta('/site/website/about/index.xml', ''));
+		const stored = fileNameField(false);
+		const nonRoot = fileNameFieldForForm(stored, aboutPath);
+		assert.equal(isFieldRequired(stored), false);
+		assert.equal(isFieldRequired(nonRoot), true);
+		const missing = await validateFieldValue(nonRoot, '', nameMeta(aboutPath, ''));
 		assert.equal(missing.isValid, false);
 		assert.deepEqual(missing.messages.map(messageOf), [{ text: 'This field is required.' }]);
 
-		const root = await validateFieldValue(fileNameField(false), '', nameMeta('/site/website/index.xml', ''));
-		assert.equal(root.isValid, true);
-		assert.deepEqual(root.messages, []);
+		const root = fileNameFieldForForm(fileNameField(false), rootPagePath);
+		assert.equal(isFieldRequired(root), false);
+		const rootResult = await validateFieldValue(root, '', nameMeta(rootPagePath, ''));
+		assert.equal(rootResult.isValid, true);
+		assert.deepEqual(rootResult.messages, []);
 
-		const rootRequired = await validateFieldValue(fileNameField(true), '', nameMeta('/site/website/index.xml', ''));
-		assert.equal(rootRequired.isValid, false);
-		assert.deepEqual(rootRequired.messages.map(messageOf), [{ text: 'This field is required.' }]);
-
-		// The field value can differ from meta.fileName. The file-name rule reads meta.fileName.
-		const fromMeta = await validateFieldValue(
-			fileNameField(false),
-			'stale',
-			nameMeta('/site/website/about/index.xml', '')
-		);
-		assert.equal(fromMeta.isValid, false);
-		assert.deepEqual(fromMeta.messages.map(messageOf), [{ text: 'This field is required.' }]);
+		const rootRequired = fileNameFieldForForm(fileNameField(true), rootPagePath);
+		assert.equal(isFieldRequired(rootRequired), true);
+		const rootRequiredResult = await validateFieldValue(rootRequired, '', nameMeta(rootPagePath, ''));
+		assert.equal(rootRequiredResult.isValid, false);
+		assert.deepEqual(rootRequiredResult.messages.map(messageOf), [{ text: 'This field is required.' }]);
 	});
 
-	it('does not fail a required file-name on an empty value atom when meta.fileName is set', async () => {
-		const result = await validateFieldValue(
-			fileNameField(true),
-			'',
-			nameMeta('/site/website/about/index.xml', 'about')
-		);
-		assert.equal(result.isValid, true);
-		assert.deepEqual(result.messages, []);
+	it('seeds the value atom from the item path, so an empty xml file-name with path name about is valid', async () => {
+		assert.equal(fileNameFromItemPath(aboutPath), 'about');
+		assert.equal(fileNameFromItemPath(rootPagePath), '');
+		const values = { 'file-name': '' };
+		applyFileNameFormValue(values, fileNameFromItemPath(aboutPath));
+		assert.equal(values['file-name'], 'about');
+
+		const formContextRef = { current: createFormStackData() };
+		const atoms = createFormsEngineAtoms('author', {
+			lockResult: atom({ locked: true, lockError: null, affectedPackages: null }),
+			readonly: atom(false),
+			fileName: createFileNameAtom(aboutPath, formContextRef)
+		});
+		formContextRef.current.atoms = atoms;
+		formContextRef.current.itemMeta = { path: aboutPath } as never;
+		const stored = fileNameField(true);
+		const contentType = { id: '/page/article', name: 'Article', fields: { 'file-name': stored } } as never;
+		// The xml value is empty. The path is the source both atoms use.
+		setFieldAtoms(formContextRef, contentType, contentType.fields, 'file-name', atoms, '', undefined, false, aboutPath);
+		assert.equal(isFieldRequired(stored), true);
+
+		const store = createStore();
+		assert.equal(readFileNameAtom(atoms.fileName), 'about');
+		assert.equal(store.get(atoms.fileName), 'about');
+		assert.equal(store.get(atoms.valueByFieldId['file-name']), 'about');
+		const validity = await store.get(atoms.validationByFieldId['file-name']);
+		assert.equal(validity.isValid, true);
+		assert.deepEqual(validity.messages, []);
 	});
 });
 

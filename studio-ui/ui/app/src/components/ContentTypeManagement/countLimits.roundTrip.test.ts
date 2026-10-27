@@ -160,7 +160,7 @@ describe('checkbox group minSize round trip', () => {
 		const parsed = checkboxField('2');
 		const loaded = parsed.fields.topics_o;
 		assert.equal(loaded.validations.minCount?.value, 2);
-		assert.equal(loaded.validations.minSize, undefined);
+		assert.equal(loaded.validations.minSize?.value, 2);
 		assert.equal(createTypeFieldValuesObject(loaded).minSize, 2);
 
 		const saved = savedConstraint(parsed);
@@ -187,6 +187,29 @@ describe('checkbox group minSize round trip', () => {
 		assert.equal(saved.constraintList.find((item) => item.name === 'minSize')?.value, 4);
 		assert.equal(
 			saved.constraintList.some((item) => item.name === 'minCount'),
+			false
+		);
+	});
+
+	it('keeps an edited or cleared minimum when the field is opened again', () => {
+		const parsed = checkboxField('2');
+		const editedValues = createTypeFieldValuesObject(parsed.fields.topics_o);
+		editedValues.minSize = 5;
+		const edited = reverseTypeFieldValuesObject(parsed.fields.topics_o, editedValues, checkboxGroupDescriptor);
+		assert.equal(createTypeFieldValuesObject(edited).minSize, 5);
+		assert.equal(edited.validations.minCount?.value, 5);
+		assert.equal(edited.validations.minSize?.value, 5);
+
+		const clearedValues = createTypeFieldValuesObject(edited);
+		clearedValues.minSize = '';
+		const cleared = reverseTypeFieldValuesObject(edited, clearedValues, checkboxGroupDescriptor);
+		assert.equal(createTypeFieldValuesObject(cleared).minSize, undefined);
+		assert.equal(cleared.validations.minCount, undefined);
+		assert.equal(cleared.validations.minSize, undefined);
+
+		const type = { ...parsed, fields: { ...parsed.fields, topics_o: cleared } };
+		assert.equal(
+			savedConstraint(type).constraintList.some((item) => item.name === 'minSize'),
 			false
 		);
 	});

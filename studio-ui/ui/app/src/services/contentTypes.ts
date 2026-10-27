@@ -430,11 +430,14 @@ function parseLegacyFormDefinitionFields(
 				writeCountEditorProperty(field, nodeSelectorLimitNames.max, limits.maxCount, 'max');
 				break;
 			case 'checkbox-group': {
-				// Count limits: utils/repeatLimits.ts. The minSize constraint is not a runtime validation.
+				// Count limits: utils/repeatLimits.ts. minSize stays the raw constraint, including 0.
+				// minCount is the runtime limit and is not written back.
 				const rawMin = rawLegacyConstraintValue(legacyField, checkboxGroupLimitNames.min);
 				delete field.validations.minSize;
 				const storedMin = checkboxGroupConstraintValue(rawMin);
-				if (storedMin != null) field.storedMinSize = storedMin;
+				if (storedMin != null) {
+					field.validations.minSize = { id: 'minSize', value: storedMin, level: 'required' };
+				}
 				assignCountLimits(field, countLimitsFromStorage({ minProperty: rawMin }, { contentTypeId, fieldId }));
 				break;
 			}

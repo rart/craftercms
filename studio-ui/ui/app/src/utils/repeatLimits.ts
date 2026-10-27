@@ -102,7 +102,7 @@ export function countLimitsFromStorage(storage: ItemCountStorage, context?: Item
 
 /**
  * The `minSize` constraint Type Builder 2 shows and writes back, including 0.
- * Blank and invalid values are absent. 0 is kept so a stored zero still round-trips.
+ * Stored on `validations.minSize`. Blank and invalid values are absent. 0 is kept so a stored zero still round-trips.
  */
 export function checkboxGroupConstraintValue(minSize: unknown): number | undefined {
 	const parsed = readOccursNumber(minSize);

@@ -133,12 +133,6 @@ export interface ContentTypeField {
 		// endregion
 	>;
 	defaultValue: any;
-	/**
-	 * Checkbox-group `minSize` constraint as stored, including 0.
-	 * Type Builder writes it back as that constraint. Runtime uses `validations.minCount`.
-	 * See utils/repeatLimits.ts.
-	 */
-	storedMinSize?: number;
 	fields?: LookupTable<ContentTypeField>;
 	values?: { label: string; value: string }[];
 	helpText?: string;

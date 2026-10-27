@@ -38,7 +38,7 @@ import { fetchAffectedPackages } from '../../../services/workflow';
 import { Dispatch as ReduxDispatch } from 'redux';
 import { IntlShape } from 'react-intl';
 import { showSystemNotification, showUnlockItemSuccessNotification } from '../../../state/actions/system';
-import { atom, Atom, PrimitiveAtom, useAtomValue, useStore as useJotaiStore } from 'jotai';
+import { atom, Atom, createStore, PrimitiveAtom, useAtomValue, useStore as useJotaiStore } from 'jotai';
 import React, { ReactNode, RefObject, useContext, useEffect, useRef, type SetStateAction } from 'react';
 import { fromString, getInnerHtml } from '../../../utils/xml';
 import { nanoid } from 'nanoid';
@@ -397,8 +397,51 @@ export function createFileNameAtom(
 	formContextRef: RefObject<FieldTrackingContext>,
 	initialValue?: string
 ): PrimitiveAtom<string> {
-	const initial = initialValue ?? (path ? getFileNameValueFromPath(path, isPagePath(path)) : '');
+	const initial = initialValue ?? fileNameFromItemPath(path);
 	return createTrackedFileNameAtom(initial, formContextRef);
+}
+
+/** Site root index. Its file name is fixed, so a blank file name is allowed there. */
+export const rootPagePath = '/site/website/index.xml';
+
+/**
+ * File name for an item path. {@link createFileNameAtom} and the file-name value atom both start here.
+ * The home page, and a form that has no path yet, are blank.
+ */
+export function fileNameFromItemPath(path?: string | null): string {
+	if (!path) return '';
+	return getFileNameValueFromPath(path, isPagePath(path));
+}
+
+/**
+ * Required constraint for the file-name field on this form.
+ * A non-root item is required. The root index keeps the stored constraint, so it is required
+ * only when that constraint says so. The content-type field is not mutated: the asterisk stays
+ * that stored constraint.
+ */
+export function fileNameFieldForForm(field: ContentTypeField, path?: string | null): ContentTypeField {
+	const storedRequired = Boolean(field.validations?.required?.value);
+	const required = path === rootPagePath ? storedRequired : true;
+	if (required === storedRequired) return field;
+	return {
+		...field,
+		validations: {
+			...(field.validations ?? {}),
+			required: { id: 'required', value: true, level: 'required' }
+		}
+	};
+}
+
+/** Current file name on the dedicated atom. A fresh store reads the value it was created with. */
+export function readFileNameAtom(fileNameAtom: FormsEngineAtoms['fileName']): string {
+	if (!fileNameAtom) return '';
+	return createStore().get(fileNameAtom as PrimitiveAtom<string>);
+}
+
+/** Writes that file name onto the values bag so rollback matches the value atom. */
+export function applyFileNameFormValue(values: LookupTable<unknown>, fileName: string): void {
+	if (!(XmlKeys.fileName in values)) return;
+	values[XmlKeys.fileName] = fileName;
 }
 
 /**
@@ -411,7 +454,7 @@ export function createFileNameAtom(
  */
 export const getBasePath = (path: string, isPage: boolean): string => {
 	// If home page
-	if (path === '/site/website/index.xml' && isPage) return '/site/website/';
+	if (path === rootPagePath && isPage) return '/site/website/';
 
 	const pathParts = path.split('/');
 	return isPage
@@ -429,7 +472,7 @@ export const getBasePath = (path: string, isPage: boolean): string => {
  */
 export const getFileNameValueFromPath = (path: string, isPage: boolean): string => {
 	// If home page, return empty string
-	if (path === '/site/website/index.xml' && isPage) return '';
+	if (path === rootPagePath && isPage) return '';
 
 	const basePath = getBasePath(path, isPage);
 	return path.replace(basePath, '').replace(isPage ? '/index.xml' : '.xml', '');
@@ -661,7 +704,8 @@ export function setFieldAtoms(
 	atomsTarget: FormsEngineAtoms,
 	value: unknown,
 	validatorsData?: ValidatorsData,
-	isAdditional?: boolean
+	isAdditional?: boolean,
+	itemPath?: string | null
 ): void {
 	let field = fieldLookup[fieldId];
 	if (!field) {
@@ -699,6 +743,13 @@ export function setFieldAtoms(
 				console.warn(`Field ${fieldId} not found in content type "${contentType.name}" (${contentType.id})`);
 			return;
 		}
+	}
+	// Content forms pass the item path. Type Builder does not, and its fields are left alone.
+	// The value atom starts from `atoms.fileName`. Required for this form is derived here.
+	// The content-type field is not changed.
+	if (itemPath !== undefined && field.id === XmlKeys.fileName) {
+		field = fileNameFieldForForm(field, itemPath);
+		value = readFileNameAtom(atomsTarget.fileName);
 	}
 	const [valueAtom, validityAtom] = createFieldAtoms(field, value, stableFormContextRef, validatorsData);
 	atomsTarget.valueByFieldId[fieldId] = valueAtom;

@@ -136,57 +136,27 @@ export interface FieldValidityState {
 	messages: FieldValidityMessage[];
 }
 
-/** Site root index. Its file name is fixed, so a blank file-name is allowed there. */
-const rootPagePath = '/site/website/index.xml';
-
-type FileNameValidationField = ContentTypeField & { fileNameRequired?: boolean };
-
 /**
- * The file-name control reads `atoms.fileName` (derived from the item path).
- * The field value atom is the XML `<file-name>` value, which is empty when the document
- * does not store one. Those two are not copied onto each other at init.
- * Move the required constraint off `validations.required` so the generic check does not
- * reject the empty value atom. {@link fileNameValidator} applies it to `meta.fileName`.
- */
-function fileNameValidationField(field: ContentTypeField, meta: ValidatorMetaData): ContentTypeField {
-	if (field.type !== 'file-name') return field;
-	const storedRequired = Boolean(field.validations?.required?.value);
-	const fileNameRequired = meta.itemMeta?.path === rootPagePath ? storedRequired : true;
-	const validations = { ...(field.validations ?? {}) };
-	delete validations.required;
-	const prepared: FileNameValidationField = { ...field, validations, fileNameRequired };
-	return prepared;
-}
-
-/**
- * Validates the uniqueness of a file name within a specific site and path.
- * A blank name is required except on the site root index. The value is `meta.fileName`.
+ * Validates that a file name is unique within its site and folder.
+ * Required is the field's own constraint, applied by {@link validateFieldValue}.
+ * The value is the field value. Form build seeds that from the item path.
  *
  * @param {ContentTypeField} field - The field metadata for the file name being validated.
- * @param {string} _ - Unused parameter, representing the current value of the field.
+ * @param {string} currentValue - The file name to validate.
  * @param {FieldValidityState['messages']} messages - An array to store validation messages.
- * @param {ValidatorMetaData} meta - Metadata containing site ID, file name, and item context.
+ * @param {ValidatorMetaData} meta - Metadata containing site ID and item context.
  * @returns {Promise<boolean> | boolean} - A promise resolving to `true` if the file name is valid,
  * or `false` if it is invalid.
  *
  */
 
 export async function fileNameValidator(
-	field: ContentTypeField,
-	_: string,
+	_field: ContentTypeField,
+	currentValue: string,
 	messages: FieldValidityState['messages'],
 	meta: ValidatorMetaData
 ): Promise<boolean> {
 	const siteId: string = meta.siteId;
-	const currentValue = meta.fileName;
-	const isRootIndex = meta.itemMeta?.path === rootPagePath;
-	const prepared = field as FileNameValidationField;
-	// Required lives here, against meta.fileName. The value atom is not the file name.
-	const nameRequired = prepared.fileNameRequired ?? (isFieldRequired(field) || !isRootIndex);
-	if (isEmptyValue(field, currentValue) && nameRequired) {
-		messages?.push(defineMessage({ defaultMessage: 'This field is required.' }));
-		return false;
-	}
 
 	if (nou(currentValue)) return false;
 
@@ -211,7 +181,7 @@ export async function fileNameValidator(
 /**
  * Built-in map first (including explicit `undefined` = no type validator).
  * Plugin contributions only for types absent from the built-in map.
- * The required constraint stays in {@link validateFieldValue}. File-name required is applied in {@link fileNameValidator}.
+ * The required constraint stays in {@link validateFieldValue}.
  */
 export function getFieldValidator(fieldType: string): ValidatorFunctionDef | undefined {
 	if (Object.hasOwn(validatorsMap, fieldType)) {
@@ -240,21 +210,20 @@ export async function validateFieldValue(
 	currentValue: unknown,
 	meta: ValidatorMetaData
 ): Promise<FieldValidityState> {
-	const prepared = fileNameValidationField(field, meta);
 	const messages: FieldValidityState['messages'] = [];
-	const isEmpty = isEmptyValue(prepared, currentValue);
-	const requiredByConstraint = Boolean(prepared.validations?.required?.value);
+	const isEmpty = isEmptyValue(field, currentValue);
+	const requiredByConstraint = Boolean(field.validations?.required?.value);
 	// A positive minCount is reported by the occurrence check. Don't add a second "required" message.
-	const minimum = countLimitValue(prepared.validations?.minCount?.value);
+	const minimum = countLimitValue(field.validations?.minCount?.value);
 
 	// A required constraint with an empty value is invalid. Control-specific rules stay in that control's validator.
 	if (requiredByConstraint && isEmpty && minimum == null) {
 		messages.push(defineMessage({ defaultMessage: 'This field is required.' }));
 		return Promise.resolve({ isValid: false, messages });
 	}
-	const validator = getFieldValidator(prepared.type);
+	const validator = getFieldValidator(field.type);
 	// If there's a validator, run it. If not, it's valid.
-	const isValid = nnou(validator) ? await validator(prepared, currentValue, messages, meta) : true;
+	const isValid = nnou(validator) ? await validator(field, currentValue, messages, meta) : true;
 	return Promise.resolve({ isValid, messages });
 }
 
