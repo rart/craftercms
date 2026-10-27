@@ -46,7 +46,7 @@ import {
 	isItemCountMaxEditorValue,
 	isItemCountMinEditorValue,
 	isItemCountRangeValid,
-	itemCountEditorPartner
+	readItemCountEditorSpec
 } from '../../../utils/repeatLimits';
 
 export interface ValidatorMetaData {
@@ -118,11 +118,17 @@ export const validatorsMap: Partial<Record<BuiltInControlType | DescriptorContro
 	'input-phone': (field, currentValue, messages) => inputPhoneValidator(field, currentValue as string, messages),
 	'path-with-macro-creator': (field, currentValue, messages) =>
 		pathWithMacroValidator(field, currentValue as string, messages),
-	variable: (field, currentValue, messages, meta) => variableValidator(field, currentValue as string, messages, meta),
-	// Item-count editor fields. `string` so a repeat maximum can be '*'; `int` for the numeric bounds.
-	// See utils/repeatLimits.ts. Fields without an itemCount marker are unchanged.
-	string: (field, currentValue, messages, meta) => itemCountEditorValidator(field, currentValue, messages, meta),
-	int: (field, currentValue, messages, meta) => itemCountEditorValidator(field, currentValue, messages, meta)
+	variable: (field, currentValue, messages, meta) => variableValidator(field, currentValue as string, messages, meta)
+};
+
+/**
+ * Validators selected by a validation key on the field, not by its control type.
+ * A key runs only when that validation is present. `required` is applied the same way in
+ * {@link validateFieldValue}. `minValue`, `maxValue` and pattern/regex stay with the controls
+ * that already read those keys. See utils/repeatLimits.ts for the item-count spec.
+ */
+const validationValidators: Partial<Record<string, ValidatorFunctionDef>> = {
+	itemCount: (field, currentValue, messages, meta) => itemCountEditorValidator(field, currentValue, messages, meta)
 };
 
 // TODO: Fix FormatXMLElementFn generics
@@ -195,6 +201,13 @@ export function hasFieldValidator(fieldType: string): boolean {
 	return nnou(getFieldValidator(fieldType));
 }
 
+/** True when the field carries a validation key that has its own validator, such as `itemCount`. */
+export function hasValidationKeyValidator(field: ContentTypeField): boolean {
+	const validations = field.validations;
+	if (!validations) return false;
+	return Object.keys(validations).some((key) => Object.hasOwn(validationValidators, key));
+}
+
 /**
  * Validates the value of a field based on its type, requirements, and metadata.
  *
@@ -222,8 +235,13 @@ export async function validateFieldValue(
 		return Promise.resolve({ isValid: false, messages });
 	}
 	const validator = getFieldValidator(field.type);
-	// If there's a validator, run it. If not, it's valid.
-	const isValid = nnou(validator) ? await validator(field, currentValue, messages, meta) : true;
+	// The type validator runs for the control. Validation-key validators run only for keys this field has.
+	let isValid = nnou(validator) ? await validator(field, currentValue, messages, meta) : true;
+	for (const key of Object.keys(field.validations ?? {})) {
+		const keyed = validationValidators[key];
+		if (!keyed) continue;
+		if (!(await keyed(field, currentValue, messages, meta))) isValid = false;
+	}
 	return Promise.resolve({ isValid, messages });
 }
 
@@ -253,11 +271,6 @@ function pushItemCountViolations(
 	return violations.length === 0;
 }
 
-function itemCountRole(field: ContentTypeField): 'min' | 'max' | undefined {
-	const value = (field.validations as { itemCount?: { value?: unknown } } | undefined)?.itemCount?.value;
-	return value === 'min' || value === 'max' ? value : undefined;
-}
-
 /** Type Builder min/max. Blank and '*' are unlimited. 0 is not a maximum. See utils/repeatLimits.ts. */
 function itemCountEditorValidator(
 	field: ContentTypeField,
@@ -265,10 +278,10 @@ function itemCountEditorValidator(
 	messages: FieldValidityState['messages'],
 	meta?: ValidatorMetaData
 ): boolean {
-	const role = itemCountRole(field);
-	if (!role) return true;
-	const partnerId = itemCountEditorPartner(field.id);
-	const partner = partnerId ? meta?.getValue?.(partnerId) : undefined;
+	const spec = readItemCountEditorSpec(getValidationValue(field.validations, 'itemCount'));
+	if (!spec) return true;
+	const { role } = spec;
+	const partner = spec.partner ? meta?.getValue?.(spec.partner) : undefined;
 	const formatValid =
 		role === 'max' ? isItemCountMaxEditorValue(currentValue) : isItemCountMinEditorValue(currentValue);
 	if (!formatValid) {

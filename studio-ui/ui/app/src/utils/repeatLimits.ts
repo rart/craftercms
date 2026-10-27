@@ -39,8 +39,14 @@
  * {@link countLimitValue}. Null, undefined and 0 are unlimited, so do not test the result
  * with truthiness. A positive `minCount` is the required marker (`isFieldRequired`). It is
  * not stored as a `required` constraint. The occurrence error is the only message.
- * Type Builder 2 strips `minCount` / `maxCount` on save. It rejects a maximum of 0 and a
- * minimum greater than the maximum.
+ * Type Builder 2 strips `minCount` / `maxCount` on save. The editor check is not tied to the
+ * control type. The descriptor field declares it as an `itemCount` validation,
+ * `{ role: 'min' | 'max', partner?: '<other field id>' }`, and the form runs that validator
+ * only when the validation is present. A repeat declares `minOccurs` / `maxOccurs`, a node
+ * selector declares `minSize` / `maxSize`, and a checkbox group declares role `min` with no
+ * partner. {@link isItemCountMinEditorValue}, {@link isItemCountMaxEditorValue} and
+ * {@link isItemCountRangeValid} are the only parsing path: a maximum of 0 is rejected, and
+ * a minimum greater than the maximum is rejected.
  *
  * TODO: Normalize the XML so each limit has a single representation.
  */
@@ -102,9 +108,23 @@ export function countLimitsFromStorage(storage: ItemCountStorage, context?: Item
 	return countLimits(min.limit, max.limit);
 }
 
-/** The other bound of a Type Builder min/max pair, when this field is one of them. */
-export function itemCountEditorPartner(fieldId: string): string | undefined {
-	return itemCountEditorPartners[fieldId];
+/**
+ * Declared on a Type Builder field's `itemCount` validation.
+ * The descriptor names which bound this field is, and the other bound's field id when there is one.
+ */
+export interface ItemCountEditorSpec {
+	role: 'min' | 'max';
+	/** Absent for a minimum-only control, such as a checkbox group. */
+	partner?: string;
+}
+
+/** The role and partner declared on an `itemCount` validation, or undefined when the value is not that spec. */
+export function readItemCountEditorSpec(value: unknown): ItemCountEditorSpec | undefined {
+	if (!value || typeof value !== 'object') return undefined;
+	const role = (value as { role?: unknown }).role;
+	if (role !== 'min' && role !== 'max') return undefined;
+	const partner = (value as { partner?: unknown }).partner;
+	return typeof partner === 'string' && partner !== '' ? { role, partner } : { role };
 }
 
 /** Type Builder minimum. Blank and 0 mean no minimum. Any other value must be a non-negative integer. */
@@ -219,13 +239,6 @@ export function getRepeatOccurrenceViolations(
 	if (max != null && count > max) violations.push({ kind: 'max', limit: max });
 	return violations;
 }
-
-const itemCountEditorPartners: Record<string, string> = {
-	[repeatLimitNames.min]: repeatLimitNames.max,
-	[repeatLimitNames.max]: repeatLimitNames.min,
-	[nodeSelectorLimitNames.min]: nodeSelectorLimitNames.max,
-	[nodeSelectorLimitNames.max]: nodeSelectorLimitNames.min
-};
 
 type StoredBound = { limit?: number; unusable: boolean };
 

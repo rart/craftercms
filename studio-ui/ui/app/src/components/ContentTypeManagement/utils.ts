@@ -64,7 +64,8 @@ import {
 	countLimitValue,
 	countLimitsFromStorage,
 	repeatOccursXmlValues,
-	virtualCountValidationIds
+	virtualCountValidationIds,
+	type ItemCountEditorSpec
 } from '../../utils/repeatLimits';
 import { XmlKeys } from '../FormsEngine/lib/formConsts';
 import { getPossibleTranslation } from '../../utils/i18n';
@@ -816,6 +817,17 @@ function convertDataSourceStructToXmlStruct(
 	};
 }
 
+/** An `itemCount` validation carries its role and, when the control has two bounds, its partner field id. */
+export function createValidation(
+	key: 'itemCount',
+	value: ItemCountEditorSpec,
+	level?: ContentTypeFieldValidation['level']
+): DescriptorContentTypeFieldValidation;
+export function createValidation<T = unknown>(
+	key: DescriptorFieldValidationKeys,
+	value: T,
+	level?: ContentTypeFieldValidation['level']
+): DescriptorContentTypeFieldValidation;
 export function createValidation<T = unknown>(
 	key: DescriptorFieldValidationKeys,
 	value: T,

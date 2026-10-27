@@ -22,6 +22,13 @@ import { getRepeatMinimum } from '../utils/repeatLimits.ts';
 
 const { parseLegacyFormDefinition } = await import('./contentTypes.ts');
 
+/**
+ * Parser mapping of stored item counts onto minCount and maxCount.
+ * Repeats store minOccurs/maxOccurs as an element and a property. accounts_o is the case where the element is 1 and the property is 0: the element wins.
+ * Node selectors store minSize/maxSize properties. Checkbox groups store a minSize constraint and have no maximum.
+ * 0, blank and * are unlimited. An invalid token falls back to the property, and a warning is logged only when nothing usable remains.
+ */
+
 function property(name: string, value: string, type = 'string') {
 	return { name, value, type };
 }
@@ -45,6 +52,7 @@ function parsedField(field: Record<string, unknown>): ContentTypeField {
 }
 
 describe('repeat minOccurs/maxOccurs mapping', () => {
+	// Given accounts_o with element minOccurs 1 and property 0, and element max '*', the minimum is 1, there is no maximum, and required is not synthesized.
 	it('lets the element win over the duplicated property', () => {
 		const field = parsedField({
 			id: 'accounts_o',
@@ -64,6 +72,7 @@ describe('repeat minOccurs/maxOccurs mapping', () => {
 		assert.equal(getRepeatMinimum(field.validations.minCount?.value), 1);
 	});
 
+	// Given a '*' element, the property is not used and the max is unlimited. Given a blank element, the property (2 and 4) is the limit. A missing element stays unset.
 	it('treats * , blank, and 0 as unlimited, and falls back to the property when the element is blank or invalid', () => {
 		const starred = parsedField({
 			id: 'starred_o',
@@ -106,6 +115,7 @@ describe('repeat minOccurs/maxOccurs mapping', () => {
 		assert.equal(getRepeatMinimum(blank.validations.minCount?.value), 0);
 	});
 
+	// Given a required constraint and no minOccurs, the repeat has no required validation and no minimum.
 	it('ignores a required constraint on a repeat', () => {
 		const field = parsedField({
 			id: 'required_o',
@@ -120,6 +130,7 @@ describe('repeat minOccurs/maxOccurs mapping', () => {
 		assert.equal(getRepeatMinimum(field.validations.minCount?.value), 0);
 	});
 
+	// Given element maxOccurs 0 and property 4, 0 means unlimited, so the property is not a fallback and the editor token is '*'.
 	it('treats a maximum of 0 as unlimited', () => {
 		const field = parsedField({
 			id: 'capped_o',
@@ -134,6 +145,7 @@ describe('repeat minOccurs/maxOccurs mapping', () => {
 		assert.equal(field.properties.maxOccurs.value, '*');
 	});
 
+	// Given invalid_o with min element '0.5' (property 2 is usable) and max element '3abc' (property '-1' is not), only the max warns.
 	it('falls back from an invalid element and warns when nothing is usable', () => {
 		const warnings: string[] = [];
 		const original = console.warn;
@@ -170,6 +182,7 @@ describe('repeat minOccurs/maxOccurs mapping', () => {
 });
 
 describe('checkbox group minSize constraint', () => {
+	// Given topics_o, minSize 2 becomes minCount 2. minSize 0 and a missing constraint are no minimum, and validations.minSize is never set.
 	it('maps a positive constraint to minCount and treats 0 as no minimum', () => {
 		const limited = parsedField({
 			id: 'topics_o',
@@ -204,6 +217,7 @@ describe('checkbox group minSize constraint', () => {
 });
 
 describe('node selector minSize/maxSize mapping', () => {
+	// Given minSize/maxSize properties, 1 and 3 are limits. 0 and blank are unlimited, and required is not synthesized from the minimum.
 	it('maps positive limits and treats 0 and blank as unlimited', () => {
 		const limited = parsedField({
 			id: 'articles_o',

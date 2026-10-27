@@ -31,9 +31,18 @@ import {
 	repeatOccursXmlValues
 } from './repeatLimits.ts';
 
+/**
+ * The shared min/max contract in utils/repeatLimits.ts.
+ * Storage parsing: the element wins, an invalid token falls back to the property, and 0, blank and * are unlimited.
+ * A warning is logged only when a bound has nothing usable. Type Builder editor tokens and the Add, Delete and
+ * occurrence helpers use that same reading of a limit.
+ */
+
+// The warning text names this content type and this field. accounts_o is the repeat used for the element-vs-property case.
 const fieldContext = { contentTypeId: '/page/article', fieldId: 'accounts_o' };
 
 describe('countLimitsFromStorage', () => {
+	// Given a usable element and a different property, the element is the limit and the property is ignored.
 	it('lets the element win over the property', () => {
 		assert.deepEqual(countLimitsFromStorage({ minElement: '1', minProperty: '0', maxElement: '*', maxProperty: '4' }), {
 			minCount: 1
@@ -44,6 +53,7 @@ describe('countLimitsFromStorage', () => {
 		});
 	});
 
+	// Given a blank or whitespace element, the property is the limit.
 	it('uses the property when the element is blank', () => {
 		assert.deepEqual(countLimitsFromStorage({ minProperty: '5', maxElement: '', maxProperty: '4' }), {
 			minCount: 5,
@@ -55,6 +65,7 @@ describe('countLimitsFromStorage', () => {
 		});
 	});
 
+	// Given a stored 0, including a repeat maximum of 0 next to a property of 4, there is no limit. 0 does not fall back.
 	it('treats 0 as unlimited for every control, including a repeat maximum', () => {
 		assert.deepEqual(
 			countLimitsFromStorage({ minElement: '0', minProperty: '4', maxElement: '*', maxProperty: '3' }),
@@ -66,6 +77,7 @@ describe('countLimitsFromStorage', () => {
 		assert.deepEqual(countLimitsFromStorage({ minProperty: '2' }), { minCount: 2 });
 	});
 
+	// Given '0.5', '3abc', '-1' or a minimum of '*', the token is blank and the property is used.
 	it('treats an invalid value as blank and falls back to the property', () => {
 		assert.deepEqual(
 			countLimitsFromStorage({ minElement: '0.5', minProperty: '2', maxElement: '3abc', maxProperty: '4' }),
@@ -85,6 +97,7 @@ describe('countLimitsFromStorage', () => {
 		assert.equal(isRepeatAddDisabled(false, 1, 0), false);
 	});
 
+	// Given accounts_o with '-1'/'3abc' and '0.5'/blank, both bounds warn and stay unset. A blank limit, or a usable property, does not warn.
 	it('warns when nothing is usable, and stays quiet for a blank limit', () => {
 		const warnings: string[] = [];
 		const original = console.warn;
@@ -116,6 +129,7 @@ describe('countLimitsFromStorage', () => {
 		}
 	});
 
+	// Given no maximum, an int field shows blank and any other field shows '*'. A minimum with no limit shows 0.
 	it('shows a stored max of 0 as the editor unlimited token', () => {
 		assert.equal(itemCountEditorValue(undefined, 'max', 'int'), '');
 		assert.equal(itemCountEditorValue(undefined, 'max', 'string'), '*');
@@ -124,6 +138,7 @@ describe('countLimitsFromStorage', () => {
 		assert.equal(itemCountEditorValue(2, 'min', 'int'), 2);
 	});
 
+	// Given blank editor values, the saved repeat is min '0' and max '*'. A stored max of 0 is saved as '*'.
 	it('writes TB1 defaults for the editor and the XML', () => {
 		assert.deepEqual(repeatLimitEditorValues({}), { minOccurs: 0, maxOccurs: '*' });
 		assert.deepEqual(repeatLimitEditorValues({ minCount: 1, maxCount: 3 }), { minOccurs: 1, maxOccurs: '3' });
@@ -135,6 +150,7 @@ describe('countLimitsFromStorage', () => {
 });
 
 describe('item count editor values', () => {
+	// Given the editor helpers, a minimum may be blank or 0, and a maximum may be blank or '*' but not 0 or junk.
 	it('accepts a minimum of 0 and rejects a maximum of 0', () => {
 		assert.equal(isItemCountMinEditorValue(''), true);
 		assert.equal(isItemCountMinEditorValue(0), true);
@@ -155,6 +171,7 @@ describe('item count editor values', () => {
 		assert.equal(isItemCountMaxEditorValue('3abc'), false);
 	});
 
+	// Given both bounds are set, min greater than max is invalid. An unlimited side (0, '*', blank) skips the comparison.
 	it('rejects a minimum greater than the maximum when both are set', () => {
 		assert.equal(isItemCountRangeValid(2, 4), true);
 		assert.equal(isItemCountRangeValid(4, 4), true);
@@ -167,6 +184,7 @@ describe('item count editor values', () => {
 });
 
 describe('countLimitValue', () => {
+	// Given 0, null, blank or '*', the runtime limit is undefined. A positive integer is kept.
 	it('treats 0 and nullish values as unlimited', () => {
 		assert.equal(countLimitValue(0), undefined);
 		assert.equal(countLimitValue('0'), undefined);
@@ -179,16 +197,19 @@ describe('countLimitValue', () => {
 });
 
 describe('isRepeatAddDisabled', () => {
+	// Given an empty repeat and a max of 5, Add stays enabled so the author can reach the minimum.
 	it('enables Add on an empty repeat that has a max', () => {
 		assert.equal(isRepeatAddDisabled(false, 0, 5), false);
 	});
 
+	// Given a max of 5, Add is enabled at 4 and disabled at 5 and above.
 	it('enables Add below the max and disables it once the count reaches the max', () => {
 		assert.equal(isRepeatAddDisabled(false, 4, 5), false);
 		assert.equal(isRepeatAddDisabled(false, 5, 5), true);
 		assert.equal(isRepeatAddDisabled(false, 6, 5), true);
 	});
 
+	// Given no maximum (undefined, null, '*' or blank), Add stays enabled at any count.
 	it('leaves Add enabled when there is no max', () => {
 		assert.equal(isRepeatAddDisabled(false, 0, undefined), false);
 		assert.equal(isRepeatAddDisabled(false, 20, null), false);
@@ -196,11 +217,13 @@ describe('isRepeatAddDisabled', () => {
 		assert.equal(isRepeatAddDisabled(false, 20, ''), false);
 	});
 
+	// Given a readonly field, Add is disabled whether or not a maximum is set.
 	it('disables Add when the field is readonly', () => {
 		assert.equal(isRepeatAddDisabled(true, 0, undefined), true);
 		assert.equal(isRepeatAddDisabled(true, 0, 5), true);
 	});
 
+	// Given a max stored as the string '5', Add uses 5 the same way as the number 5.
 	it('accepts a numeric string limit from a content type property', () => {
 		assert.equal(isRepeatAddDisabled(false, 0, '5'), false);
 		assert.equal(isRepeatAddDisabled(false, 5, '5'), true);
@@ -208,12 +231,14 @@ describe('isRepeatAddDisabled', () => {
 });
 
 describe('isRepeatRemoveDisabled', () => {
+	// Given a minimum of 1 or 2, Delete is disabled at that count and enabled once the count is higher.
 	it('disables removal at or below the minimum', () => {
 		assert.equal(isRepeatRemoveDisabled(false, 1, 1), true);
 		assert.equal(isRepeatRemoveDisabled(false, 2, 1), false);
 		assert.equal(isRepeatRemoveDisabled(false, 2, 2), true);
 	});
 
+	// Given no minimum (undefined, null or 0), Delete stays enabled. The enforced minimum is 0.
 	it('allows removal of existing items when no minimum is set', () => {
 		assert.equal(isRepeatRemoveDisabled(false, 1, undefined), false);
 		assert.equal(isRepeatRemoveDisabled(false, 1, null), false);
@@ -223,27 +248,32 @@ describe('isRepeatRemoveDisabled', () => {
 		assert.equal(getRepeatMinimum(3), 3);
 	});
 
+	// Given a readonly field, Delete is disabled even when the count is above the minimum.
 	it('disables removal when readonly', () => {
 		assert.equal(isRepeatRemoveDisabled(true, 3, 0), true);
 	});
 });
 
 describe('getRepeatOccurrenceViolations', () => {
+	// Given a minimum of 1 or 2, a count below it, including 0, is a minimum violation.
 	it('is invalid below the minimum, including an empty repeat', () => {
 		assert.deepEqual(getRepeatOccurrenceViolations(0, 1, 3), [{ kind: 'min', limit: 1 }]);
 		assert.deepEqual(getRepeatOccurrenceViolations(1, 2, 5), [{ kind: 'min', limit: 2 }]);
 	});
 
+	// Given a maximum of 3, a loaded count of 4 is a maximum violation.
 	it('is invalid when loaded data has more items than the maximum', () => {
 		assert.deepEqual(getRepeatOccurrenceViolations(4, 1, 3), [{ kind: 'max', limit: 3 }]);
 	});
 
+	// Given a count sitting on either bound, including a minimum of 0, there is no violation.
 	it('accepts a count equal to the minimum or the maximum', () => {
 		assert.deepEqual(getRepeatOccurrenceViolations(1, 1, 3), []);
 		assert.deepEqual(getRepeatOccurrenceViolations(3, 1, 3), []);
 		assert.deepEqual(getRepeatOccurrenceViolations(0, 0, 3), []);
 	});
 
+	// Given no maximum (undefined, 0 or '*'), a large count is valid.
 	it('does not apply an upper bound when there is no max', () => {
 		assert.deepEqual(getRepeatOccurrenceViolations(100, undefined, undefined), []);
 		assert.deepEqual(getRepeatOccurrenceViolations(100, 0, '*'), []);
@@ -251,6 +281,7 @@ describe('getRepeatOccurrenceViolations', () => {
 		assert.deepEqual(getRepeatOccurrenceViolations(5, 0, 0), []);
 	});
 
+	// Given limits stored as the strings '1' and '3', the same bounds apply as for numbers.
 	it('reads numeric strings', () => {
 		assert.deepEqual(getRepeatOccurrenceViolations(0, '1', '3'), [{ kind: 'min', limit: 1 }]);
 		assert.deepEqual(getRepeatOccurrenceViolations(4, '1', '3'), [{ kind: 'max', limit: 3 }]);

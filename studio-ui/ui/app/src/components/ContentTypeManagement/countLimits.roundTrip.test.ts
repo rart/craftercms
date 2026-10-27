@@ -25,11 +25,20 @@ const { checkboxGroupDescriptor } = await import('./descriptors/controls/checkbo
 const { nodeSelectorDescriptor } = await import('./descriptors/controls/nodeSelector.ts');
 const { repeatDescriptor } = await import('./descriptors/controls/repeat.ts');
 
+/**
+ * Type Builder load and save for item counts.
+ * A repeat writes the element and the property (min as int, max as string) and strips required, minCount and maxCount.
+ * A checkbox group writes the minSize constraint only for a positive minimum. A stored 0 loads blank and is omitted.
+ * A stored maximum of 0 loads as unlimited: blank for a node selector's int field, '*' for a repeat, so the type can be saved unchanged.
+ * Descriptor fields declare the editor rule as itemCount { role, partner }. They do not also set minValue.
+ */
+
 function property(name: string, value: string, type = 'string') {
 	return { name, value, type };
 }
 
 describe('repeat count-limit round trip', () => {
+	// Given accounts_o with element min 1 / property 0, element max '*' / property 4, and a required constraint: the editor shows 1 and '*', and save writes both copies without required, minCount or maxCount.
 	it('loads the element when it disagrees with the property, and writes both back without required', () => {
 		const parsed = parseLegacyFormDefinition({
 			'content-type': '/component/social-media-widget',
@@ -83,6 +92,7 @@ describe('repeat count-limit round trip', () => {
 		);
 	});
 
+	// Given a repeat with no stored limits, save writes the TB1 defaults: min '0' (int) and max '*' (string), as element and property.
 	it('writes TB1 defaults when the repeat limits are blank', () => {
 		const parsed = parseLegacyFormDefinition({
 			'content-type': '/component/widget',
@@ -156,6 +166,7 @@ function savedConstraint(type: ReturnType<typeof parseLegacyFormDefinition>) {
 }
 
 describe('checkbox group minSize round trip', () => {
+	// Given topics_o with minSize 2, the editor shows 2 and save writes the minSize constraint, not minCount.
 	it('writes the minSize constraint and does not write minCount', () => {
 		const parsed = checkboxField('2');
 		const loaded = parsed.fields.topics_o;
@@ -171,6 +182,7 @@ describe('checkbox group minSize round trip', () => {
 		);
 	});
 
+	// Given an editor change from 1 to 4, save writes minSize 4 and still does not write minCount.
 	it('keeps an edited minSize constraint after the form is saved', () => {
 		const parsed = checkboxField('1');
 		const values = createTypeFieldValuesObject(parsed.fields.topics_o);
@@ -186,6 +198,7 @@ describe('checkbox group minSize round trip', () => {
 		);
 	});
 
+	// Given a stored 2 edited to 5, reopening shows 5. Clearing it to blank reopens blank and save omits minSize.
 	it('keeps an edited or cleared minimum when the field is opened again', () => {
 		const parsed = checkboxField('2');
 		const editedValues = createTypeFieldValuesObject(parsed.fields.topics_o);
@@ -209,6 +222,7 @@ describe('checkbox group minSize round trip', () => {
 		);
 	});
 
+	// Given a legacy minSize of 0, the editor is blank and save writes neither minSize nor minCount. 0 is the same as no minimum.
 	it('loads a stored minimum of 0 as blank and saves without the constraint', () => {
 		const parsed = checkboxField('0');
 		const loaded = parsed.fields.topics_o;
@@ -224,6 +238,7 @@ describe('checkbox group minSize round trip', () => {
 });
 
 describe('stored max of 0 in Type Builder', () => {
+	// Given articles_o with minSize and maxSize 0, and items_o with maxOccurs 0: the node selector loads blank (int unlimited) and the repeat loads '*'. Saving the selector does not invent minCount or maxCount.
 	it('loads a node selector maxSize of 0 as blank, and a repeat max of 0 as *', () => {
 		const parsed = parseLegacyFormDefinition({
 			'content-type': '/component/widget',
@@ -290,20 +305,32 @@ describe('stored max of 0 in Type Builder', () => {
 });
 
 describe('item count editor rules', () => {
+	// Given the repeat maxOccurs descriptor, the helper text allows '*', blank, or an integer of 1 or more, and itemCount says this field is the max whose partner is minOccurs.
 	it('explains an unlimited repeat maximum and requires an integer of at least 1', () => {
 		const field = repeatDescriptor.fields.maxOccurs;
 		const description = field.description as { defaultMessage?: string };
 		assert.match(description.defaultMessage ?? '', /\*/);
 		assert.match(description.defaultMessage ?? '', /blank/i);
 		assert.match(description.defaultMessage ?? '', /1 or more/);
-		assert.equal(field.validations.itemCount?.value, 'max');
-		assert.equal(repeatDescriptor.fields.minOccurs.validations.itemCount?.value, 'min');
+		assert.deepEqual(field.validations.itemCount?.value, { role: 'max', partner: 'minOccurs' });
+		assert.deepEqual(repeatDescriptor.fields.minOccurs.validations.itemCount?.value, {
+			role: 'min',
+			partner: 'maxOccurs'
+		});
 	});
 
-	it('gives the node selector maximum the same minimum of 1', () => {
-		assert.equal(nodeSelectorDescriptor.fields.maxSize.validations.itemCount?.value, 'max');
-		assert.equal(nodeSelectorDescriptor.fields.maxSize.validations.minValue?.value, 1);
-		assert.equal(nodeSelectorDescriptor.fields.minSize.validations.itemCount?.value, 'min');
-		assert.equal(checkboxGroupDescriptor.fields.minSize.validations.itemCount?.value, 'min');
+	// Given the three descriptors, each bound's role and partner live on itemCount. The node selector does not also set minValue. A checkbox group has no partner.
+	it('declares the role and partner on itemCount and does not also set minValue', () => {
+		assert.deepEqual(nodeSelectorDescriptor.fields.maxSize.validations.itemCount?.value, {
+			role: 'max',
+			partner: 'minSize'
+		});
+		assert.equal(nodeSelectorDescriptor.fields.maxSize.validations.minValue, undefined);
+		assert.deepEqual(nodeSelectorDescriptor.fields.minSize.validations.itemCount?.value, {
+			role: 'min',
+			partner: 'maxSize'
+		});
+		assert.equal(nodeSelectorDescriptor.fields.minSize.validations.minValue, undefined);
+		assert.deepEqual(checkboxGroupDescriptor.fields.minSize.validations.itemCount?.value, { role: 'min' });
 	});
 });

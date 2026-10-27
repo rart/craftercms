@@ -21,6 +21,11 @@ import type { ContentTypeField } from '../models/ContentType';
 
 const { getDefaultValue } = await import('./contentType.ts');
 
+/**
+ * New-item default for a repeat. Prefill uses minCount only.
+ * A required constraint does not invent items, and a missing minCount stays empty.
+ */
+
 function repeatField(validations: ContentTypeField['validations']): ContentTypeField {
 	return {
 		id: 'articles_o',
@@ -40,6 +45,7 @@ function repeatField(validations: ContentTypeField['validations']): ContentTypeF
 }
 
 describe('getDefaultValue repeat prefill', () => {
+	// Given minCount 3 and a required constraint, a new repeat starts with 3 items. The required constraint does not change the count.
 	it('starts a new repeat at the effective minimum, using minCount.value', () => {
 		const prefilled = getDefaultValue(
 			repeatField({
@@ -51,6 +57,7 @@ describe('getDefaultValue repeat prefill', () => {
 		assert.deepEqual(prefilled, [{ title_s: 'Hello' }, { title_s: 'Hello' }, { title_s: 'Hello' }]);
 	});
 
+	// Given no minCount, a required repeat and an optional repeat both start empty.
 	it('does not prefill a repeat that has no minCount, including a required one', () => {
 		const required = getDefaultValue(repeatField({ required: { id: 'required', value: true, level: 'required' } }));
 		assert.deepEqual(required, []);

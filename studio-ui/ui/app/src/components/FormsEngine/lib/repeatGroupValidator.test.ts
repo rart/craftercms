@@ -34,6 +34,14 @@ const {
 } = await import('./formUtils.tsx');
 const { createStore, atom } = await import('jotai');
 
+/**
+ * Forms Engine validation of item counts, the file name, and the required marker.
+ * Repeat, node selector and checkbox group share one occurrence message. A positive minCount is the marker,
+ * and it does not also produce "This field is required."
+ * The Type Builder editor check runs from the itemCount validation, not from the string or int control type.
+ * File name: a non-root item is required; the site root index /site/website/index.xml keeps its stored constraint.
+ */
+
 const meta = {
 	siteId: 'editorial',
 	fileName: 'index.xml',
@@ -63,6 +71,7 @@ function messageOf(message: FieldValidityMessage): { text?: string; values?: unk
 }
 
 describe('repeatGroupValidator', () => {
+	// Given minCount 2 and maxCount 3, one item fails the minimum, four fail the maximum, and 2 or 3 are valid.
 	it('reports the minimum and the maximum, and accepts a count on either bound', async () => {
 		const field = repeatField({
 			minCount: validation('minCount', 2),
@@ -87,6 +96,7 @@ describe('repeatGroupValidator', () => {
 		assert.equal(await repeatGroupValidator(field, [{}, {}, {}], [], meta), true);
 	});
 
+	// Given only a required constraint and no minCount, an empty repeat is valid. Required is not a minimum.
 	it('does not treat a required constraint as a minimum', async () => {
 		const field = repeatField({ required: validation('required', true) });
 		const messages = [];
@@ -94,6 +104,7 @@ describe('repeatGroupValidator', () => {
 		assert.deepEqual(messages, []);
 	});
 
+	// Given minCount 1 and an empty value, the only message is the occurrence message, not "This field is required."
 	it('does not add the generic required message on top of the occurrence message', async () => {
 		const field = repeatField({
 			minCount: validation('minCount', 1)
@@ -110,11 +121,13 @@ describe('repeatGroupValidator', () => {
 	});
 });
 
+// Node selector counts use the same minCount/maxCount messages. 0 is unlimited, the same as a repeat.
 describe('nodeSelectorValidator', () => {
 	function selector(validations: ContentTypeField['validations']): ContentTypeField {
 		return { id: 'articles_o', name: 'Articles', type: 'node-selector', validations };
 	}
 
+	// Given articles_o with minCount 2 and maxCount 0, one item fails the minimum and 0 is not a cap. An empty required selector with minCount 1 reports only the occurrence message.
 	it('reads minCount and maxCount, and treats 0 as unlimited', async () => {
 		const below = await validateFieldValue(
 			selector({ minCount: validation('minCount', 2), maxCount: validation('maxCount', 0) }),
@@ -157,6 +170,7 @@ describe('nodeSelectorValidator', () => {
 	});
 });
 
+// Checkbox groups have a minimum only. There is no maximum to exceed.
 describe('checkboxGroupValidator', () => {
 	function group(minCount?: number): ContentTypeField {
 		return {
@@ -167,6 +181,7 @@ describe('checkboxGroupValidator', () => {
 		};
 	}
 
+	// Given topics_o, minCount 2 rejects one selection and an empty selection. minCount 0 or a missing minimum accepts an empty selection.
 	it('reads minCount and treats 0 as no minimum', async () => {
 		const below = await validateFieldValue(group(2), ['a'], meta);
 		assert.equal(below.isValid, false);
@@ -197,6 +212,7 @@ describe('checkboxGroupValidator', () => {
 });
 
 describe('fileNameValidator', () => {
+	// A page under the site, so its file name is the folder "about". The root index has no editable file name.
 	const aboutPath = '/site/website/about/index.xml';
 
 	function fileNameField(required = false): ContentTypeField {
@@ -212,6 +228,7 @@ describe('fileNameValidator', () => {
 		return { ...meta, fileName, itemMeta: { path } };
 	}
 
+	// Given no stored required constraint, about/index.xml is required and /site/website/index.xml is not. A stored constraint still requires the root index.
 	it('requires a file name except on the site root index', async () => {
 		const stored = fileNameField(false);
 		const nonRoot = fileNameFieldForForm(stored, aboutPath);
@@ -234,6 +251,7 @@ describe('fileNameValidator', () => {
 		assert.deepEqual(rootRequiredResult.messages.map(messageOf), [{ text: 'This field is required.' }]);
 	});
 
+	// Given XML with an empty file-name and path /site/website/about/index.xml, both atoms start as "about", so the required check passes.
 	it('seeds the value atom from the item path, so an empty xml file-name with path name about is valid', async () => {
 		const fileName = fileNameFromItemPath(aboutPath) || '';
 		assert.equal(fileName, 'about');
@@ -277,6 +295,7 @@ describe('fileNameValidator', () => {
 });
 
 describe('isFieldRequired', () => {
+	// Given a positive minCount on a repeat, node selector or checkbox group, the field is marked required. 0 is not. A stored required constraint still is.
 	it('uses a positive minCount as the marker for every item-count control', () => {
 		assert.equal(isFieldRequired(repeatField({ minCount: validation('minCount', 1) })), true);
 		assert.equal(
@@ -303,18 +322,26 @@ describe('isFieldRequired', () => {
 	});
 });
 
+// Type Builder fields declare { role, partner } on itemCount. The check runs because that key is present.
 describe('item count editor validation', () => {
-	function boundField(id: string, type: string, role: 'min' | 'max'): ContentTypeField {
+	function boundField(id: string, type: string, role: 'min' | 'max', partner?: string): ContentTypeField {
 		return {
 			id,
 			name: id,
 			type,
-			validations: { itemCount: { id: 'itemCount', value: role, level: 'required' } } as ContentTypeField['validations']
+			validations: {
+				itemCount: {
+					id: 'itemCount',
+					value: partner ? { role, partner } : { role },
+					level: 'required'
+				}
+			} as ContentTypeField['validations']
 		};
 	}
 
+	// Given maxOccurs (string, partner minOccurs) and maxSize/minOccurs (int), '*' and blank are unlimited, 0 and junk are rejected, and min greater than max fails. The partner id is the one declared on the validation.
 	it('accepts star or blank, rejects 0 and junk, and rejects a minimum above the maximum', async () => {
-		const maxOccurs = boundField('maxOccurs', 'string', 'max');
+		const maxOccurs = boundField('maxOccurs', 'string', 'max', 'minOccurs');
 		for (const value of ['*', '', '4']) {
 			const result = await validateFieldValue(maxOccurs, value, meta);
 			assert.equal(result.isValid, true, String(value));
@@ -323,21 +350,50 @@ describe('item count editor validation', () => {
 		assert.equal(zero.isValid, false);
 		assert.match(messageOf(zero.messages[0]).text ?? '', /1 or more/);
 
-		const above = await validateFieldValue(maxOccurs, '2', { ...meta, getValue: () => 5 });
+		const above = await validateFieldValue(maxOccurs, '2', {
+			...meta,
+			getValue: (fieldId) => {
+				assert.equal(fieldId, 'minOccurs');
+				return 5;
+			}
+		});
 		assert.equal(above.isValid, false);
 		assert.equal(messageOf(above.messages[0]).text, 'Minimum cannot be greater than maximum.');
 
 		const within = await validateFieldValue(maxOccurs, '5', { ...meta, getValue: () => 2 });
 		assert.equal(within.isValid, true);
 
-		const maxSize = boundField('maxSize', 'int', 'max');
+		const maxSize = boundField('maxSize', 'int', 'max', 'minSize');
 		assert.equal((await validateFieldValue(maxSize, 0, meta)).isValid, false);
 		assert.equal((await validateFieldValue(maxSize, 2, { ...meta, getValue: () => 4 })).isValid, false);
 		assert.equal((await validateFieldValue(maxSize, 4, { ...meta, getValue: () => 2 })).isValid, true);
 
-		const minOccurs = boundField('minOccurs', 'int', 'min');
+		const minOccurs = boundField('minOccurs', 'int', 'min', 'maxOccurs');
 		assert.equal((await validateFieldValue(minOccurs, 0, { ...meta, getValue: () => 3 })).isValid, true);
 		assert.equal((await validateFieldValue(minOccurs, 4, { ...meta, getValue: () => '3' })).isValid, false);
 		assert.equal((await validateFieldValue(minOccurs, 'abc', meta)).isValid, false);
+	});
+
+	// Given a max field whose itemCount partner is customPartner, the range check reads that id, not a map of field ids.
+	it('reads the partner from the itemCount validation', async () => {
+		const field = boundField('maxOccurs', 'string', 'max', 'customPartner');
+		const result = await validateFieldValue(field, '2', {
+			...meta,
+			getValue: (fieldId) => {
+				assert.equal(fieldId, 'customPartner');
+				return 5;
+			}
+		});
+		assert.equal(result.isValid, false);
+		assert.equal(messageOf(result.messages[0]).text, 'Minimum cannot be greater than maximum.');
+	});
+
+	// Given a title string and a count int with no itemCount validation, '0' and 'abc' stay valid. The rule is not a type override.
+	it('does not apply the item-count rule to a string or int field without an itemCount validation', async () => {
+		const text = { id: 'title_s', name: 'Title', type: 'string', validations: {} } as ContentTypeField;
+		assert.equal((await validateFieldValue(text, '0', meta)).isValid, true);
+		assert.equal((await validateFieldValue(text, 'abc', meta)).isValid, true);
+		const number = { id: 'count_i', name: 'Count', type: 'int', validations: {} } as ContentTypeField;
+		assert.equal((await validateFieldValue(number, 0, meta)).isValid, true);
 	});
 });

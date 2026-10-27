@@ -43,8 +43,7 @@ export const nodeSelectorDescriptor: DescriptorContentType = {
 			defaultValue: undefined,
 			// 0 is no minimum. See utils/repeatLimits.ts.
 			validations: {
-				minValue: createValidation('minValue', 0),
-				itemCount: createValidation('itemCount', 'min')
+				itemCount: createValidation('itemCount', { role: 'min', partner: 'maxSize' })
 			}
 		},
 		maxSize: {
@@ -57,8 +56,7 @@ export const nodeSelectorDescriptor: DescriptorContentType = {
 			defaultValue: undefined,
 			// 0 is not accepted. See utils/repeatLimits.ts.
 			validations: {
-				minValue: createValidation('minValue', 1),
-				itemCount: createValidation('itemCount', 'max')
+				itemCount: createValidation('itemCount', { role: 'max', partner: 'minSize' })
 			}
 		},
 		itemManager: {

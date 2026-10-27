@@ -79,7 +79,7 @@ export const checkboxGroupDescriptor: DescriptorContentType = {
 			defaultValue: undefined,
 			// See utils/repeatLimits.ts.
 			validations: {
-				itemCount: createValidation('itemCount', 'min')
+				itemCount: createValidation('itemCount', { role: 'min' })
 			}
 		}
 	},

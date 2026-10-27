@@ -39,7 +39,7 @@ export const repeatDescriptor: DescriptorContentType = {
 			defaultValue: 0,
 			// See utils/repeatLimits.ts.
 			validations: {
-				itemCount: createValidation('itemCount', 'min')
+				itemCount: createValidation('itemCount', { role: 'min', partner: 'maxOccurs' })
 			}
 		},
 		maxOccurs: {
@@ -52,7 +52,7 @@ export const repeatDescriptor: DescriptorContentType = {
 			}),
 			defaultValue: '*',
 			validations: {
-				itemCount: createValidation('itemCount', 'max')
+				itemCount: createValidation('itemCount', { role: 'max', partner: 'minOccurs' })
 			}
 		}
 	},
