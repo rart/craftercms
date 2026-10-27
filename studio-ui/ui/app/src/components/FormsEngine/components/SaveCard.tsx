@@ -30,24 +30,23 @@ import { useDispatch } from 'react-redux';
 import { pushConfirmDialog } from '../../../utils/system';
 import { popDialog } from '../../../state/actions/dialogStack';
 import { nanoid } from 'nanoid';
-import { scopedSaveGate } from '../lib/formVisibility';
+import type { CompletedSaveRead } from '../lib/formVisibility';
 
 export interface SaveCardProps {
 	isRepeatMode: boolean;
 	isStackedForm: boolean;
 	isEmbedded: boolean;
 	setSaveAsDraft: (value: boolean) => void;
-	invalidForm: boolean;
 	/**
-	 * Completed save, form invalid: open a hidden error before the cannot-proceed dialog.
-	 * Resolves true when the scope changed. The caller then does not write.
+	 * Fresh validity read for a completed Save. A hidden error is opened in place.
+	 * `valid` writes. `invalid` is the cannot-proceed dialog. `revealed` writes nothing.
 	 */
-	onRevealHiddenInvalid?: () => Promise<boolean> | boolean;
+	onRevealHiddenInvalid: () => Promise<CompletedSaveRead>;
 	onSave: (e: MouseEvent, draft?: boolean) => void;
 }
 
 export function SaveCard(props: SaveCardProps) {
-	const { isEmbedded, isStackedForm, isRepeatMode, setSaveAsDraft, invalidForm, onRevealHiddenInvalid, onSave } = props;
+	const { isEmbedded, isStackedForm, isRepeatMode, setSaveAsDraft, onRevealHiddenInvalid, onSave } = props;
 	const stableFormContext = useContext(StableFormContext);
 	const isSubmitting = useAtomValue(stableFormContext.atoms.isSubmitting);
 	const [versionComment, setVersionComment] = useAtom(stableFormContext.atoms.versionComment);
@@ -89,12 +88,13 @@ export function SaveCard(props: SaveCardProps) {
 	};
 	const handleSave = async (e: MouseEvent, type: 'save' | 'saveDraft', draft?: boolean) => {
 		// Drafts are allowed to be invalid, including fields the launch scope is hiding.
-		if (type === 'save' && invalidForm) {
-			const revealed = (await onRevealHiddenInvalid?.()) ?? false;
-			if (scopedSaveGate({ draft: false, invalidForm, hasHiddenInvalid: revealed }) === 'block') showCannotProceed();
+		if (type === 'saveDraft') {
+			onSave(e, draft);
 			return;
 		}
-		onSave(e, draft);
+		const outcome = await onRevealHiddenInvalid();
+		if (outcome === 'invalid') showCannotProceed();
+		else if (outcome === 'valid') onSave(e, draft);
 	};
 
 	return (

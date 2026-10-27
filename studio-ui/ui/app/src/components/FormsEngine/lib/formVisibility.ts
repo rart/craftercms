@@ -257,19 +257,17 @@ export function hiddenInvalidReveal(args: {
 	return undefined;
 }
 
+/** A completed Save click after a fresh validity read. Drafts do not come through here. */
+export type CompletedSaveRead = 'revealed' | 'invalid' | 'valid';
+
 /**
- * What to do with a save click once `hiddenInvalidReveal` has been consulted.
- * An explicit draft writes, hidden errors included. A completed save that is
- * hiding an error reveals it and does not write. A completed save whose errors
- * are already on screen is the cannot-proceed dialog.
+ * Decision for a completed Save click. `hiddenInvalidReveal` has already run.
+ * A hidden error is revealed and nothing is written. A visible error is the
+ * cannot-proceed dialog. A valid read writes. The debounced `invalidForm`
+ * flag is not an input, so fixing the last visible error and saving immediately writes.
  */
-export function scopedSaveGate(args: {
-	draft: boolean;
-	invalidForm: boolean;
-	hasHiddenInvalid: boolean;
-}): 'reveal' | 'block' | 'write' {
-	if (args.draft) return 'write';
-	if (args.hasHiddenInvalid) return 'reveal';
-	if (args.invalidForm) return 'block';
-	return 'write';
+export function completedSaveRead(args: { hasHiddenInvalid: boolean; isFormInvalid: boolean }): CompletedSaveRead {
+	if (args.hasHiddenInvalid) return 'revealed';
+	if (args.isFormInvalid) return 'invalid';
+	return 'valid';
 }

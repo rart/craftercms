@@ -37,7 +37,7 @@ import {
 } from './formUtils';
 import { FormSavePromiseResult, FormsEngineProps } from '../FormsEngine';
 import { contentFormSaveAction } from '../../../utils/contentFormLaunch';
-import { hiddenInvalidReveal, scopedSaveGate } from './formVisibility';
+import { completedSaveRead, hiddenInvalidReveal } from './formVisibility';
 import { XmlKeys } from './formConsts';
 import { fromString } from '../../../utils/xml';
 import {
@@ -131,27 +131,25 @@ export function useSaveForm(props: UseSaveFormProps) {
 	};
 	/** Opens a hidden error in place. True when the scope changed and nothing should be written. */
 	const applyHiddenInvalidReveal = (draft: boolean | undefined, invalidFieldIds: readonly string[]) => {
-		if (isRepeatMode) return false;
+		// Repeat commits and explicit drafts write, hidden errors included.
+		if (isRepeatMode || draft === true) return false;
 		const reveal = hiddenInvalidReveal({
 			visibility: jotai.get(stableFormContext.atoms.formVisibility),
 			invalidFieldIds,
 			sectionOrder: contentType.sections?.flatMap((section) => section.fields) ?? [],
 			irrelevantFieldPaths: stableFormContext.formControllerState?.irrelevantFieldPaths
 		});
-		// Drafts write. Only a completed save stops here to show the hidden error.
-		if (
-			scopedSaveGate({ draft: draft === true, invalidForm: false, hasHiddenInvalid: Boolean(reveal) }) !== 'reveal' ||
-			!reveal
-		) {
-			return false;
-		}
+		if (!reveal) return false;
 		jotai.set(stableFormContext.atoms.formVisibility, reveal.state);
 		jotai.set(stableFormContext.atoms.pendingScrollFieldId, reveal.fieldId);
 		return true;
 	};
 	const revealHiddenInvalid = async () => {
-		const { invalidFieldIds } = await readCurrentValidity();
-		return applyHiddenInvalidReveal(false, invalidFieldIds);
+		const { isFormInvalid, invalidFieldIds } = await readCurrentValidity();
+		return completedSaveRead({
+			hasHiddenInvalid: applyHiddenInvalidReveal(false, invalidFieldIds),
+			isFormInvalid
+		});
 	};
 	const save = async (draft?: boolean) => {
 		// Get before the first await so a second call cannot re-enter preload or onBeforeSave.

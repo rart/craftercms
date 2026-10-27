@@ -67,11 +67,6 @@ export function saveSuccessFollowUps<Notification, FollowUp>(
 	return draft === true ? [...followUps] : [notification, ...followUps];
 }
 
-/** Duplicate's only follow-up is the caller's onSuccess. A draft skips it. */
-export function duplicateSaveFollowUps<T>(draft: boolean | undefined, onSuccess: T): T[] {
-	return draft === true ? [] : [onSuccess];
-}
-
 /**
  * Maps a content-form launch onto Forms Engine props. Field scope is applied by the
  * form's visibility model (`fieldIds` / `repeatIndex`); this function does not look

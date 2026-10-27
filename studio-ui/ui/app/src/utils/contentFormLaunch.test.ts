@@ -16,12 +16,7 @@
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import {
-	contentFormSaveAction,
-	duplicateSaveFollowUps,
-	formsEnginePropsFromLaunch,
-	saveSuccessFollowUps
-} from './contentFormLaunch.ts';
+import { contentFormSaveAction, formsEnginePropsFromLaunch, saveSuccessFollowUps } from './contentFormLaunch.ts';
 
 describe('formsEnginePropsFromLaunch', () => {
 	it('maps a new page onto create mode and keeps the selected fields', () => {
@@ -97,16 +92,5 @@ describe('edit and change-template save follow-ups', () => {
 
 	it('change-template: notifies and reloads on a completed save', () => {
 		assert.deepEqual(saveSuccessFollowUps(false, 'notify', ['reload']), ['notify', 'reload']);
-	});
-});
-
-describe('duplicate save follow-ups', () => {
-	it('skips onSuccess on a draft', () => {
-		assert.deepEqual(duplicateSaveFollowUps(true, 'onSuccess'), []);
-	});
-
-	it('runs onSuccess on a completed save', () => {
-		assert.deepEqual(duplicateSaveFollowUps(false, 'onSuccess'), ['onSuccess']);
-		assert.deepEqual(duplicateSaveFollowUps(undefined, 'onSuccess'), ['onSuccess']);
 	});
 });

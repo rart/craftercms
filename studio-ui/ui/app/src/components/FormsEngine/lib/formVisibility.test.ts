@@ -29,7 +29,7 @@ import {
 	resolveLaunchVisibility,
 	returnToLaunchScope,
 	scopeFieldCounts,
-	scopedSaveGate,
+	completedSaveRead,
 	unsupportedRepeatIndexWarning,
 	visibleRepeatItems
 } from './formVisibility.ts';
@@ -269,16 +269,16 @@ describe('Save versus Save as draft when a scoped field is invalid off screen', 
 		assert.ok(reveal);
 		assert.equal(isScopeActive(reveal.state.active), false);
 		assert.equal(reveal.fieldId, 'body_html');
-		assert.equal(scopedSaveGate({ draft: false, invalidForm: true, hasHiddenInvalid: true }), 'reveal');
-	});
-
-	it('an explicit draft skips the reveal so the write proceeds', () => {
-		assert.ok(hiddenInvalidReveal(hiddenError));
-		assert.equal(scopedSaveGate({ draft: true, invalidForm: true, hasHiddenInvalid: true }), 'write');
+		assert.equal(completedSaveRead({ hasHiddenInvalid: true, isFormInvalid: true }), 'revealed');
 	});
 
 	it('a completed save whose errors are already visible shows cannot-proceed', () => {
 		assert.equal(hiddenInvalidReveal({ ...hiddenError, invalidFieldIds: ['title_s'] }), undefined);
-		assert.equal(scopedSaveGate({ draft: false, invalidForm: true, hasHiddenInvalid: false }), 'block');
+		assert.equal(completedSaveRead({ hasHiddenInvalid: false, isFormInvalid: true }), 'invalid');
+	});
+
+	it('a fresh valid read writes, so a stale invalid flag does not block Save', () => {
+		assert.equal(hiddenInvalidReveal({ ...hiddenError, invalidFieldIds: [] }), undefined);
+		assert.equal(completedSaveRead({ hasHiddenInvalid: false, isFormInvalid: false }), 'valid');
 	});
 });

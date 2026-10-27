@@ -1456,7 +1456,6 @@ function FormOrchestrator(props: FormsEngineProps) {
 										isStackedForm={isStackedForm}
 										isRepeatMode={isRepeatMode}
 										setSaveAsDraft={setSaveAsDraftAction}
-										invalidForm={invalidForm}
 										onRevealHiddenInvalid={revealHiddenInvalid}
 										onSave={(e, draft) => saveFn(draft)}
 									/>
