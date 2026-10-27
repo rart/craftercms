@@ -48,6 +48,7 @@ import {
 	isItemCountRangeValid,
 	readItemCountEditorSpec
 } from '../../../utils/countLimits';
+import { evaluateRteConstraints, measureRteValue } from './rtePlainText';
 
 export interface ValidatorMetaData {
 	siteId: string;
@@ -676,28 +677,20 @@ const inputPhoneValidator = (
 const rteValidator = (field: ContentTypeField, currentValue: string, messages?: FieldValidityMessage[]): boolean => {
 	if (nou(field)) return true;
 	const isRequired = isFieldRequired(field);
-	let isValid = true;
-	const safeValue = typeof currentValue === 'string' ? currentValue : '';
-
 	const maxLength: number | undefined = getValidationValue(field.validations, 'maxLength');
-	const aux = document.createElement('div');
-	aux.innerHTML = safeValue;
-	const trimmedContent = aux.innerText.trim(); // Get only the text and remove white space
+	const trimmedContent = measureRteValue(currentValue); // Get only the text and remove white space
+	const { isValid, requiredFailed, maxLengthExceeded } = evaluateRteConstraints(trimmedContent, isRequired, maxLength);
 
-	if (isRequired) {
-		isValid = trimmedContent !== '';
-		if (!isValid) {
-			messages?.push(defineMessage({ defaultMessage: 'This field is required.' }));
-		}
+	if (requiredFailed) {
+		messages?.push(defineMessage({ defaultMessage: 'This field is required.' }));
 	}
-	if (nnou(maxLength) && trimmedContent.length > maxLength) {
+	if (maxLengthExceeded) {
 		messages?.push([
 			defineMessage({
 				defaultMessage: `The value is greater than the allowed maximum ({maxLength}).`
 			}),
 			{ maxLength }
 		]);
-		isValid = false;
 	}
 
 	return isValid;
