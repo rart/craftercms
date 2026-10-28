@@ -28,7 +28,8 @@ export const stackEntryFlagsAtom = atom<Record<string, StackEntryFlag>>({});
 /**
  * `pushForm` inserts the entry before prep, with `atoms: null`.
  * The launch, the pencil, Add, and a node selector all do this.
- * Readers must skip the entry until this is true.
+ * strictNullChecks is off, so the compiler does not enforce the null.
+ * Readers must use hasFormAtoms or stackEntryAtoms.
  */
 export function hasFormAtoms<T extends { atoms: object | null }>(
 	entry: T | null | undefined
@@ -297,12 +298,8 @@ export function itemLaunchFrom(state: FormVisibilityState, valueLength: number):
 }
 
 export interface ItemFormExit {
-	/** `parent` renders the parent's Save card. `item` is the item's own Done card. */
-	saveCard: 'parent' | 'item';
 	/** `closeDialog` dismisses the whole dialog. `pop` returns to the parent. */
 	dismiss: 'closeDialog' | 'pop';
-	/** The stacked drawer covers the parent, so no strip of it shows. */
-	fullWidth: boolean;
 }
 
 export type ItemFormMode = 'selected' | 'full';
@@ -313,23 +310,12 @@ export type ItemFormMode = 'selected' | 'full';
  * views a field in the form, or goes back to the selection. A save reveal does not change it.
  */
 export function itemFormExit(mode: ItemFormMode | null): ItemFormExit {
-	return mode === 'selected'
-		? { saveCard: 'parent', dismiss: 'closeDialog', fullWidth: true }
-		: { saveCard: 'item', dismiss: 'pop', fullWidth: false };
+	return mode === 'selected' ? { dismiss: 'closeDialog' } : { dismiss: 'pop' };
 }
 
 /** Parent scope that follows the item form's mode. `full` opens the parent. `selected` restores its launch filter. */
 export function parentVisibilityForItemMode(parent: FormVisibilityState, mode: ItemFormMode): FormVisibilityState {
 	return mode === 'full' ? openFullForm(parent) : returnToLaunchScope(parent);
-}
-
-/** Parent view after an item form leaves selected-fields mode: the full form, scrolled to the repeat. */
-export function parentViewAfterItemScope(parent: FormVisibilityState, repeatFieldId: string): HiddenInvalidReveal {
-	return revealField(parent, repeatFieldId);
-}
-
-export function formHasUnsavedChanges(own: boolean, stacked: readonly boolean[]): boolean {
-	return own || stacked.some(Boolean);
 }
 
 /**
@@ -463,10 +449,6 @@ export function selectedItemSavePlan(args: {
 	return { action: 'saveParent' };
 }
 
-export function scopeChangeOpensParent(before: ItemFormMode | null, after: ItemFormMode | null): boolean {
-	return itemFormExit(before).saveCard === 'parent' && itemFormExit(after).saveCard === 'item';
-}
-
 /**
  * How a stacked form's dismiss is handled.
  * Selected-fields mode does not pop and does not prompt here: the dialog owns the one unsaved prompt.
@@ -492,11 +474,16 @@ export function stackedFormsClosedByReload(stackLength: number, stackIndex: numb
 	return Math.max(0, stackLength - 1);
 }
 
-/** A parent save that stays open already stored the live item edits, so every open entry is clean. */
+/**
+ * A parent save that stays open already stored selected-fields edits.
+ * Only those entries are cleared. A full-mode or pencil item was not written through,
+ * so it keeps its pending flag and its dirty prompt.
+ */
 export function clearStackPendingFlags(
-	entries: readonly { changedFieldIds: Set<string>; setPending(value: boolean): void }[]
+	entries: readonly { selected: boolean; changedFieldIds: Set<string>; setPending(value: boolean): void }[]
 ): void {
 	for (const entry of entries) {
+		if (!entry.selected) continue;
 		entry.changedFieldIds.clear();
 		entry.setPending(false);
 	}

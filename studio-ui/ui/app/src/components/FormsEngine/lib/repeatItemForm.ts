@@ -26,6 +26,44 @@ export function commitRepeatItem<T>(items: readonly T[], index: number | undefin
 	return next;
 }
 
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+	if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+	const proto = Object.getPrototypeOf(value);
+	return proto === Object.prototype || proto === null;
+}
+
+function sameItem(left: unknown, right: unknown): boolean {
+	if (Object.is(left, right)) return true;
+	if (Array.isArray(left) || Array.isArray(right)) {
+		if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) return false;
+		return left.every((value, index) => sameItem(value, right[index]));
+	}
+	if (isPlainRecord(left) && isPlainRecord(right)) {
+		const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
+		for (const key of keys) {
+			// A field atom that was not on the stored item is undefined. That is not an edit.
+			if (left[key] === undefined && right[key] === undefined) continue;
+			if (!sameItem(left[key], right[key])) return false;
+		}
+		return true;
+	}
+	return false;
+}
+
+/**
+ * Puts the open item into the parent array.
+ * Selected-fields mode calls this once when the form enters that mode, and again on each edit
+ * while it stays there. Edits made in full mode are not in the parent until this runs, so
+ * Back to selected fields must write before Save. An item that already matches is returned
+ * as the same array, so opening the form does not mark the parent dirty.
+ */
+export function writeItemToParent<T>(items: readonly T[], index: number | undefined, nextItem: T): T[] {
+	if (index !== undefined && index >= 0 && index < items.length && sameItem(items[index], nextItem)) {
+		return items as T[];
+	}
+	return commitRepeatItem(items, index, nextItem);
+}
+
 export function repeatItemFormProps<T extends Record<string, unknown>>(args: {
 	fieldId: string;
 	index?: number;

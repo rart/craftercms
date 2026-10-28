@@ -26,6 +26,7 @@ import React, {
 	useCallback,
 	useContext,
 	useEffect,
+	useLayoutEffect,
 	useMemo,
 	useRef,
 	useState
@@ -169,7 +170,6 @@ import {
 	hiddenFieldsAlert,
 	itemLaunchFrom,
 	itemLaunchVisibleChildren,
-	parentViewAfterItemScope,
 	parentVisibilityForItemMode,
 	planSettledFieldScroll,
 	repeatFormLock,
@@ -180,7 +180,7 @@ import {
 	stackedFormsClosedByReload,
 	type ItemFormMode
 } from './lib/formVisibility';
-import { commitRepeatItem, repeatItemFormProps } from './lib/repeatItemForm';
+import { repeatItemFormProps, writeItemToParent } from './lib/repeatItemForm';
 import HiddenFieldsAlert from './components/HiddenFieldsAlert';
 import { useInvalidFieldIds } from './lib/useInvalidFieldIds';
 
@@ -1193,7 +1193,7 @@ function FormOrchestrator(props: FormsEngineProps) {
 			contextApi.popForm();
 			// An item form that left selected-fields mode returns to the parent. Scroll to its repeat.
 			if (childMode === 'full' && childEntry.props.repeat?.fieldId) {
-				const reveal = parentViewAfterItemScope(store.get(atoms.formVisibility), childEntry.props.repeat.fieldId);
+				const reveal = revealField(store.get(atoms.formVisibility), childEntry.props.repeat.fieldId);
 				commitFormVisibility(store.set, atoms, reveal.state, reveal.fieldId);
 			}
 		};
@@ -1251,11 +1251,13 @@ function FormOrchestrator(props: FormsEngineProps) {
 		onMinimize: () => props.onMinimize?.()
 	});
 
-	// The root writes these every render. A selected-fields Save reads them at click time.
-	if (stackIndex === 0) {
-		rootFormActions.save = (draft) => saveFn(draft);
-		rootFormActions.setSaveAsDraft = setSaveAsDraftAction;
-	}
+	// Published after paint layout, not during render. The refs stay current, so a click reads this save.
+	const rootActionRefs = useUpdateRefs({ save: saveFn, setSaveAsDraft: setSaveAsDraftAction });
+	useLayoutEffect(() => {
+		if (stackIndex !== 0) return;
+		rootFormActions.save = (draft) => rootActionRefs.current.save(draft);
+		rootFormActions.setSaveAsDraft = (value) => rootActionRefs.current.setSaveAsDraft(value);
+	}, [rootActionRefs, rootFormActions, stackIndex]);
 
 	const itemLaunchStarted = useRef(false);
 	const launchedForAtoms = useRef<FormsEngineAtoms | null>(null);
@@ -1312,17 +1314,21 @@ function FormOrchestrator(props: FormsEngineProps) {
 		);
 	}, [itemMode, parentAtoms, stableFormContext.itemFormMode, store]);
 
-	// Selected-fields edits land in the parent array as they happen. Leaving the mode keeps that write.
+	// Selected-fields mode writes the open item into the parent on entry and on each edit.
+	// Full-mode edits are included by the write on entry, so Back to selected fields then Save keeps them.
 	useEffect(() => {
 		if (itemMode !== 'selected' || !parentAtoms || repeat?.index === undefined) return;
 		const valueAtom = parentAtoms.valueByFieldId[repeat.fieldId];
 		if (!valueAtom) return;
 		const index = repeat.index;
-		const subscription = fieldUpdates$.subscribe(() => {
+		const write = () => {
 			const current = store.get(valueAtom);
 			if (!Array.isArray(current)) return;
-			store.set(valueAtom, commitRepeatItem(current, index, extractAtomValues(store, atoms.valueByFieldId)));
-		});
+			const next = writeItemToParent(current, index, extractAtomValues(store, atoms.valueByFieldId));
+			if (next !== current) store.set(valueAtom, next);
+		};
+		write();
+		const subscription = fieldUpdates$.subscribe(write);
 		return () => subscription.unsubscribe();
 	}, [atoms.valueByFieldId, fieldUpdates$, itemMode, parentAtoms, repeat?.fieldId, repeat?.index, store]);
 
@@ -1411,9 +1417,8 @@ function FormOrchestrator(props: FormsEngineProps) {
 			contextApi.popForm();
 			return 'revealed' as const;
 		}
-		const rootSave = rootFormActions.save;
-		rootFormActions.setSaveAsDraft(draft === true);
-		return rootSave(draft);
+		// SaveCard already set the root draft flag. Read save at click time.
+		return rootFormActions.save(draft);
 	};
 
 	// If not on a dialog or the prop is not provided, there's no need to handle the close. The form is running in a standalone mode.

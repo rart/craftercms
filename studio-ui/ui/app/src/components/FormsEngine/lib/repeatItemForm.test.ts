@@ -16,12 +16,13 @@
 
 /**
  * Covers the shared repeat-item opener. The save callback writes into whatever
- * array is current, so a change made after the form opened is kept.
+ * array is current, so a change made after the form opened is kept. The selected-fields
+ * write covers edits made in full mode that must reach the parent before Save.
  */
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { commitRepeatItem, repeatItemFormProps } from './repeatItemForm.ts';
+import { commitRepeatItem, repeatItemFormProps, writeItemToParent } from './repeatItemForm.ts';
 
 describe('commitRepeatItem', () => {
 	// Editing an item replaces that index and leaves the others in place.
@@ -34,6 +35,18 @@ describe('commitRepeatItem', () => {
 	it('appends when there is no index', () => {
 		const next = commitRepeatItem([{ id: 'a' }], undefined, { id: 'b' });
 		assert.deepEqual(next, [{ id: 'a' }, { id: 'b' }]);
+	});
+});
+
+describe('writeItemToParent', () => {
+	// Full mode does not write. Back to selected fields writes once, and Save then stores that array.
+	it('writes full-mode edits into the parent when the form returns to selected fields', () => {
+		const opened = [{ icon_s: 'old' }];
+		const editedInFullMode = { icon_s: 'new' };
+		const afterReturn = writeItemToParent(opened, 0, editedInFullMode);
+		assert.deepEqual(afterReturn, [{ icon_s: 'new' }]);
+		// Save reads this array. Writing the same item again does not replace it, so an unchanged open stays clean.
+		assert.equal(writeItemToParent(afterReturn, 0, editedInFullMode), afterReturn);
 	});
 });
 

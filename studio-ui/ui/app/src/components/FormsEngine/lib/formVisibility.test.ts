@@ -24,7 +24,8 @@
  * check that a reveal keeps its field when fieldToScroll is also set, and that
  * a plain fieldToScroll scrolls once the form content is mounted, and again after that target is cleared.
  * Stack tests check a form pushed before its atoms exist, selected-fields mode, the one close
- * decision, lock sharing, reload, and the width and dirty flags of more than one stacked form.
+ * decision, lock sharing, reload, which pending flags a parent save clears, and the width and
+ * dirty flags of more than one stacked form.
  * They do not render the form.
  */
 
@@ -39,7 +40,6 @@ import {
 	planSettledFieldScroll,
 	saveAsDraftFlag,
 	fieldVisibility,
-	formHasUnsavedChanges,
 	clearRepeatItemScope,
 	clearStackPendingFlags,
 	firstOutOfScopeInvalidField,
@@ -49,11 +49,9 @@ import {
 	itemFormExit,
 	itemLaunchFrom,
 	itemLaunchVisibleChildren,
-	parentViewAfterItemScope,
 	parentVisibilityForItemMode,
 	repeatFormLock,
 	repositorySaveFollowUp,
-	scopeChangeOpensParent,
 	selectedItemSavePlan,
 	aggregateStackFlags,
 	stackedFormCloseAction,
@@ -877,28 +875,27 @@ describe('item form exit', () => {
 		repeatFieldIds: new Set<string>()
 	}).state;
 
-	// A whole item and a single child both start in this mode. Save is the parent's, and dismiss leaves the dialog.
-	it('uses the parent Save card and closes the dialog in selected-fields mode', () => {
-		assert.deepEqual(itemFormExit('selected'), { saveCard: 'parent', dismiss: 'closeDialog', fullWidth: true });
+	// A whole item and a single child both start in this mode. Dismiss closes the whole dialog.
+	it('closes the dialog in selected-fields mode', () => {
+		assert.deepEqual(itemFormExit('selected'), { dismiss: 'closeDialog' });
 	});
 
-	// Open full form is an author action. The item then has its own Done button and the parent strip returns.
-	it('returns to the item Done card after the full item form is opened', () => {
-		assert.deepEqual(itemFormExit('full'), { saveCard: 'item', dismiss: 'pop', fullWidth: false });
-		assert.equal(scopeChangeOpensParent('selected', 'full'), true);
-		assert.equal(scopeChangeOpensParent('selected', 'selected'), false);
+	// Open full form is an author action. Close then returns to the parent.
+	it('returns to the parent after the full item form is opened', () => {
+		assert.deepEqual(itemFormExit('full'), { dismiss: 'pop' });
+		assert.equal(itemFormExit('selected').dismiss, 'closeDialog');
 	});
 
-	// A reveal clears the scope. The mode stays selected, so the parent Save card stays.
+	// A reveal clears the scope. The mode stays selected, so dismiss still closes the dialog.
 	it('keeps selected-fields mode when a hidden field is revealed', () => {
 		const revealed = revealField(selected, 'url_s');
 		assert.equal(isScopeActive(revealed.state.active), false);
-		assert.equal(itemFormExit('selected').saveCard, 'parent');
+		assert.equal(itemFormExit('selected').dismiss, 'closeDialog');
 	});
 
-	// The pencil and Add have no mode, so they stay on the item's own Done button.
-	it('keeps the pencil item form on its own Done card', () => {
-		assert.equal(itemFormExit(null).saveCard, 'item');
+	// The pencil and Add have no mode, so Close returns to the parent.
+	it('pops the pencil item form', () => {
+		assert.equal(itemFormExit(null).dismiss, 'pop');
 	});
 
 	// Open full form opens the parent. Back to selected fields restores the parent's launch filter.
@@ -925,7 +922,7 @@ describe('item form exit', () => {
 			repeatFieldIds: accountsRepeats,
 			fields: accountsFields
 		}).state;
-		const next = parentViewAfterItemScope(parent, 'accounts_o');
+		const next = revealField(parent, 'accounts_o');
 		assert.equal(isScopeActive(next.state.active), false);
 		assert.equal(next.fieldId, 'accounts_o');
 		assert.ok(next.state.launch);
@@ -1117,13 +1114,20 @@ describe('stacked form guards', () => {
 		assert.equal(stackedFormsClosedByReload(3, 1), 0);
 	});
 
-	// A parent save that stays open already stored the live item edits.
-	it('clears pending flags after the parent save', () => {
-		const changed = new Set(['icon_s']);
-		let pending = true;
-		clearStackPendingFlags([{ changedFieldIds: changed, setPending: (value) => (pending = value) }]);
-		assert.equal(pending, false);
-		assert.equal(changed.size, 0);
+	// A parent save already stored selected-fields edits. A full-mode or pencil item was not written through.
+	it('clears pending flags only for selected-fields entries', () => {
+		const selectedChanged = new Set(['icon_s']);
+		const fullChanged = new Set(['url_s']);
+		let selectedPending = true;
+		let fullPending = true;
+		clearStackPendingFlags([
+			{ selected: true, changedFieldIds: selectedChanged, setPending: (value) => (selectedPending = value) },
+			{ selected: false, changedFieldIds: fullChanged, setPending: (value) => (fullPending = value) }
+		]);
+		assert.equal(selectedPending, false);
+		assert.equal(selectedChanged.size, 0);
+		assert.equal(fullPending, true);
+		assert.equal(fullChanged.size, 1);
 	});
 
 	// Close and minimize are the checkbox values read when Save is clicked.
@@ -1175,14 +1179,5 @@ describe('item launch visibility', () => {
 			new Set(['accounts_o.icon_s'])
 		);
 		assert.deepEqual(next.fieldIds, ['url_s']);
-	});
-});
-
-describe('unsaved changes', () => {
-	// Minimizing or closing the dialog must see edits that live only in the open item form.
-	it('includes stacked item forms', () => {
-		assert.equal(formHasUnsavedChanges(false, [true]), true);
-		assert.equal(formHasUnsavedChanges(false, [false]), false);
-		assert.equal(formHasUnsavedChanges(true, []), true);
 	});
 });

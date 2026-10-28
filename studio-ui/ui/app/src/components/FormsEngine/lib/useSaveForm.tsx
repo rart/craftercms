@@ -226,10 +226,11 @@ export function useSaveForm(props: UseSaveFormProps) {
 						// TODO: What would `setValuesCheckpoint` do if called on a repeat group form?
 						!isRepeatMode && formContextApi.setValuesCheckpoint(values);
 					});
-					// Live item edits were stored with the parent. Drop stacked dirty flags so a later close does not ask again.
+					// Selected-fields edits are already in the parent. A full-mode or pencil item keeps its own pending flag.
 					if (!isRepeatMode) {
 						clearStackPendingFlags(
 							formsStackData.map((entry) => ({
+								selected: entry.itemFormMode ? jotai.get(entry.itemFormMode) === 'selected' : false,
 								changedFieldIds: entry.changedFieldIds,
 								setPending(value) {
 									if (entry.atoms) jotai.set(entry.atoms.hasPendingChanges, value);

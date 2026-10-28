@@ -125,8 +125,8 @@ export interface StableGlobalContextProps {
 	formsStackData: StableFormContextProps[];
 	api: FormsEngineGlobalApiContextProps;
 	/**
-	 * The root form writes these every render. Stacked forms read them at click time,
-	 * so a selected-fields Save card runs the current root save.
+	 * The root form publishes these from a layout effect. The functions read refs that
+	 * update every render, so a selected-fields Save runs the current root save.
 	 */
 	rootFormActions: {
 		save: (draft?: boolean) => Promise<'revealed' | 'invalid' | 'saved' | void>;
@@ -137,8 +137,9 @@ export interface StableGlobalContextProps {
 // Consolidated base data store for the form instance (single form/item). Once initialised, it won't change (won't cause re-renders).
 export interface StableFormContextProps {
 	/**
-	 * Null until this entry's prep finishes. `pushForm` inserts the entry before atoms exist,
-	 * so readers must use {@link stackEntryAtoms} and skip entries that are not ready.
+	 * Null until this entry's prep finishes. `pushForm` inserts the entry before atoms exist.
+	 * strictNullChecks is off, so the compiler does not enforce this.
+	 * Readers must use hasFormAtoms or stackEntryAtoms.
 	 */
 	atoms: FormsEngineAtoms | null;
 	/**
