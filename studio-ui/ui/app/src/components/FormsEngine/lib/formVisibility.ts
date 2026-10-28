@@ -77,7 +77,7 @@ export interface FormVisibilityState {
 	launch: FormFieldScope | null;
 	/**
 	 * Set when every selected field sits under one child-field group and the index is a plain number.
-	 * The parent still uses `launch.repeatItem` if the item form is not opened (for example the index is past the end).
+	 * The parent stays a full form. This only tells the root to open the item form.
 	 */
 	itemForm?: ItemFormLaunch | null;
 }
@@ -178,7 +178,7 @@ export interface ResolvedLaunchScope {
  * Dotted ids select the base field. A numeric index scopes a repeat field in that
  * set to one item. An empty match does not produce an empty form: the scope is left off.
  * When `fields` is passed, a selection that is entirely under one child-field group is
- * also recorded as `itemForm` so the root can open that item's form.
+ * recorded as `itemForm` and the parent is left unscoped. The item form carries the field scope.
  */
 export function resolveLaunchVisibility(args: {
 	selectedFields?: readonly string[];
@@ -206,9 +206,10 @@ export function resolveLaunchVisibility(args: {
 		}
 	}
 
-	const active: FormFieldScope = { fieldIds, repeatItem };
 	const itemForm =
 		repeatItem && args.fields ? itemFormLaunchFromSelection(args.selectedFields, repeatItem, args.fields) : null;
+	// A repeat-item launch scopes the item form only. The parent stays a normal full form.
+	const active: FormFieldScope = itemForm ? emptyFieldScope() : { fieldIds, repeatItem };
 	// A selection that matches nothing still names the first requested field. The scroller
 	// uses it only when that field is actually in the form.
 	const scrollFieldId = !fieldIds && requested?.length ? baseFieldId(requested[0]) : undefined;
@@ -246,7 +247,7 @@ export function childFields<T>(field: { fields?: Record<string, T> | null } | nu
 /**
  * Item-form launch when every selected id sits under `repeatItem.fieldId`.
  * A bare group id opens the whole item. Child ids are kept. Anything else returns null
- * and the parent keeps today's item filter.
+ * and the parent keeps its field filter.
  */
 export function itemFormLaunchFromSelection(
 	selectedFields: readonly string[] | undefined,
@@ -289,6 +290,22 @@ export function itemLaunchVisibleChildren(
 	return { ...launch, fieldIds: visible };
 }
 
+/**
+ * The parent should keep showing its loading state until this item launch is pushed.
+ * A launch that cannot open (the index is past the end) does not hold the parent.
+ * `valueLength === null` means the repeat value is not ready yet, so the parent still waits.
+ */
+export function itemLaunchBlocksParent(state: FormVisibilityState, valueLength: number | null): boolean {
+	if (!state.itemForm) return false;
+	if (valueLength == null) return true;
+	return itemLaunchFrom(state, valueLength) != null;
+}
+
+/** The scope toggle belongs on the form that was opened with a field subset. */
+export function scopeToggleVisible(state: FormVisibilityState): boolean {
+	return Boolean(state.launch && isScopeActive(state.launch));
+}
+
 /** Opens the item form only when the recorded launch is still inside the current value list. */
 export function itemLaunchFrom(state: FormVisibilityState, valueLength: number): ItemFormLaunch | null {
 	const launch = state.itemForm;
@@ -311,11 +328,6 @@ export type ItemFormMode = 'selected' | 'full';
  */
 export function itemFormExit(mode: ItemFormMode | null): ItemFormExit {
 	return mode === 'selected' ? { dismiss: 'closeDialog' } : { dismiss: 'pop' };
-}
-
-/** Parent scope that follows the item form's mode. `full` opens the parent. `selected` restores its launch filter. */
-export function parentVisibilityForItemMode(parent: FormVisibilityState, mode: ItemFormMode): FormVisibilityState {
-	return mode === 'full' ? openFullForm(parent) : returnToLaunchScope(parent);
 }
 
 /**

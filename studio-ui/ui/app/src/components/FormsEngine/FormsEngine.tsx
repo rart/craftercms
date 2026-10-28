@@ -169,9 +169,9 @@ import {
 	fieldVisibility,
 	hasFormAtoms,
 	hiddenFieldsAlert,
+	itemLaunchBlocksParent,
 	itemLaunchFrom,
 	itemLaunchVisibleChildren,
-	parentVisibilityForItemMode,
 	planSettledFieldScroll,
 	repeatFormLock,
 	revealField,
@@ -941,6 +941,12 @@ function FormOrchestrator(props: FormsEngineProps) {
 	useAtomValue(atoms.relevanceVersion);
 	const visibility = useAtomValue(atoms.formVisibility);
 	const scopeFieldIds = visibility.active.fieldIds;
+	const pendingItemFieldId = !isStackedForm && !isRepeatMode ? visibility.itemForm?.fieldId : undefined;
+	const idlePendingValue = useMemo(() => atom<unknown>(undefined), []);
+	const pendingRepeatValue = useAtomValue(
+		(pendingItemFieldId ? atoms.valueByFieldId[pendingItemFieldId] : undefined) ?? idlePendingValue
+	);
+	const pendingItemLength = Array.isArray(pendingRepeatValue) ? pendingRepeatValue.length : null;
 	const formSections = useMemo(() => {
 		let sections = contentType.sections;
 		if (isEmbedded) {
@@ -1303,10 +1309,16 @@ function FormOrchestrator(props: FormsEngineProps) {
 		const visibilityState = store.get(atoms.formVisibility);
 		const repeatFieldId = visibilityState.itemForm?.fieldId;
 		const valueAtom = repeatFieldId ? atoms.valueByFieldId[repeatFieldId] : undefined;
-		if (!valueAtom) return;
-		const items = store.get(valueAtom);
+		const items = valueAtom ? store.get(valueAtom) : undefined;
 		const launch = itemLaunchFrom(visibilityState, Array.isArray(items) ? items.length : 0);
-		if (!launch || !Array.isArray(items)) return;
+		if (!launch || !valueAtom || !Array.isArray(items)) {
+			// This launch will not open an item form. Drop the marker so the parent can render.
+			if (visibilityState.itemForm) {
+				itemLaunchStarted.current = true;
+				store.set(atoms.formVisibility, { ...visibilityState, itemForm: null });
+			}
+			return;
+		}
 		const visibleLaunch = itemLaunchVisibleChildren(launch, irrelevantFieldPaths);
 		if (launch.fieldIds?.length && visibleLaunch.fieldIds == null) {
 			console.warn(
@@ -1329,23 +1341,6 @@ function FormOrchestrator(props: FormsEngineProps) {
 			onMinimize: props.onMinimize
 		});
 	}, [atoms, contextApi, irrelevantFieldPaths, isRepeatMode, isStackedForm, props.onMinimize, store]);
-
-	const seenItemMode = useRef<ItemFormMode | null | undefined>(undefined);
-	useEffect(() => {
-		if (!stableFormContext.itemFormMode || !parentAtoms) return;
-		if (itemMode !== 'selected' && itemMode !== 'full') return;
-		if (seenItemMode.current === undefined) {
-			seenItemMode.current = itemMode;
-			return;
-		}
-		if (seenItemMode.current === itemMode) return;
-		seenItemMode.current = itemMode;
-		commitFormVisibility(
-			store.set,
-			parentAtoms,
-			parentVisibilityForItemMode(store.get(parentAtoms.formVisibility), itemMode)
-		);
-	}, [itemMode, parentAtoms, stableFormContext.itemFormMode, store]);
 
 	// Selected-fields mode writes the open item into the parent on entry and on each edit.
 	// Full-mode edits are included by the write on entry, so Back to selected fields then Save keeps them.
@@ -1581,6 +1576,17 @@ function FormOrchestrator(props: FormsEngineProps) {
 		cancelSettledScroll
 	]);
 	useEffect(() => cancelSettledScroll, [cancelSettledScroll]);
+
+	// The item form is not pushed yet. Keep the parent on its loading state so its fields do not flash.
+	if (!isStackedForm && !isRepeatMode && itemLaunchBlocksParent(visibility, pendingItemLength)) {
+		return (
+			<LoadingState
+				sx={{ height: getTargetHeight(isDialog, isFullScreen, theme) }}
+				title={<FormattedMessage defaultMessage="Please wait" />}
+				subtitle={<FormattedMessage defaultMessage="Gathering content information" />}
+			/>
+		);
+	}
 
 	const bodyFragment = (
 		<FormLayout

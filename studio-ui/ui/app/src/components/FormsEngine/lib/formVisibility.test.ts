@@ -25,7 +25,7 @@
  * a plain fieldToScroll scrolls once the form content is mounted, and again after that target is cleared.
  * Stack tests check a form pushed before its atoms exist, selected-fields mode, the one close
  * decision, lock sharing, reload, which pending flags a parent save clears, and the width and
- * dirty flags of more than one stacked form.
+ * dirty flags of more than one stacked form. A repeat-item launch leaves the parent unscoped.
  * They do not render the form.
  */
 
@@ -46,9 +46,10 @@ import {
 	hasFormAtoms,
 	hiddenFieldsAlert,
 	itemFormExit,
+	itemLaunchBlocksParent,
 	itemLaunchFrom,
 	itemLaunchVisibleChildren,
-	parentVisibilityForItemMode,
+	scopeToggleVisible,
 	repeatFormLock,
 	repositorySaveFollowUp,
 	selectedItemSavePlan,
@@ -815,10 +816,13 @@ describe('item form launch', () => {
 		});
 
 	// The Icon zone names the child and the item index. The item form should open on that child.
-	it('opens the item form for one child field', () => {
+	// The parent is not filtered to that item.
+	it('opens the item form for one child field and leaves the parent unscoped', () => {
 		const resolved = resolve(['accounts_o.icon_s'], 0);
 		assert.deepEqual(resolved.state.itemForm, { fieldId: 'accounts_o', index: 0, fieldIds: ['icon_s'] });
 		assert.deepEqual(itemLaunchFrom(resolved.state, 2), resolved.state.itemForm);
+		assert.equal(isScopeActive(resolved.state.active), false);
+		assert.equal(resolved.state.launch, null);
 	});
 
 	// Several children of the same item stay together on that item form.
@@ -898,8 +902,8 @@ describe('item form exit', () => {
 		assert.equal(itemFormExit(null).dismiss, 'pop');
 	});
 
-	// Open full form opens the parent. Back to selected fields restores the parent's launch filter.
-	it('restores the parent launch filter when the item returns to selected fields', () => {
+	// The toggle stays on the item while it is open. The parent of a repeat-item launch never has one.
+	it('shows the scope toggle only on the form that was launched with a field subset', () => {
 		const parent = resolveLaunchVisibility({
 			selectedFields: ['accounts_o.icon_s'],
 			index: 0,
@@ -907,14 +911,43 @@ describe('item form exit', () => {
 			repeatFieldIds: accountsRepeats,
 			fields: accountsFields
 		}).state;
-		const opened = parentVisibilityForItemMode(parent, 'full');
-		assert.equal(isScopeActive(opened.active), false);
-		const restored = parentVisibilityForItemMode(opened, 'selected');
-		assert.deepEqual(restored.active, parent.launch);
+		const item = resolveLaunchVisibility({
+			selectedFields: ['icon_s'],
+			knownFieldIds: new Set(['icon_s', 'url_s']),
+			repeatFieldIds: new Set<string>()
+		}).state;
+		const plainField = resolveLaunchVisibility({
+			selectedFields: ['title_s'],
+			knownFieldIds: accountsKnown,
+			repeatFieldIds: accountsRepeats
+		}).state;
+		assert.equal(scopeToggleVisible(parent), false);
+		assert.equal(scopeToggleVisible(item), true);
+		assert.equal(scopeToggleVisible(plainField), true);
 	});
 
-	// Leaving selected-fields mode and then closing the item scrolls the parent to the repeat.
-	it('opens the parent full form scrolled to the repeat', () => {
+	// Open full form stays on the item. Closing it does not give the parent a way back to a filter.
+	it('leaves the parent full with no back to selected fields after the item full form closes', () => {
+		const parent = resolveLaunchVisibility({
+			selectedFields: ['accounts_o.icon_s'],
+			index: 0,
+			knownFieldIds: accountsKnown,
+			repeatFieldIds: accountsRepeats,
+			fields: accountsFields
+		}).state;
+		const item = resolveLaunchVisibility({
+			selectedFields: ['icon_s'],
+			knownFieldIds: new Set(['icon_s', 'url_s']),
+			repeatFieldIds: new Set<string>()
+		}).state;
+		const itemFull = openFullForm(item);
+		assert.equal(scopeToggleVisible(itemFull), true);
+		assert.equal(isScopeActive(parent.active), false);
+		assert.equal(scopeToggleVisible(parent), false);
+	});
+
+	// Closing the item after Open full form still names the repeat so the parent can scroll to it.
+	it('names the repeat when the parent is scrolled after the item full form closes', () => {
 		const parent = resolveLaunchVisibility({
 			selectedFields: ['accounts_o.icon_s'],
 			index: 0,
@@ -923,9 +956,23 @@ describe('item form exit', () => {
 			fields: accountsFields
 		}).state;
 		const next = revealField(parent, 'accounts_o');
-		assert.equal(isScopeActive(next.state.active), false);
 		assert.equal(next.fieldId, 'accounts_o');
-		assert.ok(next.state.launch);
+		assert.equal(next.state.launch, null);
+	});
+
+	// The parent must not paint its fields while the item form is about to be pushed.
+	it('holds the parent in its loading state while the item launch is pending', () => {
+		const pending = resolveLaunchVisibility({
+			selectedFields: ['accounts_o.icon_s'],
+			index: 0,
+			knownFieldIds: accountsKnown,
+			repeatFieldIds: accountsRepeats,
+			fields: accountsFields
+		}).state;
+		assert.equal(itemLaunchBlocksParent(pending, 2), true);
+		assert.equal(itemLaunchBlocksParent(pending, null), true);
+		assert.equal(itemLaunchBlocksParent({ ...pending, itemForm: null }, 2), false);
+		assert.equal(itemLaunchBlocksParent(pending, 0), false);
 	});
 });
 

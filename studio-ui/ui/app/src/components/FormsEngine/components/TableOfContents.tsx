@@ -28,7 +28,13 @@ import { atom, useAtomValue, useSetAtom, useStore as useJotaiStore } from 'jotai
 import { FormattedMessage, useIntl } from 'react-intl';
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
-import { isScopeActive, revealField, returnToLaunchScope, scopeFieldCounts } from '../lib/formVisibility';
+import {
+	isScopeActive,
+	revealField,
+	returnToLaunchScope,
+	scopeFieldCounts,
+	scopeToggleVisible
+} from '../lib/formVisibility';
 import { hasFieldValidator, hasValidationKeyValidator, isEmptyValue, isFieldRequired } from '../lib/validators';
 import { immutableEmptyArray } from '../../../utils/array';
 import useLoadableAtom from '../lib/useLoadableAtom';
@@ -167,7 +173,7 @@ export function FieldScopeNotice({ countFieldIds }: { countFieldIds: string[] })
 	const visibility = useAtomValue(stableForm.atoms.formVisibility);
 	useAtomValue(stableForm.atoms.relevanceVersion);
 	const repeatFieldId = stableForm.props?.repeat?.fieldId;
-	if (!visibility.launch || !isScopeActive(visibility.launch)) return null;
+	if (!scopeToggleVisible(visibility)) return null;
 	const viewingFullForm = !isScopeActive(visibility.active);
 	const { showing, total } = scopeFieldCounts(countFieldIds, {
 		irrelevantFieldPaths: stableForm.formControllerState?.irrelevantFieldPaths,
