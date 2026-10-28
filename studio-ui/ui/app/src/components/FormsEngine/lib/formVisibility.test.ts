@@ -27,6 +27,8 @@
  * decision, lock sharing, reload, which pending flags a parent save clears, and the width and
  * dirty flags of more than one stacked form. A repeat-item launch leaves the parent unscoped.
  * An index past the end scrolls the parent to the repeat and warns.
+ * A pending item launch hides the parent body and keeps the layout and drawer mounted.
+ * A drawer that mounts already open still counts as entered.
  * They do not render the form.
  */
 
@@ -49,6 +51,8 @@ import {
 	itemFormExit,
 	itemLaunchBlocksParent,
 	itemLaunchFrom,
+	parentViewWhileItemLaunchPending,
+	stackedDrawerEntered,
 	missedItemLaunch,
 	itemLaunchVisibleChildren,
 	scopeToggleVisible,
@@ -987,6 +991,24 @@ describe('item form exit', () => {
 		assert.equal(itemLaunchBlocksParent({ ...pending, itemForm: null }, 2), false);
 		assert.equal(itemLaunchBlocksParent(pending, 0), false);
 	});
+
+	// The loading state replaces the body only. The layout and drawer stay mounted so the drawer can slide in.
+	it('keeps the parent shell mounted while the item launch hides the body', () => {
+		const pending = resolveLaunchVisibility({
+			selectedFields: ['accounts_o.icon_s'],
+			index: 0,
+			knownFieldIds: accountsKnown,
+			repeatFieldIds: accountsRepeats,
+			fields: accountsFields
+		}).state;
+		assert.deepEqual(parentViewWhileItemLaunchPending(pending, 2), { keepShell: true, hideBody: true });
+		assert.deepEqual(parentViewWhileItemLaunchPending(pending, null), { keepShell: true, hideBody: true });
+		assert.deepEqual(parentViewWhileItemLaunchPending({ ...pending, itemForm: null }, 2), {
+			keepShell: true,
+			hideBody: false
+		});
+		assert.deepEqual(parentViewWhileItemLaunchPending(pending, 0), { keepShell: true, hideBody: false });
+	});
 });
 
 describe('hidden field alert', () => {
@@ -1101,6 +1123,17 @@ describe('selected item save', () => {
 });
 
 describe('stacked form guards', () => {
+	// The item form waits for the drawer paper to finish entering.
+	it('waits for the drawer enter before showing the stacked form', () => {
+		assert.equal(stackedDrawerEntered({ transitionEnded: false, mountedOpen: false }), false);
+		assert.equal(stackedDrawerEntered({ transitionEnded: true, mountedOpen: false }), true);
+	});
+
+	// A drawer that mounts already open skips its enter, so the transition end never arrives.
+	it('treats a drawer that mounts already open as entered', () => {
+		assert.equal(stackedDrawerEntered({ transitionEnded: false, mountedOpen: true }), true);
+	});
+
 	// pushForm inserts the entry before prep. The launch, pencil, Add, and node selector all do this.
 	it('does not read form visibility before atoms exist', () => {
 		const entry: { atoms: { formVisibility: string } | null } = { atoms: null };

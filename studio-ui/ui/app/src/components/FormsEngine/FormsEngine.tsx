@@ -169,10 +169,11 @@ import {
 	fieldVisibility,
 	hasFormAtoms,
 	hiddenFieldsAlert,
-	itemLaunchBlocksParent,
 	itemLaunchFrom,
 	itemLaunchVisibleChildren,
 	missedItemLaunch,
+	parentViewWhileItemLaunchPending,
+	stackedDrawerEntered,
 	planSettledFieldScroll,
 	repeatFormLock,
 	revealField,
@@ -932,6 +933,8 @@ function FormOrchestrator(props: FormsEngineProps) {
 	const stackFormCount = useAtomValue(stackFormCountAtom);
 	const isStackedForm = stackIndex > 0;
 	const hasStackedForms = !isStackedForm && stackFormCount > 0;
+	// First paint only. A drawer that is already open on this render never runs its enter transition.
+	const drawerMountedOpenRef = useRef(hasStackedForms);
 	const isEmbedded = isEmbeddedForm({ update, create });
 	const isCreateMode = Boolean(create?.path);
 	const isRepeatMode = Boolean(repeat?.fieldId);
@@ -1579,16 +1582,24 @@ function FormOrchestrator(props: FormsEngineProps) {
 	]);
 	useEffect(() => cancelSettledScroll, [cancelSettledScroll]);
 
-	// The item form is not pushed yet. Keep the parent on its loading state so its fields do not flash.
-	if (!isStackedForm && !isRepeatMode && itemLaunchBlocksParent(visibility, pendingItemLength)) {
-		return (
-			<LoadingState
-				sx={{ height: getTargetHeight(isDialog, isFullScreen, theme) }}
-				title={<FormattedMessage defaultMessage="Please wait" />}
-				subtitle={<FormattedMessage defaultMessage="Gathering content information" />}
-			/>
-		);
-	}
+	// The item form is not pushed yet. Hide the parent fields, and leave the layout and drawer mounted.
+	const pendingItemLaunchView =
+		!isStackedForm && !isRepeatMode ? parentViewWhileItemLaunchPending(visibility, pendingItemLength) : null;
+	const hideParentBody = pendingItemLaunchView?.hideBody === true;
+	const finishStackedDrawerEnter = useCallback(() => {
+		const paper = containerRef.current?.querySelector(
+			`[data-area-id="stackedFormDrawer"] .${drawerClasses.paper}`
+		) as HTMLDivElement | null;
+		if (paper && !paper.contains(document.activeElement)) {
+			paper.focus();
+		}
+		setDisableStackedFormDrawerAutoFocus(false);
+	}, []);
+	useLayoutEffect(() => {
+		// Mounting already open skips the enter transition, so onTransitionEnd never fires.
+		if (!drawerMountedOpenRef.current || !hasStackedForms || !disableStackedFormDrawerAutoFocus) return;
+		finishStackedDrawerEnter();
+	}, [disableStackedFormDrawerAutoFocus, finishStackedDrawerEnter, hasStackedForms]);
 
 	const bodyFragment = (
 		<FormLayout
@@ -1648,161 +1659,176 @@ function FormOrchestrator(props: FormsEngineProps) {
 				</Box>
 			}
 			mainContentGrid={
-				<>
-					<Grid size={useCollapsedToC ? 'auto' : 'grow'}>
-						<StickyBox data-area-id="stickySidebar" sx={{ height: 'auto' }}>
-							{useCollapsedToC ? (
-								<IconButton size="small" onClick={handleOpenDrawerSidebar}>
-									<MenuRounded />
-								</IconButton>
-							) : (
-								tableOfContents
-							)}
-						</StickyBox>
+				hideParentBody ? (
+					<Grid size={12}>
+						<LoadingState
+							title={<FormattedMessage defaultMessage="Please wait" />}
+							subtitle={<FormattedMessage defaultMessage="Gathering content information" />}
+						/>
 					</Grid>
-					<Grid size={useCollapsedToC ? 8.3 : 7} className="space-y" data-area-id="formBody">
-						{useCollapsedToC && !openDrawerSidebar && <FieldScopeNotice countFieldIds={countFieldIds} />}
-						{affectedPackages && (
-							<Alert
-								severity="warning"
-								variant="outlined"
-								action={
-									<Button
-										color="inherit"
-										size="small"
-										onClick={() => {
-											dispatch(
-												pushDialog({
-													component: createComponentId('ViewPackagesDialog'),
-													props: { item } as ViewPackagesDialogProps
-												})
-											);
-										}}
-									>
-										Review
-									</Button>
-								}
-							>
-								<AlertTitle>
-									<FormattedMessage defaultMessage="Publish Cancellation Warning" />
-								</AlertTitle>
-								<FormattedMessage defaultMessage="The item is part of a publishing package. Editing it will cancel the entire package." />
-							</Alert>
-						)}
-						{lockStatus.lockError && (
-							<Alert severity="error">
-								{createErrorStatePropsFromApiResponse(lockStatus.lockError, formatMessage).message}
-							</Alert>
-						)}
-						{formControllerFileMissing && (
-							<Alert severity="warning" variant="outlined">
-								<AlertTitle>
-									<FormattedMessage defaultMessage="Form controller missing" />
-								</AlertTitle>
-								<FormattedMessage defaultMessage="This content type has a client-side form controller enabled, but form-controller.js was not found. The form will open without a custom controller." />
-							</Alert>
-						)}
-						{formControllerLoadFailed && (
-							<Alert severity="warning" variant="outlined">
-								<AlertTitle>
-									<FormattedMessage defaultMessage="Form controller failed to load" />
-								</AlertTitle>
-								<FormattedMessage defaultMessage="This content type has a client-side form controller, but it could not be loaded. Check form-controller.js for syntax or export errors. The form will open without a custom controller." />
-							</Alert>
-						)}
-						{isRepeatMode ? (
-							// Repeat-item editor: subfields are not grouped into sections.
-							<Paper sx={{ p: 2 }}>
-								{(repeatFields ?? []).map((field, index) =>
-									renderFieldControl(field, stableFormContext.atoms.valueByFieldId, index === 0, readonly, contentType)
+				) : (
+					<>
+						<Grid size={useCollapsedToC ? 'auto' : 'grow'}>
+							<StickyBox data-area-id="stickySidebar" sx={{ height: 'auto' }}>
+								{useCollapsedToC ? (
+									<IconButton size="small" onClick={handleOpenDrawerSidebar}>
+										<MenuRounded />
+									</IconButton>
+								) : (
+									tableOfContents
 								)}
-							</Paper>
-						) : (
-							visibleSections.map((section, sectionIndex) => (
-								<SectionAccordion
-									key={section.id}
-									section={section}
-									slotProps={{
-										transition: {
-											onEntered: () => {
-												const pending = pendingFieldScrollRef.current;
-												if (pending?.sectionId === section.id) {
-													pending.start();
-													pendingFieldScrollRef.current = null;
-												}
-											}
-										}
-									}}
-									renderControl={(fieldId, fieldIndex) =>
+							</StickyBox>
+						</Grid>
+						<Grid size={useCollapsedToC ? 8.3 : 7} className="space-y" data-area-id="formBody">
+							{useCollapsedToC && !openDrawerSidebar && <FieldScopeNotice countFieldIds={countFieldIds} />}
+							{affectedPackages && (
+								<Alert
+									severity="warning"
+									variant="outlined"
+									action={
+										<Button
+											color="inherit"
+											size="small"
+											onClick={() => {
+												dispatch(
+													pushDialog({
+														component: createComponentId('ViewPackagesDialog'),
+														props: { item } as ViewPackagesDialogProps
+													})
+												);
+											}}
+										>
+											Review
+										</Button>
+									}
+								>
+									<AlertTitle>
+										<FormattedMessage defaultMessage="Publish Cancellation Warning" />
+									</AlertTitle>
+									<FormattedMessage defaultMessage="The item is part of a publishing package. Editing it will cancel the entire package." />
+								</Alert>
+							)}
+							{lockStatus.lockError && (
+								<Alert severity="error">
+									{createErrorStatePropsFromApiResponse(lockStatus.lockError, formatMessage).message}
+								</Alert>
+							)}
+							{formControllerFileMissing && (
+								<Alert severity="warning" variant="outlined">
+									<AlertTitle>
+										<FormattedMessage defaultMessage="Form controller missing" />
+									</AlertTitle>
+									<FormattedMessage defaultMessage="This content type has a client-side form controller enabled, but form-controller.js was not found. The form will open without a custom controller." />
+								</Alert>
+							)}
+							{formControllerLoadFailed && (
+								<Alert severity="warning" variant="outlined">
+									<AlertTitle>
+										<FormattedMessage defaultMessage="Form controller failed to load" />
+									</AlertTitle>
+									<FormattedMessage defaultMessage="This content type has a client-side form controller, but it could not be loaded. Check form-controller.js for syntax or export errors. The form will open without a custom controller." />
+								</Alert>
+							)}
+							{isRepeatMode ? (
+								// Repeat-item editor: subfields are not grouped into sections.
+								<Paper sx={{ p: 2 }}>
+									{(repeatFields ?? []).map((field, index) =>
 										renderFieldControl(
-											contentTypeFields[fieldId],
+											field,
 											stableFormContext.atoms.valueByFieldId,
-											sectionIndex === 0 && fieldIndex === 0,
+											index === 0,
 											readonly,
 											contentType
 										)
-									}
-								/>
-							))
-						)}
-						{/* Spacer & back to top */}
-						<FormBackToTop containerRef={containerRef} getScrollContainer={getScrollContainer} />
-					</Grid>
-					<Grid size="grow">
-						<StickyBox className="space-y" sx={{ height: 'auto' }}>
-							{readonly ? (
-								<>
-									<Alert severity="info" variant="outlined" icon={<EditOffOutlined />}>
-										<FormattedMessage defaultMessage="Readonly mode" />
-									</Alert>
-									<SecondaryButton
-										fullWidth
-										variant="outlined"
-										onClick={() => updateEditEnablement(true)}
-										loading={enablingEditInProgress}
-									>
-										<FormattedMessage defaultMessage="Edit" />
-									</SecondaryButton>
-								</>
-							) : (
-								<>
-									{hiddenErrors && (
-										<HiddenFieldsAlert
-											count={hiddenErrors.count}
-											fieldName={hiddenFieldName}
-											onShow={showHiddenField}
-										/>
 									)}
-									<SaveCard
-										isEmbedded={useParentSaveCard ? isEmbeddedForm(parentEntry?.props ?? {}) : isEmbedded}
-										isStackedForm={useParentSaveCard ? false : isStackedForm}
-										isRepeatMode={useParentSaveCard ? false : isRepeatMode}
-										atoms={useParentSaveCard ? parentAtoms : undefined}
-										setSaveAsDraft={useParentSaveCard ? rootFormActions.setSaveAsDraft : setSaveAsDraftAction}
-										onSave={useParentSaveCard ? saveFromSelectedItem : (_event, draft) => saveFn(draft)}
+								</Paper>
+							) : (
+								visibleSections.map((section, sectionIndex) => (
+									<SectionAccordion
+										key={section.id}
+										section={section}
+										slotProps={{
+											transition: {
+												onEntered: () => {
+													const pending = pendingFieldScrollRef.current;
+													if (pending?.sectionId === section.id) {
+														pending.start();
+														pendingFieldScrollRef.current = null;
+													}
+												}
+											}
+										}}
+										renderControl={(fieldId, fieldIndex) =>
+											renderFieldControl(
+												contentTypeFields[fieldId],
+												stableFormContext.atoms.valueByFieldId,
+												sectionIndex === 0 && fieldIndex === 0,
+												readonly,
+												contentType
+											)
+										}
 									/>
-									{!isCreateMode && // There's no locking on create mode
-										(!isRepeatMode || (isRepeatMode && repeat.values)) && // No point in the "unlock" button for new repeat items
-										!(isEmbedded && isStackedForm) && ( // For embedded components, only allow releasing the lock if it's the top form.
-											<SecondaryButton
-												fullWidth
-												variant="outlined"
-												onClick={() => updateEditEnablement(false)}
-												loading={enablingEditInProgress}
-											>
-												<FormattedMessage defaultMessage="Release Lock" />
-											</SecondaryButton>
+								))
+							)}
+							{/* Spacer & back to top */}
+							<FormBackToTop containerRef={containerRef} getScrollContainer={getScrollContainer} />
+						</Grid>
+						<Grid size="grow">
+							<StickyBox className="space-y" sx={{ height: 'auto' }}>
+								{readonly ? (
+									<>
+										<Alert severity="info" variant="outlined" icon={<EditOffOutlined />}>
+											<FormattedMessage defaultMessage="Readonly mode" />
+										</Alert>
+										<SecondaryButton
+											fullWidth
+											variant="outlined"
+											onClick={() => updateEditEnablement(true)}
+											loading={enablingEditInProgress}
+										>
+											<FormattedMessage defaultMessage="Edit" />
+										</SecondaryButton>
+									</>
+								) : (
+									<>
+										{hiddenErrors && (
+											<HiddenFieldsAlert
+												count={hiddenErrors.count}
+												fieldName={hiddenFieldName}
+												onShow={showHiddenField}
+											/>
 										)}
-								</>
-							)}
-							{handleClose && (
-								<Button fullWidth variant="outlined" disabled={enablingEditInProgress} onClick={handleClose}>
-									<FormattedMessage defaultMessage="Close" />
-								</Button>
-							)}
-						</StickyBox>
-					</Grid>
-				</>
+										<SaveCard
+											isEmbedded={useParentSaveCard ? isEmbeddedForm(parentEntry?.props ?? {}) : isEmbedded}
+											isStackedForm={useParentSaveCard ? false : isStackedForm}
+											isRepeatMode={useParentSaveCard ? false : isRepeatMode}
+											atoms={useParentSaveCard ? parentAtoms : undefined}
+											setSaveAsDraft={useParentSaveCard ? rootFormActions.setSaveAsDraft : setSaveAsDraftAction}
+											onSave={useParentSaveCard ? saveFromSelectedItem : (_event, draft) => saveFn(draft)}
+										/>
+										{!isCreateMode && // There's no locking on create mode
+											(!isRepeatMode || (isRepeatMode && repeat.values)) && // No point in the "unlock" button for new repeat items
+											!(isEmbedded && isStackedForm) && ( // For embedded components, only allow releasing the lock if it's the top form.
+												<SecondaryButton
+													fullWidth
+													variant="outlined"
+													onClick={() => updateEditEnablement(false)}
+													loading={enablingEditInProgress}
+												>
+													<FormattedMessage defaultMessage="Release Lock" />
+												</SecondaryButton>
+											)}
+									</>
+								)}
+								{handleClose && (
+									<Button fullWidth variant="outlined" disabled={enablingEditInProgress} onClick={handleClose}>
+										<FormattedMessage defaultMessage="Close" />
+									</Button>
+								)}
+							</StickyBox>
+						</Grid>
+					</>
+				)
 			}
 		>
 			{/* region Stacked Form Drawer */}
@@ -1828,16 +1854,7 @@ function FormOrchestrator(props: FormsEngineProps) {
 							? (e) => {
 									// Make sure it is the drawer paper that finished transitioning before considering the transition complete.
 									if ((e.target as HTMLElement).getAttribute('data-area-id') !== 'stackedFormDrawerPaper') return;
-									const paper = containerRef.current.querySelector(
-										`[data-area-id="stackedFormDrawer"] .${drawerClasses.paper}`
-									) as HTMLDivElement;
-									// TODO: Could paper ever be null here?
-									// Check that the focus was moved inside the paper by the autoFocus prop in the control.
-									// If focus is not on the paper, move it to it.
-									if (!paper.contains(document.activeElement)) {
-										paper.focus();
-									}
-									setDisableStackedFormDrawerAutoFocus(false);
+									finishStackedDrawerEnter();
 								}
 							: undefined
 					}
@@ -1863,7 +1880,10 @@ function FormOrchestrator(props: FormsEngineProps) {
 							key={stackedFormKey}
 							stackIndex={formsStackData.length - 1}
 							{...currentStackedFormProps}
-							stackTransitionEnded={!disableStackedFormDrawerAutoFocus}
+							stackTransitionEnded={stackedDrawerEntered({
+								transitionEnded: !disableStackedFormDrawerAutoFocus,
+								mountedOpen: drawerMountedOpenRef.current
+							})}
 							isDialog={isDialog}
 							onClose={handleCloseDrawerForm}
 							onCommittedClose={() => popTopStackedForm(false)}

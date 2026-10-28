@@ -291,7 +291,7 @@ export function itemLaunchVisibleChildren(
 }
 
 /**
- * The parent should keep showing its loading state until this item launch is pushed.
+ * The parent's fields stay hidden until this item launch is pushed.
  * A launch that cannot open (the index is past the end) does not hold the parent.
  * `valueLength === null` means the repeat value is not ready yet, so the parent still waits.
  */
@@ -299,6 +299,34 @@ export function itemLaunchBlocksParent(state: FormVisibilityState, valueLength: 
 	if (!state.itemForm) return false;
 	if (valueLength == null) return true;
 	return itemLaunchFrom(state, valueLength) != null;
+}
+
+export interface PendingItemLaunchParentView {
+	/** The layout and the stacked drawer stay mounted, so the drawer can enter from closed. */
+	keepShell: true;
+	/** The parent body is the loading state, so its fields are not painted. */
+	hideBody: boolean;
+}
+
+/**
+ * While an item launch is still pending, keep the parent shell mounted and hide only its body.
+ * Replacing the whole tree mounts the stacked drawer already open. That enter transition is
+ * skipped, `onTransitionEnd` never fires, and the item form stays unmounted behind the backdrop.
+ */
+export function parentViewWhileItemLaunchPending(
+	state: FormVisibilityState,
+	valueLength: number | null
+): PendingItemLaunchParentView {
+	return { keepShell: true, hideBody: itemLaunchBlocksParent(state, valueLength) };
+}
+
+/**
+ * The stacked form may render once the drawer paper has finished entering.
+ * A drawer that mounts already open never runs that enter, so treat the mount as entered.
+ * Otherwise the transition flag stays false and the form body never mounts.
+ */
+export function stackedDrawerEntered(args: { transitionEnded: boolean; mountedOpen: boolean }): boolean {
+	return args.transitionEnded || args.mountedOpen;
 }
 
 /** The scope toggle belongs on the form that was opened with a field subset. */
