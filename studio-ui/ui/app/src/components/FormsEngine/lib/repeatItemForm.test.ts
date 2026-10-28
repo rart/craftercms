@@ -19,8 +19,8 @@
  * array is current, so a change made after the form opened is kept. The selected-fields
  * write covers edits made in full mode that must reach the parent before Save.
  * Closing the item form puts the parent back to the item checkpoint. That write is a no-op when
- * the parent already has it. Done and Save do not use this path. A parent save keeps an edit
- * that arrived after the snapshot.
+ * the parent already has it. Done uses the same item write, so a stored key with no field stays.
+ * A parent save keeps an edit that arrived after the snapshot.
  */
 
 import assert from 'node:assert/strict';
@@ -236,5 +236,36 @@ describe('repeatItemFormProps', () => {
 			setItems: () => undefined
 		});
 		assert.equal(pencil.fieldIds, undefined);
+	});
+
+	// Done used to replace the item with form fields only. A stored key with no field must stay.
+	it('keeps an extra stored key when the item is done', async () => {
+		let items = [{ icon_s: 'old', legacy_s: 'keep' }];
+		const props = repeatItemFormProps({
+			fieldId: 'accounts_o',
+			index: 0,
+			getItems: () => items,
+			setItems: (next) => {
+				items = next;
+			}
+		});
+		await props.onSave({ values: { icon_s: 'new' } });
+		assert.deepEqual(items, [{ icon_s: 'new', legacy_s: 'keep' }]);
+	});
+
+	// An unchanged Done must not hand the parent a new array, or the repeat field looks dirty.
+	it('returns the same array when Done has nothing to change', async () => {
+		const items = [{ icon_s: 'old', legacy_s: 'keep' }];
+		let stored = items;
+		const props = repeatItemFormProps({
+			fieldId: 'accounts_o',
+			index: 0,
+			getItems: () => stored,
+			setItems: (next) => {
+				stored = next;
+			}
+		});
+		await props.onSave({ values: { icon_s: 'old' } });
+		assert.equal(stored, items);
 	});
 });

@@ -190,16 +190,20 @@ export function clearStackPendingFlags(
 		});
 		if (decision.checkpoint) entry.setCheckpoint?.(decision.checkpoint);
 		if (!entry.selected) continue;
-		if (!decision.clearPending && decision.checkpoint && isPlainRecord(entry.currentItem)) {
-			for (const id of [...entry.changedFieldIds]) {
-				if (sameItem(entry.currentItem[id], decision.checkpoint[id])) entry.changedFieldIds.delete(id);
-			}
-		}
-		if (decision.clearPending || entry.changedFieldIds.size === 0) {
+		// Rebuild from the saved checkpoint. An undo during the save is not in the old id list.
+		if (decision.checkpoint && isPlainRecord(entry.currentItem)) {
 			entry.changedFieldIds.clear();
+			for (const id of Object.keys(entry.currentItem)) {
+				if (!sameItem(entry.currentItem[id], decision.checkpoint[id])) entry.changedFieldIds.add(id);
+			}
+		} else if (decision.clearPending) {
+			entry.changedFieldIds.clear();
+		}
+		if (entry.changedFieldIds.size === 0) {
 			entry.setPending(false);
 			continue;
 		}
+		entry.setPending(true);
 		if (entry.fieldId) parentChangedFieldIds?.add(entry.fieldId);
 	}
 }
@@ -230,7 +234,7 @@ export function repeatItemFormProps<T extends Record<string, unknown>>(args: {
 		repeat,
 		...(args.fieldIds?.length ? { fieldIds: [...args.fieldIds] } : {}),
 		onSave(result) {
-			args.setItems(commitRepeatItem(args.getItems(), args.index, result.values));
+			args.setItems(writeItemToParent(args.getItems(), args.index, result.values));
 			return Promise.resolve({ close: true });
 		}
 	};

@@ -72,7 +72,9 @@ import {
 	childFields,
 	createFormVisibilityAtoms,
 	fieldVisibility,
+	aggregateStackFlags,
 	hasFormAtoms,
+	stackEntryFlagsAtom,
 	type FormVisibilityState,
 	type LaunchFieldsLookup,
 	visibilityFromLaunch
@@ -1086,6 +1088,12 @@ export function generateDefaultCreationComment(
 		return;
 	}
 	return newMessage;
+}
+
+/** True while any form on the stack is saving. Open full form and close both read this. */
+export function useStackSubmitting(): boolean {
+	const flags = useAtomValue(stackEntryFlagsAtom);
+	return aggregateStackFlags(flags).submitting;
 }
 
 /** True for an embedded component: an existing one (`update.modelId`) or a new one (`create.embedded`). */

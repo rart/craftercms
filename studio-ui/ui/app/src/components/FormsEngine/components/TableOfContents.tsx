@@ -17,8 +17,8 @@
 import React, { RefObject, SyntheticEvent, useContext, useMemo, useState } from 'react';
 import { ContentTypeField } from '../../../models';
 import type { ContentTypeSection } from '../../../models/ContentType';
-import { FormsEngineAtoms, ItemMetaContext, StableFormContext, StableGlobalContext } from '../lib/formsEngineContext';
-import { commitFormVisibility, getScrollContainer, stackEntryAtoms } from '../lib/formUtils';
+import { FormsEngineAtoms, ItemMetaContext, StableFormContext } from '../lib/formsEngineContext';
+import { commitFormVisibility, getScrollContainer, useStackSubmitting } from '../lib/formUtils';
 import useDebouncedInput from '../../../hooks/useDebouncedInput';
 import { TreeItem } from '@mui/x-tree-view/TreeItem';
 import SearchBar from '../../SearchBar';
@@ -163,11 +163,7 @@ export function FieldScopeNotice({ countFieldIds }: { countFieldIds: string[] })
 	const { formatMessage } = useIntl();
 	const store = useJotaiStore();
 	const stableForm = useContext(StableFormContext);
-	const { formsStackData } = useContext(StableGlobalContext);
-	const stackIndex = stableForm.props?.stackIndex ?? 0;
-	const parentAtoms = stackIndex > 0 ? stackEntryAtoms(formsStackData[stackIndex - 1]) : null;
-	const idleSubmitting = useMemo(() => atom(false), []);
-	const parentSubmitting = useAtomValue(parentAtoms?.isSubmitting ?? idleSubmitting);
+	const stackSubmitting = useStackSubmitting();
 	const visibility = useAtomValue(stableForm.atoms.formVisibility);
 	useAtomValue(stableForm.atoms.relevanceVersion);
 	const repeatFieldId = stableForm.props?.repeat?.fieldId;
@@ -191,7 +187,7 @@ export function FieldScopeNotice({ countFieldIds }: { countFieldIds: string[] })
 			<Button
 				size="small"
 				sx={{ px: 0, minWidth: 0 }}
-				disabled={!viewingFullForm && parentSubmitting}
+				disabled={!viewingFullForm && stackSubmitting}
 				onClick={() => {
 					const current = store.get(stableForm.atoms.formVisibility);
 					if (viewingFullForm) {

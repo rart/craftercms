@@ -112,6 +112,7 @@ import {
 	prepareEmbeddedItemForm,
 	scrollToFieldWhenSettled,
 	setFieldAtoms,
+	useStackSubmitting,
 	useUnlockOnClose,
 	useValidateFormProps
 } from './lib/formUtils';
@@ -1091,6 +1092,7 @@ function FormOrchestrator(props: FormsEngineProps) {
 	const itemMode = useAtomValue(stableFormContext.itemFormMode ?? idleItemMode);
 	const stackFlags = useAtomValue(stackEntryFlagsAtom);
 	const stackSummary = aggregateStackFlags(stackFlags);
+	const stackSubmitting = useStackSubmitting();
 	// Publish this entry once its atoms exist. Entries that are still null never publish, so a push cannot crash.
 	// A covered form unmounts, but its flag stays until the entry is popped. Width and dirty state
 	// come from the whole stack, including an item sitting under a node selector.
@@ -1210,7 +1212,8 @@ function FormOrchestrator(props: FormsEngineProps) {
 		const action = stackedFormCloseAction({
 			mode: childMode,
 			isRepeatItem: Boolean(childEntry.props.repeat),
-			isSubmitting: childState.isSubmitting || stackSummary.submitting,
+			isSubmitting: childState.isSubmitting,
+			stackSubmitting,
 			hasPendingChanges: childState.hasPendingChanges
 		});
 		// Selected-fields mode closes the whole dialog. The dialog shows the one unsaved prompt.

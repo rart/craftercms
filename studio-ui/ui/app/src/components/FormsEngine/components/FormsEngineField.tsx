@@ -43,7 +43,7 @@ import {
 } from '../lib/formsEngineContext';
 import { useAtomValue, useStore as useJotaiStore } from 'jotai';
 import { isScopeActive, revealField } from '../lib/formVisibility';
-import { commitFormVisibility } from '../lib/formUtils';
+import { commitFormVisibility, useStackSubmitting } from '../lib/formUtils';
 import { translateIfMessageDescriptor } from '../../ContentTypeManagement/utils';
 import useLoadableAtom from '../lib/useLoadableAtom';
 import { XmlKeys } from '../lib/formConsts';
@@ -111,6 +111,7 @@ export const FormsEngineField = forwardRef<HTMLDivElement, FormsEngineFieldProps
 	const { changedFieldIds, atoms } = stableForm;
 	const jotai = useJotaiStore();
 	const visibility = useAtomValue(atoms.formVisibility);
+	const stackSubmitting = useStackSubmitting();
 	const scopeActive = isScopeActive(visibility.active);
 	const formApi = useFormApiContext();
 	const globalApi = useStableGlobalApiContext();
@@ -213,7 +214,9 @@ export const FormsEngineField = forwardRef<HTMLDivElement, FormsEngineFieldProps
 								</MenuItem>
 								{scopeActive && (
 									<MenuItem
+										disabled={stackSubmitting}
 										onClick={() => {
+											if (stackSubmitting) return;
 											const reveal = revealField(jotai.get(atoms.formVisibility), field.id);
 											commitFormVisibility(jotai.set, atoms, reveal.state, reveal.fieldId);
 											if (stableForm.itemFormMode) jotai.set(stableForm.itemFormMode, 'full');

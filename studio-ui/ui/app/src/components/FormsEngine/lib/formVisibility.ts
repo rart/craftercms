@@ -460,9 +460,11 @@ export function stackedFormCloseAction(args: {
 	mode: ItemFormMode | null;
 	isRepeatItem: boolean;
 	isSubmitting: boolean;
+	/** True when any form on the stack is saving, including the parent of this item. */
+	stackSubmitting?: boolean;
 	hasPendingChanges: boolean;
 }): StackedCloseAction {
-	if (args.isSubmitting) return 'wait';
+	if (args.isSubmitting || args.stackSubmitting) return 'wait';
 	if (args.isRepeatItem && itemFormExit(args.mode).dismiss === 'closeDialog') return 'closeDialog';
 	if (args.hasPendingChanges) return 'confirmPop';
 	return 'pop';

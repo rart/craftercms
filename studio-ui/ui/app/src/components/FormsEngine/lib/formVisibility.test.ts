@@ -1088,10 +1088,16 @@ describe('stacked form guards', () => {
 		);
 	});
 
-	// Selected mode saves the parent. Closing the item must wait for that save, not only for the item's own.
+	// The item itself is not saving. Another form on the stack is, so close must wait.
 	it('waits while the stack is submitting', () => {
 		assert.equal(
-			stackedFormCloseAction({ mode: 'full', isRepeatItem: true, isSubmitting: true, hasPendingChanges: false }),
+			stackedFormCloseAction({
+				mode: 'full',
+				isRepeatItem: true,
+				isSubmitting: false,
+				stackSubmitting: true,
+				hasPendingChanges: false
+			}),
 			'wait'
 		);
 	});
@@ -1167,6 +1173,56 @@ describe('stacked form guards', () => {
 		assert.equal(changed.has('url_s'), false);
 		assert.equal(parentChanged.has('accounts_o'), true);
 		assert.deepEqual(checkpoint, { icon_s: 'saved', url_s: 'kept' });
+	});
+
+	// The author typed the saved Icon back while the save was running, so the old changed-id list is empty.
+	it('marks the parent when an undo during the save differs from the snapshot', () => {
+		const changed = new Set<string>();
+		const parentChanged = new Set<string>();
+		let pending = false;
+		clearStackPendingFlags(
+			[
+				{
+					selected: true,
+					fieldId: 'accounts_o',
+					changedFieldIds: changed,
+					savedItem: { icon_s: 'new' },
+					currentItem: { icon_s: 'old' },
+					setPending: (value) => {
+						pending = value;
+					}
+				}
+			],
+			parentChanged
+		);
+		assert.equal(changed.has('icon_s'), true);
+		assert.equal(pending, true);
+		assert.equal(parentChanged.has('accounts_o'), true);
+	});
+
+	// Every remaining id matches the save, so the item is clean and the parent repeat is not marked.
+	it('clears the item and leaves the parent alone when nothing differs from the save', () => {
+		const changed = new Set(['icon_s']);
+		const parentChanged = new Set<string>();
+		let pending = true;
+		clearStackPendingFlags(
+			[
+				{
+					selected: true,
+					fieldId: 'accounts_o',
+					changedFieldIds: changed,
+					savedItem: { icon_s: 'saved' },
+					currentItem: { icon_s: 'saved' },
+					setPending: (value) => {
+						pending = value;
+					}
+				}
+			],
+			parentChanged
+		);
+		assert.equal(changed.size, 0);
+		assert.equal(pending, false);
+		assert.equal(parentChanged.size, 0);
 	});
 
 	// Close and minimize are the checkbox values read when Save is clicked.
