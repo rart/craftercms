@@ -39,12 +39,7 @@ import {
 } from './formUtils';
 import { FormSavePromiseResult, FormsEngineProps } from '../FormsEngine';
 import { contentFormSaveAction } from '../../../utils/contentFormLaunch';
-import {
-	applySaveGate,
-	childFields,
-	repositorySaveFollowUp,
-	saveAsDraftFlag
-} from './formVisibility';
+import { applySaveGate, childFields, repositorySaveFollowUp, saveAsDraftFlag } from './formVisibility';
 import { clearStackPendingFlags, repeatItemInValues } from './repeatItemForm';
 import { XmlKeys } from './formConsts';
 import { fromString } from '../../../utils/xml';
@@ -234,6 +229,7 @@ export function useSaveForm(props: UseSaveFormProps) {
 							return {
 								selected: entry.itemFormMode ? jotai.get(entry.itemFormMode) === 'selected' : false,
 								changedFieldIds: entry.changedFieldIds,
+								fieldId: repeat?.fieldId,
 								savedItem: repeatItemInValues(values, repeat?.fieldId, repeat?.index),
 								currentItem: entry.atoms ? extractAtomValues(jotai, entry.atoms.valueByFieldId) : undefined,
 								setCheckpoint(next: Record<string, unknown>) {
@@ -244,7 +240,7 @@ export function useSaveForm(props: UseSaveFormProps) {
 								}
 							};
 						});
-						clearStackPendingFlags(entries);
+						clearStackPendingFlags(entries, stableFormContext.changedFieldIds);
 						if (entries.some((entry) => entry.selected && entry.changedFieldIds.size > 0)) {
 							setHasPendingChanges(true);
 						}

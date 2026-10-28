@@ -1210,7 +1210,7 @@ function FormOrchestrator(props: FormsEngineProps) {
 		const action = stackedFormCloseAction({
 			mode: childMode,
 			isRepeatItem: Boolean(childEntry.props.repeat),
-			isSubmitting: childState.isSubmitting,
+			isSubmitting: childState.isSubmitting || stackSummary.submitting,
 			hasPendingChanges: childState.hasPendingChanges
 		});
 		// Selected-fields mode closes the whole dialog. The dialog shows the one unsaved prompt.

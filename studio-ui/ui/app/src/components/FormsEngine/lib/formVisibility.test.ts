@@ -25,7 +25,7 @@
  * a plain fieldToScroll scrolls once the form content is mounted, and again after that target is cleared.
  * Stack tests check a form pushed before its atoms exist, selected-fields mode, the one close
  * decision, lock sharing, reload, which pending flags a parent save clears, and the width and
- * dirty flags of more than one stacked form. A validity read that finishes late is dropped.
+ * dirty flags of more than one stacked form.
  * They do not render the form.
  */
 
@@ -44,7 +44,6 @@ import {
 	firstOutOfScopeInvalidField,
 	hasChildFields,
 	hasFormAtoms,
-	isCurrentValidityRead,
 	hiddenFieldsAlert,
 	itemFormExit,
 	itemLaunchFrom,
@@ -1041,15 +1040,6 @@ describe('selected item save', () => {
 	});
 });
 
-describe('validity read order', () => {
-	// Field validation is async. An earlier read can finish after a later edit has already started another.
-	it('drops a validity read that a newer read has replaced', () => {
-		assert.equal(isCurrentValidityRead(1, 2, false), false);
-		assert.equal(isCurrentValidityRead(2, 2, false), true);
-		assert.equal(isCurrentValidityRead(2, 2, true), false);
-	});
-});
-
 describe('stacked form guards', () => {
 	// pushForm inserts the entry before prep. The launch, pencil, Add, and node selector all do this.
 	it('does not read form visibility before atoms exist', () => {
@@ -1098,6 +1088,14 @@ describe('stacked form guards', () => {
 		);
 	});
 
+	// Selected mode saves the parent. Closing the item must wait for that save, not only for the item's own.
+	it('waits while the stack is submitting', () => {
+		assert.equal(
+			stackedFormCloseAction({ mode: 'full', isRepeatItem: true, isSubmitting: true, hasPendingChanges: false }),
+			'wait'
+		);
+	});
+
 	// A node selector is not an item launch, so it pops instead of closing the dialog.
 	it('pops a node-selector form after confirming when it is dirty', () => {
 		assert.equal(
@@ -1140,28 +1138,35 @@ describe('stacked form guards', () => {
 		assert.equal(fullChanged.size, 1);
 	});
 
-	// The selected item changed after the snapshot. Its flag stays, and rollback will use the saved item.
+	// An edit during the save stays dirty. A field that matches the saved checkpoint is dropped, and the parent repeat is marked.
 	it('keeps a selected item dirty when it changed during the parent save', () => {
-		const changed = new Set(['icon_s']);
+		const changed = new Set(['icon_s', 'url_s']);
+		const parentChanged = new Set<string>();
 		let pending = true;
 		let checkpoint: Record<string, unknown> | null = null;
-		clearStackPendingFlags([
-			{
-				selected: true,
-				changedFieldIds: changed,
-				savedItem: { icon_s: 'saved' },
-				currentItem: { icon_s: 'newer' },
-				setCheckpoint: (values) => {
-					checkpoint = values;
-				},
-				setPending: (value) => {
-					pending = value;
+		clearStackPendingFlags(
+			[
+				{
+					selected: true,
+					fieldId: 'accounts_o',
+					changedFieldIds: changed,
+					savedItem: { icon_s: 'saved', url_s: 'kept' },
+					currentItem: { icon_s: 'newer', url_s: 'kept' },
+					setCheckpoint: (values) => {
+						checkpoint = values;
+					},
+					setPending: (value) => {
+						pending = value;
+					}
 				}
-			}
-		]);
+			],
+			parentChanged
+		);
 		assert.equal(pending, true);
 		assert.equal(changed.has('icon_s'), true);
-		assert.deepEqual(checkpoint, { icon_s: 'saved' });
+		assert.equal(changed.has('url_s'), false);
+		assert.equal(parentChanged.has('accounts_o'), true);
+		assert.deepEqual(checkpoint, { icon_s: 'saved', url_s: 'kept' });
 	});
 
 	// Close and minimize are the checkbox values read when Save is clicked.

@@ -58,10 +58,12 @@ function sameItem(left: unknown, right: unknown): boolean {
  * as the same array, so opening the form does not mark the parent dirty.
  */
 export function writeItemToParent<T>(items: readonly T[], index: number | undefined, nextItem: T): T[] {
-	if (index !== undefined && index >= 0 && index < items.length && sameItem(items[index], nextItem)) {
-		return items as T[];
-	}
-	return commitRepeatItem(items, index, nextItem);
+	const currentItem = index !== undefined && index >= 0 && index < items.length ? items[index] : undefined;
+	// Form values sit on top of the stored item so a key with no field is kept.
+	const merged =
+		isPlainRecord(currentItem) && isPlainRecord(nextItem) ? ({ ...currentItem, ...nextItem } as T) : nextItem;
+	if (currentItem !== undefined && sameItem(currentItem, merged)) return items as T[];
+	return commitRepeatItem(items, index, merged);
 }
 
 /**
@@ -164,7 +166,8 @@ export function selectedItemPendingAfterSave(args: { selected: boolean; savedIte
 /**
  * A parent save that stays open already stored selected-fields edits that match the save.
  * Only those entries are cleared, and their checkpoint becomes the saved item.
- * An edit made after the snapshot keeps its pending flag. A full-mode or pencil item is left alone.
+ * An edit made after the snapshot keeps its pending flag, and its repeat field is recorded on the parent.
+ * Changed ids that match the new checkpoint are dropped. A full-mode or pencil item is left alone.
  */
 export function clearStackPendingFlags(
 	entries: readonly {
@@ -173,8 +176,11 @@ export function clearStackPendingFlags(
 		setPending(value: boolean): void;
 		savedItem?: unknown;
 		currentItem?: unknown;
+		/** Repeat field on the parent. An in-flight edit records this id on the parent. */
+		fieldId?: string;
 		setCheckpoint?(values: Record<string, unknown>): void;
-	}[]
+	}[],
+	parentChangedFieldIds?: Set<string>
 ): void {
 	for (const entry of entries) {
 		const decision = selectedItemPendingAfterSave({
@@ -183,9 +189,18 @@ export function clearStackPendingFlags(
 			currentItem: entry.currentItem
 		});
 		if (decision.checkpoint) entry.setCheckpoint?.(decision.checkpoint);
-		if (!decision.clearPending) continue;
-		entry.changedFieldIds.clear();
-		entry.setPending(false);
+		if (!entry.selected) continue;
+		if (!decision.clearPending && decision.checkpoint && isPlainRecord(entry.currentItem)) {
+			for (const id of [...entry.changedFieldIds]) {
+				if (sameItem(entry.currentItem[id], decision.checkpoint[id])) entry.changedFieldIds.delete(id);
+			}
+		}
+		if (decision.clearPending || entry.changedFieldIds.size === 0) {
+			entry.changedFieldIds.clear();
+			entry.setPending(false);
+			continue;
+		}
+		if (entry.fieldId) parentChangedFieldIds?.add(entry.fieldId);
 	}
 }
 

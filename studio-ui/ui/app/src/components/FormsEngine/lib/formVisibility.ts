@@ -474,14 +474,6 @@ export function stackedFormsClosedByReload(stackLength: number, stackIndex: numb
 	return Math.max(0, stackLength - 1);
 }
 
-/**
- * A validity read awaits every field, and a later edit can start another read before the first finishes.
- * Only the newest read may be stored. `disposed` covers unmount.
- */
-export function isCurrentValidityRead(seq: number, latest: number, disposed: boolean): boolean {
-	return !disposed && seq === latest;
-}
-
 /** What a repository save does after the write, using the checkbox values read at save time. */
 export function repositorySaveFollowUp(args: {
 	resultClose: boolean;

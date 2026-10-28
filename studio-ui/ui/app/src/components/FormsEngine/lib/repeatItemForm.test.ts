@@ -50,6 +50,14 @@ describe('commitRepeatItem', () => {
 });
 
 describe('writeItemToParent', () => {
+	// Opening selected mode compares form fields with the stored item. A key with no field is not an edit.
+	it('keeps an extra stored key and does not replace the array', () => {
+		const stored = [{ icon_s: 'old', legacy_s: 'keep' }];
+		const next = writeItemToParent(stored, 0, { icon_s: 'old' });
+		assert.equal(next, stored);
+		assert.equal(stored[0].legacy_s, 'keep');
+	});
+
 	// Full mode does not write. Back to selected fields writes once, and Save then stores that array.
 	it('writes full-mode edits into the parent when the form returns to selected fields', () => {
 		const opened = [{ icon_s: 'old' }];
