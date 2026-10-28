@@ -30,6 +30,8 @@
  * A repeat value that is missing does the same and warns that there is nothing to open.
  * A pending item launch hides the parent body, and that body stays hidden while its drawer is entering.
  * A rejected validity read keeps the last invalid-field ids, and a stale rejection is ignored.
+ * Every form with a relevant validation error shows the advance alert, including errors already on screen.
+ * An item form that has its own error does not point that alert at the parent repeat field.
  * They do not render the form.
  */
 
@@ -48,7 +50,7 @@ import {
 	firstOutOfScopeInvalidField,
 	hasChildFields,
 	hasFormAtoms,
-	hiddenFieldsAlert,
+	validationErrorsAlert,
 	itemFormExit,
 	itemLaunchBlocksParent,
 	itemLaunchFrom,
@@ -1015,56 +1017,91 @@ describe('item form exit', () => {
 	});
 });
 
-describe('hidden field alert', () => {
-	const scoped = resolveLaunchVisibility({
-		selectedFields: ['title_s'],
-		knownFieldIds: known,
-		repeatFieldIds: repeats
-	}).state;
-
-	// A required field outside the launch scope is the alert, and the action targets that field.
-	it('points at the first field hidden by the launch scope', () => {
-		const alert = hiddenFieldsAlert({
+describe('validation errors alert', () => {
+	// A required field outside the launch scope is still an error, and Show names that field.
+	it('points at the first invalid field outside the launch scope', () => {
+		const alert = validationErrorsAlert({
 			localInvalidFieldIds: ['body_html', 'sidebar_s'],
-			localSectionOrder: ['title_s', 'body_html', 'sidebar_s'],
-			localScopeFieldIds: scoped.active.fieldIds
+			localSectionOrder: ['title_s', 'body_html', 'sidebar_s']
 		});
 		assert.deepEqual(alert, { where: 'local', fieldId: 'body_html', count: 2 });
 	});
 
-	// While a selected-fields item form covers the parent, a parent error is unseen.
+	// A full form with the error already on screen still shows the alert and names that field.
+	it('points at an on-screen error on a full form', () => {
+		const alert = validationErrorsAlert({
+			localInvalidFieldIds: ['title_s'],
+			localSectionOrder: ['title_s', 'body_html']
+		});
+		assert.deepEqual(alert, { where: 'local', fieldId: 'title_s', count: 1 });
+	});
+
+	// Section order names the field, even when the invalid list is in another order.
+	it('names the first invalid field in section order', () => {
+		const alert = validationErrorsAlert({
+			localInvalidFieldIds: ['sidebar_s', 'body_html'],
+			localSectionOrder: ['title_s', 'body_html', 'sidebar_s']
+		});
+		assert.equal(alert?.fieldId, 'body_html');
+		assert.equal(alert?.count, 2);
+	});
+
+	// The controller denied this field. It is not an error the author can fix here.
+	it('skips an irrelevant invalid field', () => {
+		const alert = validationErrorsAlert({
+			localInvalidFieldIds: ['body_html'],
+			localSectionOrder: ['title_s', 'body_html'],
+			localIrrelevant: new Set(['body_html'])
+		});
+		assert.equal(alert, null);
+	});
+
+	// While a selected-fields item form is open, a parent error on another field still shows.
 	it('points at a parent field while a selected item form is open', () => {
-		const alert = hiddenFieldsAlert({
+		const alert = validationErrorsAlert({
 			localInvalidFieldIds: [],
 			localSectionOrder: ['icon_s'],
-			localScopeFieldIds: ['icon_s'],
 			includeParent: true,
+			openRepeatFieldId: 'accounts_o',
 			parent: { invalidFieldIds: ['title_s'], sectionOrder: ['title_s', 'accounts_o'] }
 		});
 		assert.deepEqual(alert, { where: 'parent', fieldId: 'title_s', count: 1 });
 	});
 
+	// The item's URL is invalid, so the parent group is invalid too. Show stays on the item field.
+	// A separate parent error still counts.
+	it('keeps an item error off the parent repeat field', () => {
+		const alert = validationErrorsAlert({
+			localInvalidFieldIds: ['url_s'],
+			localSectionOrder: ['icon_s', 'url_s'],
+			includeParent: true,
+			openRepeatFieldId: 'accounts_o',
+			parent: { invalidFieldIds: ['accounts_o', 'title_s'], sectionOrder: ['title_s', 'accounts_o'] }
+		});
+		assert.deepEqual(alert, { where: 'local', fieldId: 'url_s', count: 2 });
+	});
+
+	// The item is valid. The parent group error is then the author's error, so Show names it.
+	it('names the parent repeat field when the item itself is valid', () => {
+		const alert = validationErrorsAlert({
+			localInvalidFieldIds: [],
+			localSectionOrder: ['icon_s', 'url_s'],
+			includeParent: true,
+			openRepeatFieldId: 'accounts_o',
+			parent: { invalidFieldIds: ['accounts_o'], sectionOrder: ['title_s', 'accounts_o'] }
+		});
+		assert.deepEqual(alert, { where: 'parent', fieldId: 'accounts_o', count: 1 });
+	});
+
 	// The pencil uses Done. A parent error must not show on that item form.
 	it('ignores parent errors on a pencil item form', () => {
-		const alert = hiddenFieldsAlert({
+		const alert = validationErrorsAlert({
 			localInvalidFieldIds: [],
 			localSectionOrder: ['icon_s'],
-			localScopeFieldIds: null,
 			includeParent: false,
 			parent: { invalidFieldIds: ['title_s'], sectionOrder: ['title_s', 'accounts_o'] }
 		});
 		assert.equal(alert, null);
-	});
-
-	// Section order names the field, even when the invalid list is in another order.
-	it('names the first hidden field in section order', () => {
-		const alert = hiddenFieldsAlert({
-			localInvalidFieldIds: ['sidebar_s', 'body_html'],
-			localSectionOrder: ['title_s', 'body_html', 'sidebar_s'],
-			localScopeFieldIds: ['title_s']
-		});
-		assert.equal(alert?.fieldId, 'body_html');
-		assert.equal(alert?.count, 2);
 	});
 });
 

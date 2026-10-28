@@ -168,7 +168,7 @@ import {
 	childFields,
 	fieldVisibility,
 	hasFormAtoms,
-	hiddenFieldsAlert,
+	validationErrorsAlert,
 	itemLaunchBlocksParent,
 	itemLaunchFrom,
 	itemLaunchVisibleChildren,
@@ -183,7 +183,7 @@ import {
 	stackedFormsClosedByReload
 } from './lib/formVisibility';
 import { repeatItemFormProps, stackedRepeatItemAfterClose, writeItemToParent } from './lib/repeatItemForm';
-import HiddenFieldsAlert from './components/HiddenFieldsAlert';
+import ValidationErrorsAlert from './components/ValidationErrorsAlert';
 import { useInvalidFieldIds } from './lib/useInvalidFieldIds';
 
 export interface FormSavePromiseResult {
@@ -1385,13 +1385,13 @@ function FormOrchestrator(props: FormsEngineProps) {
 		() => parentEntry?.itemMeta.contentType.sections?.flatMap((section) => section.fields) ?? [],
 		[parentEntry]
 	);
-	const hiddenErrors = hiddenFieldsAlert({
+	const validationErrors = validationErrorsAlert({
 		localInvalidFieldIds,
 		localSectionOrder: isRepeatMode ? repeatFieldIdList : countFieldIds,
-		localScopeFieldIds: scopeFieldIds,
 		localIrrelevant: irrelevantFieldPaths,
 		localParentPath: repeat?.fieldId,
 		includeParent: itemMode === 'selected',
+		openRepeatFieldId: repeat?.fieldId,
 		parent: parentEntry
 			? {
 					invalidFieldIds: parentInvalidFieldIds,
@@ -1400,26 +1400,36 @@ function FormOrchestrator(props: FormsEngineProps) {
 				}
 			: undefined
 	});
-	const hiddenFieldName = (() => {
-		if (!hiddenErrors) return undefined;
+	const validationFieldName = (() => {
+		if (!validationErrors) return undefined;
 		const fields =
-			hiddenErrors.where === 'parent'
+			validationErrors.where === 'parent'
 				? parentEntry?.itemMeta.contentType.fields
 				: isRepeatMode
 					? contentType.fields[repeat?.fieldId]?.fields
 					: contentType.fields;
-		return fields?.[hiddenErrors.fieldId]?.name;
+		return fields?.[validationErrors.fieldId]?.name;
 	})();
 	const useParentSaveCard = itemMode === 'selected' && parentAtoms != null;
-	const showHiddenField = () => {
-		if (!hiddenErrors) return;
-		if (hiddenErrors.where === 'local') {
-			const reveal = revealField(store.get(atoms.formVisibility), hiddenErrors.fieldId);
+	const showValidationField = () => {
+		if (!validationErrors) return;
+		if (validationErrors.where === 'local') {
+			const state = store.get(atoms.formVisibility);
+			const hidden =
+				fieldVisibility({
+					fieldId: validationErrors.fieldId,
+					irrelevantFieldPaths,
+					parentPath: repeat?.fieldId,
+					scopeFieldIds: state.active.fieldIds
+				}) !== 'visible';
+			const reveal = hidden
+				? revealField(state, validationErrors.fieldId)
+				: { state, fieldId: validationErrors.fieldId };
 			commitFormVisibility(store.set, atoms, reveal.state, reveal.fieldId);
 			return;
 		}
 		if (!parentAtoms) return;
-		const reveal = revealField(store.get(parentAtoms.formVisibility), hiddenErrors.fieldId);
+		const reveal = revealField(store.get(parentAtoms.formVisibility), validationErrors.fieldId);
 		commitFormVisibility(store.set, parentAtoms, reveal.state, reveal.fieldId);
 		contextApi.popForm();
 	};
@@ -1789,11 +1799,11 @@ function FormOrchestrator(props: FormsEngineProps) {
 									</>
 								) : (
 									<>
-										{hiddenErrors && (
-											<HiddenFieldsAlert
-												count={hiddenErrors.count}
-												fieldName={hiddenFieldName}
-												onShow={showHiddenField}
+										{validationErrors && (
+											<ValidationErrorsAlert
+												count={validationErrors.count}
+												fieldName={validationFieldName}
+												onShow={showValidationField}
 											/>
 										)}
 										<SaveCard

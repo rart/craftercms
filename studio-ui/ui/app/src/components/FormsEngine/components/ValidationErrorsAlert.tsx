@@ -20,7 +20,7 @@ import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import { FormattedMessage, useIntl } from 'react-intl';
 
-export function HiddenFieldsAlert(props: { count: number; fieldName?: string; onShow(): void }) {
+export function ValidationErrorsAlert(props: { count: number; fieldName?: string; onShow(): void }) {
 	const { formatMessage } = useIntl();
 	const showLabel = props.fieldName
 		? formatMessage({ defaultMessage: 'Show {field}' }, { field: props.fieldName })
@@ -40,4 +40,4 @@ export function HiddenFieldsAlert(props: { count: number; fieldName?: string; on
 	);
 }
 
-export default HiddenFieldsAlert;
+export default ValidationErrorsAlert;

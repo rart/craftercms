@@ -385,45 +385,74 @@ export function firstHiddenInvalidField(args: {
 	return hiddenFieldIds(args)[0];
 }
 
-export interface HiddenFieldsAlert {
+export interface ValidationErrorsAlert {
 	where: 'local' | 'parent';
 	fieldId: string;
 	count: number;
 }
 
-/** Alert for invalid fields the author cannot see. Local scope wins over a covered parent. */
-export function hiddenFieldsAlert(args: {
+/** Relevant invalid fields in section order. Irrelevant fields are skipped. Scope does not hide them. */
+function relevantInvalidFieldIds(args: {
+	invalidFieldIds: readonly string[];
+	sectionOrder: readonly string[];
+	irrelevantFieldPaths?: ReadonlySet<string> | null;
+	parentPath?: string;
+	excludeFieldIds?: readonly string[];
+}): string[] {
+	const exclude = new Set(args.excludeFieldIds ?? []);
+	return orderedInvalidFieldIds(args.invalidFieldIds, args.sectionOrder).filter((fieldId) => {
+		if (exclude.has(fieldId)) return false;
+		return (
+			fieldVisibility({
+				fieldId,
+				irrelevantFieldPaths: args.irrelevantFieldPaths,
+				parentPath: args.parentPath,
+				scopeFieldIds: null
+			}) !== 'irrelevant'
+		);
+	});
+}
+
+/**
+ * Every relevant invalid field on this form, plus the parent's while a selected-fields item form is open.
+ * The named field is the first in section order. Local fields come before the parent.
+ * While the item has its own errors, the parent's repeat field for that item is left out: the group is
+ * invalid because of the item, and Show stays on the item field. Other parent errors still count.
+ */
+export function validationErrorsAlert(args: {
 	localInvalidFieldIds: readonly string[];
 	localSectionOrder: readonly string[];
-	localScopeFieldIds: readonly string[] | null;
 	localIrrelevant?: ReadonlySet<string> | null;
 	localParentPath?: string;
 	/** Parent errors matter only while this item form is in selected-fields mode. */
 	includeParent?: boolean;
+	/** Parent repeat field that holds this open item. Excluded from the parent while the item has errors. */
+	openRepeatFieldId?: string;
 	parent?: {
 		invalidFieldIds: readonly string[];
 		sectionOrder: readonly string[];
 		irrelevantFieldPaths?: ReadonlySet<string> | null;
 	};
-}): HiddenFieldsAlert | null {
-	const local = hiddenFieldIds({
+}): ValidationErrorsAlert | null {
+	const local = relevantInvalidFieldIds({
 		invalidFieldIds: args.localInvalidFieldIds,
 		sectionOrder: args.localSectionOrder,
 		irrelevantFieldPaths: args.localIrrelevant,
-		parentPath: args.localParentPath,
-		scopeFieldIds: args.localScopeFieldIds
+		parentPath: args.localParentPath
 	});
-	if (local.length) return { where: 'local', fieldId: local[0], count: local.length };
-	if (!args.includeParent || !args.parent) return null;
-	const parent = hiddenFieldIds({
-		invalidFieldIds: args.parent.invalidFieldIds,
-		sectionOrder: args.parent.sectionOrder,
-		irrelevantFieldPaths: args.parent.irrelevantFieldPaths,
-		scopeFieldIds: null,
-		allUnseen: true
-	});
-	if (!parent.length) return null;
-	return { where: 'parent', fieldId: parent[0], count: parent.length };
+	const parent =
+		args.includeParent && args.parent
+			? relevantInvalidFieldIds({
+					invalidFieldIds: args.parent.invalidFieldIds,
+					sectionOrder: args.parent.sectionOrder,
+					irrelevantFieldPaths: args.parent.irrelevantFieldPaths,
+					excludeFieldIds: local.length && args.openRepeatFieldId ? [args.openRepeatFieldId] : undefined
+				})
+			: [];
+	const count = local.length + parent.length;
+	if (!count) return null;
+	if (local.length) return { where: 'local', fieldId: local[0], count };
+	return { where: 'parent', fieldId: parent[0], count };
 }
 
 export type SelectedItemSavePlan =
