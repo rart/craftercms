@@ -46,7 +46,6 @@ import {
 	isRepeatAddDisabled,
 	isRepeatRemoveDisabled
 } from '../../../utils/countLimits';
-
 const repeatMessages = defineMessages({
 	addItems: { defaultMessage: 'Add items' },
 	maxReached: { defaultMessage: 'Maximum of {max, plural, one {# item} other {# items}} reached' },

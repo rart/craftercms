@@ -1219,6 +1219,8 @@ function FormOrchestrator(props: FormsEngineProps) {
 	// Set immediately before clearing pendingScrollFieldId, so the follow-up run does not
 	// scroll to fieldToScroll and take the reveal's place.
 	const clearingPendingRef = useRef(false);
+	// fieldToScroll already scrolled. A later visibility change must not scroll it again.
+	const lastFieldToScrollRef = useRef<string | null>(null);
 	const cancelSettledScroll = useCallback(() => {
 		cancelFieldScrollRef.current?.();
 		cancelFieldScrollRef.current = null;
@@ -1234,8 +1236,10 @@ function FormOrchestrator(props: FormsEngineProps) {
 			clearingPending: clearingPendingRef.current,
 			retainSettledScroll: retainSettledScrollRef.current,
 			hasMainContent: Boolean(mainContent),
-			focusPending: pendingScrollFocus
+			focusPending: pendingScrollFocus,
+			lastFieldToScroll: lastFieldToScrollRef.current
 		});
+		if (plan.action === 'scroll') lastFieldToScrollRef.current = plan.rememberFieldToScroll;
 		if (plan.action === 'keep') {
 			clearingPendingRef.current = false;
 			return;

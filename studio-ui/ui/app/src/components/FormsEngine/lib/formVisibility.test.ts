@@ -19,7 +19,9 @@
  * Launch tests check which fields and repeat items a selected-field open keeps,
  * including warnings when the request cannot be applied. Save tests check the
  * single decision that either reveals a hidden error, refuses the write, or
- * continues. They do not render the form.
+ * continues, and the draft flag that decision hands to the write. Scroll tests
+ * check that a reveal keeps its field when fieldToScroll is also set, and that
+ * a plain fieldToScroll scrolls once. They do not render the form.
  */
 
 import assert from 'node:assert/strict';
@@ -31,6 +33,7 @@ import {
 	decideSaveReveal,
 	gateSaveBeforeWrite,
 	planSettledFieldScroll,
+	saveAsDraftFlag,
 	fieldVisibility,
 	clearRepeatItemScope,
 	firstOutOfScopeInvalidField,
@@ -534,37 +537,56 @@ describe('save gate before the controller hook', () => {
 		);
 	});
 
-	// save() stores a completed valid write as a normal save.
-	it('does not mark a completed valid save as a draft', () => {
-		const explicitDraft = false;
-		const isFormInvalid = false;
-		assert.equal(explicitDraft || isFormInvalid, false);
+	const draftFlagFor = async (options: { draft: boolean; invalidFieldIds: string[] }) => {
+		let passed: boolean | undefined;
+		const outcome = await applySaveGate({
+			draft: options.draft,
+			isRepeatMode: false,
+			visibility,
+			sectionOrder: ['title_s', 'body_html'],
+			readValidity: async () => ({
+				isFormInvalid: options.invalidFieldIds.length > 0,
+				invalidFieldIds: options.invalidFieldIds
+			}),
+			onReveal() {},
+			preloadAndBeforeSave: async (saveAsDraft) => {
+				passed = saveAsDraft;
+				return 'saved' as const;
+			}
+		});
+		return { outcome, passed };
+	};
+
+	// Save as draft with errors still writes. The write callback receives the draft flag, not a raw validity bit.
+	it('passes a draft flag when an explicit draft has errors', async () => {
+		const result = await draftFlagFor({ draft: true, invalidFieldIds: ['body_html'] });
+		assert.equal(result.outcome, 'saved');
+		assert.equal(result.passed, true);
 	});
 
-	// Save as draft stays a draft when the form is already valid.
-	it('marks an explicit draft as a draft when the form is valid', () => {
-		const explicitDraft = true;
-		const isFormInvalid = false;
-		assert.equal(explicitDraft || isFormInvalid, true);
+	// Save as draft of a valid form writes, and the callback is still told the item is a draft.
+	it('passes a draft flag when an explicit draft is valid', async () => {
+		const result = await draftFlagFor({ draft: true, invalidFieldIds: [] });
+		assert.equal(result.outcome, 'saved');
+		assert.equal(result.passed, true);
 	});
 
-	// Save as draft stays a draft when the form is invalid.
-	it('marks an explicit draft as a draft when the form is invalid', () => {
-		const explicitDraft = true;
-		const isFormInvalid = true;
-		assert.equal(explicitDraft || isFormInvalid, true);
+	// A completed save of a valid form writes, and the callback is told it is not a draft.
+	it('passes a non-draft flag for a valid completed save', async () => {
+		const result = await draftFlagFor({ draft: false, invalidFieldIds: [] });
+		assert.equal(result.outcome, 'saved');
+		assert.equal(result.passed, false);
 	});
 
-	// After onBeforeSave, a completed save that is now invalid is stored as a draft. It is not revealed again.
+	// onBeforeSave can make a valid form invalid after the gate. save() calls saveAsDraftFlag again for that read.
 	it('marks a completed save as a draft when the hook leaves the form invalid', () => {
-		const explicitDraft = false;
-		const isFormInvalid = true;
-		assert.equal(explicitDraft || isFormInvalid, true);
+		assert.equal(saveAsDraftFlag(false, true), true);
+		assert.equal(saveAsDraftFlag(false, false), false);
 	});
 });
 
 describe('settled field scroll', () => {
-	// View in form and a hidden-invalid save set a pending field. fieldToScroll must not replace that scroll or take focus.
+	// View in form and a hidden-invalid save set a pending field. fieldToScroll must not replace that scroll, and a later visibility change must not jump back to it.
 	it('keeps the revealed field when fieldToScroll is also set', () => {
 		const reveal = planSettledFieldScroll({
 			pendingScrollFieldId: 'body_html',
@@ -579,6 +601,7 @@ describe('settled field scroll', () => {
 		assert.equal(reveal.fieldId, 'body_html');
 		assert.equal(reveal.focus, true);
 		assert.equal(reveal.clearPending, true);
+		assert.equal(reveal.rememberFieldToScroll, 'title_s');
 
 		const followUp = planSettledFieldScroll({
 			pendingScrollFieldId: null,
@@ -589,6 +612,17 @@ describe('settled field scroll', () => {
 			focusPending: true
 		});
 		assert.equal(followUp.action, 'keep');
+
+		const afterVisibilityChange = planSettledFieldScroll({
+			pendingScrollFieldId: null,
+			fieldToScroll: 'title_s',
+			clearingPending: false,
+			retainSettledScroll: true,
+			hasMainContent: true,
+			focusPending: false,
+			lastFieldToScroll: reveal.rememberFieldToScroll
+		});
+		assert.equal(afterVisibilityChange.action, 'keep');
 	});
 
 	// A fieldToScroll prop scrolls without moving focus.
@@ -622,5 +656,47 @@ describe('settled field scroll', () => {
 		assert.equal(plan.fieldId, 'gone_s');
 		assert.equal(plan.focus, false);
 		assert.equal(plan.clearPending, true);
+	});
+
+	// Back to selected fields and a relevance change re-run the effect. The same fieldToScroll must not jump the form.
+	it('does not scroll fieldToScroll again when only visibility changes', () => {
+		const first = planSettledFieldScroll({
+			pendingScrollFieldId: null,
+			fieldToScroll: 'title_s',
+			clearingPending: false,
+			retainSettledScroll: false,
+			hasMainContent: true,
+			focusPending: false,
+			lastFieldToScroll: null
+		});
+		assert.equal(first.action, 'scroll');
+		if (first.action !== 'scroll') return;
+		assert.equal(first.fieldId, 'title_s');
+		assert.equal(first.rememberFieldToScroll, 'title_s');
+
+		const again = planSettledFieldScroll({
+			pendingScrollFieldId: null,
+			fieldToScroll: 'title_s',
+			clearingPending: false,
+			retainSettledScroll: true,
+			hasMainContent: true,
+			focusPending: false,
+			lastFieldToScroll: first.rememberFieldToScroll
+		});
+		assert.equal(again.action, 'keep');
+
+		const changed = planSettledFieldScroll({
+			pendingScrollFieldId: null,
+			fieldToScroll: 'body_html',
+			clearingPending: false,
+			retainSettledScroll: true,
+			hasMainContent: true,
+			focusPending: false,
+			lastFieldToScroll: first.rememberFieldToScroll
+		});
+		assert.equal(changed.action, 'scroll');
+		if (changed.action !== 'scroll') return;
+		assert.equal(changed.fieldId, 'body_html');
+		assert.equal(changed.focus, false);
 	});
 });
