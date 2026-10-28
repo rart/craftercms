@@ -16,6 +16,7 @@
 
 import React from 'react';
 import Alert from '@mui/material/Alert';
+import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import { FormattedMessage, useIntl } from 'react-intl';
 
@@ -25,19 +26,16 @@ export function HiddenFieldsAlert(props: { count: number; fieldName?: string; on
 		? formatMessage({ defaultMessage: 'Show {field}' }, { field: props.fieldName })
 		: formatMessage({ defaultMessage: 'Show the field' });
 	return (
-		<Alert
-			role="status"
-			severity="warning"
-			action={
-				<Button color="inherit" size="small" onClick={props.onShow} aria-label={showLabel}>
+		<Alert role="status" severity="warning">
+			<Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+				<FormattedMessage
+					defaultMessage="{count, plural, one {The form has a validation error that must be fixed before saving.} other {The form has # validation errors that must be fixed before saving.}}"
+					values={{ count: props.count }}
+				/>
+				<Button color="inherit" size="small" onClick={props.onShow} aria-label={showLabel} sx={{ mt: 1 }}>
 					{showLabel}
 				</Button>
-			}
-		>
-			<FormattedMessage
-				defaultMessage="{count, plural, one {The form has a validation error that must be fixed before saving.} other {The form has # validation errors that must be fixed before saving.}}"
-				values={{ count: props.count }}
-			/>
+			</Box>
 		</Alert>
 	);
 }
