@@ -28,6 +28,8 @@ import Alert from '@mui/material/Alert';
 import { SplitButton } from '../../SplitButton';
 import { useDispatch } from 'react-redux';
 import { pushConfirmDialog, pushErrorDialog } from '../../../utils/system';
+import { showSystemNotification } from '../../../state/actions/system';
+import type { FormsEngineAtoms } from '../lib/formsEngineContext';
 import { popDialog } from '../../../state/actions/dialogStack';
 import { nanoid } from 'nanoid';
 import type { SaveFormResult } from '../lib/useSaveForm';
@@ -42,6 +44,8 @@ export interface SaveCardProps {
 	isStackedForm: boolean;
 	isEmbedded: boolean;
 	setSaveAsDraft: (value: boolean) => void;
+	/** Defaults to this form's atoms. A selected-fields item form passes the parent's atoms. */
+	atoms?: FormsEngineAtoms;
 	/**
 	 * Runs the save. `revealed` opened a hidden field and wrote nothing.
 	 * `invalid` is the cannot-proceed dialog. `saved` started a write.
@@ -52,11 +56,12 @@ export interface SaveCardProps {
 export function SaveCard(props: SaveCardProps) {
 	const { isEmbedded, isStackedForm, isRepeatMode, setSaveAsDraft, onSave } = props;
 	const stableFormContext = useContext(StableFormContext);
-	const isSubmitting = useAtomValue(stableFormContext.atoms.isSubmitting);
-	const [versionComment, setVersionComment] = useAtom(stableFormContext.atoms.versionComment);
-	const hasPendingChanges = useAtomValue(stableFormContext.atoms.hasPendingChanges);
-	const [closeAfterSave, setCloseAfterSave] = useAtom(stableFormContext.atoms.closeAfterSave);
-	const [minimizeAfterSave, setMinimizeAfterSave] = useAtom(stableFormContext.atoms.minimizeAfterSave);
+	const formAtoms = props.atoms ?? stableFormContext.atoms;
+	const isSubmitting = useAtomValue(formAtoms.isSubmitting);
+	const [versionComment, setVersionComment] = useAtom(formAtoms.versionComment);
+	const hasPendingChanges = useAtomValue(formAtoms.hasPendingChanges);
+	const [closeAfterSave, setCloseAfterSave] = useAtom(formAtoms.closeAfterSave);
+	const [minimizeAfterSave, setMinimizeAfterSave] = useAtom(formAtoms.minimizeAfterSave);
 	const disableSave = !isEmbedded && !isRepeatMode && (isSubmitting || !versionComment);
 	const { formatMessage } = useIntl();
 	const dispatch = useDispatch();
@@ -101,6 +106,16 @@ export function SaveCard(props: SaveCardProps) {
 		try {
 			const status = await onSave(e, draft);
 			if (status === 'invalid') showCannotProceed();
+			else if (status === 'revealed') {
+				dispatch(
+					showSystemNotification({
+						options: { variant: 'warning' },
+						message: formatMessage({
+							defaultMessage: 'Not saved. A field with an error was out of view.'
+						})
+					})
+				);
+			}
 		} catch (error) {
 			dispatch(
 				pushErrorDialog({

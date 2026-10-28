@@ -61,7 +61,7 @@ import { validateActionPolicy } from '../../../services/sites';
 import { createComponentId, pushConfirmDialog } from '../../../utils/system';
 import { nanoid } from 'nanoid';
 import { popDialog, pushDialog } from '../../../state/actions/dialogStack';
-import { atom, PrimitiveAtom, useAtom, useAtomValue, useSetAtom, useStore as useJotaiStore } from 'jotai';
+import { atom, PrimitiveAtom, useAtomValue, useSetAtom, useStore as useJotaiStore } from 'jotai';
 import { showSystemNotification } from '../../../state/actions/system';
 import {
 	AffectedPluginControlField,
@@ -104,7 +104,7 @@ export function useSaveForm(props: UseSaveFormProps) {
 	const setIsSubmitting = useSetAtom(stableFormContext.atoms.isSubmitting);
 	const closeAfterSave = useAtomValue(stableFormContext.atoms.closeAfterSave);
 	const minimizeAfterSave = useAtomValue(stableFormContext.atoms.minimizeAfterSave);
-	const [versionComment, setVersionComment] = useAtom(stableFormContext.atoms.versionComment);
+	const setVersionComment = useSetAtom(stableFormContext.atoms.versionComment);
 	const setHasPendingChanges = useSetAtom(stableFormContext.atoms.hasPendingChanges);
 	const onSave = wrapOnSaveProp(props.onSave);
 	const { setRenamedPath, triggerReload, setSavedCreatePath } = useContext(RenamedPathContext);
@@ -156,6 +156,8 @@ export function useSaveForm(props: UseSaveFormProps) {
 		let saveAsDraft = false;
 		const preloadAndWrite = async (nextSaveAsDraft: boolean) => {
 			saveAsDraft = nextSaveAsDraft;
+			// Read at save time. A render snapshot is stale when the parent save runs right after an item commit.
+			const versionComment = jotai.get(stableFormContext.atoms.versionComment);
 			try {
 				const fieldListMessage = (fields: AffectedPluginControlField[]) =>
 					fields.map((field) => `"${field.fieldName}" (${field.fieldId})`).join(', ');
@@ -583,9 +585,10 @@ export function useSaveForm(props: UseSaveFormProps) {
 		try {
 			const outcome = await applySaveGate({
 				draft: draft === true,
-				isRepeatMode,
 				visibility: jotai.get(stableFormContext.atoms.formVisibility),
-				sectionOrder: contentType.sections?.flatMap((section) => section.fields) ?? [],
+				sectionOrder: isRepeatMode
+					? childFields(contentType.fields[repeatFieldId]).map((field) => field.id)
+					: (contentType.sections?.flatMap((section) => section.fields) ?? []),
 				irrelevantFieldPaths: stableFormContext.formControllerState?.irrelevantFieldPaths,
 				parentPath: repeatFieldId,
 				readValidity: readCurrentValidity,

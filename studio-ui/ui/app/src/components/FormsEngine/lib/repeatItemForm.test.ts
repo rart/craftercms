@@ -1,0 +1,77 @@
+/*
+ * Copyright (C) 2007-2026 Crafter Software Corporation. All Rights Reserved.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3 as published by
+ * the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/**
+ * Covers the shared repeat-item opener. The save callback writes into whatever
+ * array is current, so a change made after the form opened is kept.
+ */
+
+import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
+import { commitRepeatItem, repeatItemFormProps } from './repeatItemForm.ts';
+
+describe('commitRepeatItem', () => {
+	// Editing an item replaces that index and leaves the others in place.
+	it('replaces the item at the given index', () => {
+		const next = commitRepeatItem([{ id: 'a' }, { id: 'b' }], 0, { id: 'a2' });
+		assert.deepEqual(next, [{ id: 'a2' }, { id: 'b' }]);
+	});
+
+	// Add has no index, so the new item goes on the end.
+	it('appends when there is no index', () => {
+		const next = commitRepeatItem([{ id: 'a' }], undefined, { id: 'b' });
+		assert.deepEqual(next, [{ id: 'a' }, { id: 'b' }]);
+	});
+});
+
+describe('repeatItemFormProps', () => {
+	// The pencil's onSave used to close over the array from when the form opened. A later edit was lost.
+	it('writes the item into the array that exists at save time', async () => {
+		let items = [{ id: 'a' }, { id: 'b' }];
+		const props = repeatItemFormProps({
+			fieldId: 'accounts_o',
+			index: 0,
+			values: items[0],
+			getItems: () => items,
+			setItems: (next) => {
+				items = next;
+			}
+		});
+		items = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
+		const result = await props.onSave({ values: { id: 'a2' } });
+		assert.equal(result.close, true);
+		assert.deepEqual(items, [{ id: 'a2' }, { id: 'b' }, { id: 'c' }]);
+	});
+
+	// A launch that names child fields passes them through. The pencil does not.
+	it('passes selected child fields and omits them for the pencil', () => {
+		const launched = repeatItemFormProps({
+			fieldId: 'accounts_o',
+			index: 0,
+			fieldIds: ['icon_s'],
+			getItems: () => [],
+			setItems: () => undefined
+		});
+		assert.deepEqual(launched.fieldIds, ['icon_s']);
+		const pencil = repeatItemFormProps({
+			fieldId: 'accounts_o',
+			index: 0,
+			getItems: () => [],
+			setItems: () => undefined
+		});
+		assert.equal(pencil.fieldIds, undefined);
+	});
+});

@@ -20,7 +20,6 @@ import { type ContentTypeField } from '../../models';
 import { FormattedMessage, useIntl } from 'react-intl';
 import Grid from '@mui/material/Grid';
 import Typography from '@mui/material/Typography';
-import controlDescriptors from '../ContentTypeManagement/descriptors/controls';
 import { commonControlFieldsDescriptors } from '../ContentTypeManagement/descriptors/controls/commonDescriptors';
 import { getPossibleTranslation } from '../../utils/i18n';
 import Box from '@mui/material/Box';
@@ -60,10 +59,10 @@ function Body(props: FieldInformationDialogBodyProps) {
 	const { field } = props;
 	const { formatMessage } = useIntl();
 	const customControls = useSelection((state) => state.uiConfig.controls);
-	const typeLabel = controlTypeLabel(field.type, resolveControlDescriptors(customControls));
-
-	// retrieve control descriptor for field type
-	const descriptor = controlDescriptors[field.type] ?? inputDescriptor;
+	const descriptors = resolveControlDescriptors(customControls);
+	const typeLabel = controlTypeLabel(field.type, descriptors);
+	// One lookup for the type name and the property sections. Input is only the stand-in when nothing matches.
+	const descriptor = descriptors[field.type] ?? inputDescriptor;
 
 	return (
 		<Box sx={{ p: 2, gap: 2, display: 'flex', flexDirection: 'column' }}>

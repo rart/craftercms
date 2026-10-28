@@ -19,7 +19,8 @@
  * Launch tests check which fields and repeat items a selected-field open keeps,
  * including warnings when the request cannot be applied. Save tests check the
  * single decision that either reveals a hidden error, refuses the write, or
- * continues, and the draft flag that decision hands to the write. Scroll tests
+ * continues, and the draft flag that decision hands to the write. Item-launch
+ * tests check when Experience Builder opens a repeat item's own form. Scroll tests
  * check that a reveal keeps its field when fieldToScroll is also set, and that
  * a plain fieldToScroll scrolls once the form content is mounted, and again after that target is cleared.
  * They do not render the form.
@@ -36,9 +37,16 @@ import {
 	planSettledFieldScroll,
 	saveAsDraftFlag,
 	fieldVisibility,
+	formHasUnsavedChanges,
 	clearRepeatItemScope,
 	firstOutOfScopeInvalidField,
 	hasChildFields,
+	hiddenFieldsAlert,
+	itemFormExit,
+	itemLaunchFrom,
+	parentViewAfterItemScope,
+	scopeChangeOpensParent,
+	selectedItemSavePlan,
 	hiddenInvalidReveal,
 	isScopeActive,
 	itemGroupFieldIds,
@@ -432,16 +440,22 @@ describe('save reveal decision', () => {
 		assert.equal(decision.reveal, undefined);
 	});
 
-	// A repeat-item editor has no launch scope to open. A completed save with errors is Cannot Proceed.
-	it('does not reveal inside a repeat-item editor', () => {
+	// An item form opened on a field subset uses the same check as any other scoped form.
+	it('reveals a hidden invalid field inside a scoped item form', () => {
+		const decision = decideSaveReveal({ ...base, draft: false, invalidFieldIds: ['body_html'] });
+		assert.equal(decision.status, 'revealed');
+		assert.equal(decision.reveal?.fieldId, 'body_html');
+	});
+
+	// The pencil opens an item form with no field scope, so there is nothing hidden to reveal.
+	it('does not reveal in an item form opened from the pencil', () => {
 		const decision = decideSaveReveal({
-			...base,
 			draft: false,
-			isRepeatMode: true,
-			invalidFieldIds: ['body_html']
+			visibility: { active: { fieldIds: null, repeatItem: null }, launch: null },
+			invalidFieldIds: ['body_html'],
+			sectionOrder: ['body_html']
 		});
 		assert.equal(decision.status, 'invalid');
-		assert.equal(decision.reveal, undefined);
 	});
 });
 
@@ -770,5 +784,213 @@ describe('settled field scroll', () => {
 		assert.equal(mounted.fieldId, 'title_s');
 		assert.equal(mounted.focus, false);
 		assert.equal(mounted.rememberFieldToScroll, 'title_s');
+	});
+});
+
+const accountsFields = {
+	title_s: { id: 'title_s' },
+	accounts_o: { id: 'accounts_o', fields: { icon_s: { id: 'icon_s' }, url_s: { id: 'url_s' } } },
+	links_o: { id: 'links_o', fields: { label_s: { id: 'label_s' } } }
+};
+const accountsKnown = new Set(Object.keys(accountsFields));
+const accountsRepeats = new Set(['accounts_o', 'links_o']);
+
+describe('item form launch', () => {
+	const resolve = (selectedFields: string[], index?: string | number) =>
+		resolveLaunchVisibility({
+			selectedFields,
+			index,
+			knownFieldIds: accountsKnown,
+			repeatFieldIds: accountsRepeats,
+			fields: accountsFields
+		});
+
+	// The Icon zone names the child and the item index. The item form should open on that child.
+	it('opens the item form for one child field', () => {
+		const resolved = resolve(['accounts_o.icon_s'], 0);
+		assert.deepEqual(resolved.state.itemForm, { fieldId: 'accounts_o', index: 0, fieldIds: ['icon_s'] });
+		assert.deepEqual(itemLaunchFrom(resolved.state, 2), resolved.state.itemForm);
+	});
+
+	// Several children of the same item stay together on that item form.
+	it('opens the item form for several children of one group', () => {
+		const resolved = resolve(['accounts_o.icon_s', 'accounts_o.url_s'], '0');
+		assert.deepEqual(resolved.state.itemForm?.fieldIds, ['icon_s', 'url_s']);
+	});
+
+	// Choosing the repeat item itself, with no child, opens the item form on every field.
+	it('opens the whole item when no child field is selected', () => {
+		const resolved = resolve(['accounts_o'], 1);
+		assert.deepEqual(resolved.state.itemForm, { fieldId: 'accounts_o', index: 1, fieldIds: null });
+	});
+
+	// A parent field mixed with an item field cannot be one item form. The parent keeps today's filter.
+	it('falls back when the selection mixes a parent field and an item field', () => {
+		const resolved = resolve(['title_s', 'accounts_o.icon_s'], 0);
+		assert.equal(resolved.state.itemForm, undefined);
+		assert.deepEqual(resolved.state.active.repeatItem, { fieldId: 'accounts_o', index: 0 });
+	});
+
+	// Two different groups cannot share one index.
+	it('falls back when the selection spans two groups', () => {
+		const resolved = resolve(['accounts_o.icon_s', 'links_o.label_s'], 0);
+		assert.equal(resolved.state.itemForm, undefined);
+	});
+
+	// A nested index is how a control inside an item is addressed today. It stays on the parent.
+	it('falls back for a nested index', () => {
+		const resolved = resolve(['accounts_o.icon_s'], '1.2');
+		assert.equal(resolved.state.itemForm, undefined);
+		assert.equal(resolved.state.active.repeatItem, null);
+		assert.equal(resolved.unsupportedRepeatIndex, '1.2');
+	});
+
+	// An index past the list does not open an empty item. The parent shows every item and warns.
+	it('does not open the item form when the index is past the end', () => {
+		const resolved = resolve(['accounts_o.icon_s'], 5);
+		assert.ok(resolved.state.itemForm);
+		assert.equal(itemLaunchFrom(resolved.state, 2), null);
+	});
+
+	// A child id that is not on the group is not an item launch.
+	it('falls back when a child id is not on the group', () => {
+		const resolved = resolve(['accounts_o.missing_s'], 0);
+		assert.equal(resolved.state.itemForm, undefined);
+	});
+});
+
+describe('item form exit', () => {
+	const selected = resolveLaunchVisibility({
+		selectedFields: ['icon_s'],
+		knownFieldIds: new Set(['icon_s', 'url_s']),
+		repeatFieldIds: new Set<string>()
+	}).state;
+
+	// While the launch selection is on screen, Save is the parent's and dismissing leaves the dialog.
+	it('uses the parent Save card and closes the dialog in selected-fields mode', () => {
+		assert.deepEqual(itemFormExit(selected), { saveCard: 'parent', dismiss: 'closeDialog', fullWidth: true });
+	});
+
+	// Open full form clears the active scope. The item then has its own Done button and the parent strip returns.
+	it('returns to the item Done card after the full item form is opened', () => {
+		const opened = openFullForm(selected);
+		assert.deepEqual(itemFormExit(opened), { saveCard: 'item', dismiss: 'pop', fullWidth: false });
+		assert.equal(scopeChangeOpensParent(selected, opened), true);
+	});
+
+	// The pencil has no launch, so it stays on the item's own Done button.
+	it('keeps the pencil item form on its own Done card', () => {
+		assert.equal(itemFormExit({ active: { fieldIds: null, repeatItem: null }, launch: null }).saveCard, 'item');
+	});
+
+	// Leaving selected-fields mode opens the parent in full and names the repeat as the scroll target.
+	it('opens the parent full form scrolled to the repeat', () => {
+		const parent = resolveLaunchVisibility({
+			selectedFields: ['accounts_o.icon_s'],
+			index: 0,
+			knownFieldIds: accountsKnown,
+			repeatFieldIds: accountsRepeats,
+			fields: accountsFields
+		}).state;
+		const next = parentViewAfterItemScope(parent, 'accounts_o');
+		assert.equal(isScopeActive(next.state.active), false);
+		assert.equal(next.fieldId, 'accounts_o');
+		assert.ok(next.state.launch);
+	});
+});
+
+describe('hidden field alert', () => {
+	const scoped = resolveLaunchVisibility({
+		selectedFields: ['title_s'],
+		knownFieldIds: known,
+		repeatFieldIds: repeats
+	}).state;
+
+	// A required field outside the launch scope is the alert, and the action targets that field.
+	it('points at the first field hidden by the launch scope', () => {
+		const alert = hiddenFieldsAlert({
+			localInvalidFieldIds: ['body_html', 'sidebar_s'],
+			localSectionOrder: ['title_s', 'body_html', 'sidebar_s'],
+			localScopeFieldIds: scoped.active.fieldIds
+		});
+		assert.deepEqual(alert, { where: 'local', fieldId: 'body_html', count: 2 });
+	});
+
+	// While an item form covers the parent, a parent error is unseen even if it would be on the parent form.
+	it('points at a parent field while an item form is open', () => {
+		const alert = hiddenFieldsAlert({
+			localInvalidFieldIds: [],
+			localSectionOrder: ['icon_s'],
+			localScopeFieldIds: ['icon_s'],
+			parent: { invalidFieldIds: ['title_s'], sectionOrder: ['title_s', 'accounts_o'] }
+		});
+		assert.deepEqual(alert, { where: 'parent', fieldId: 'title_s', count: 1 });
+	});
+});
+
+describe('selected item save', () => {
+	const item = resolveLaunchVisibility({
+		selectedFields: ['icon_s'],
+		knownFieldIds: new Set(['icon_s', 'url_s']),
+		repeatFieldIds: new Set<string>()
+	}).state;
+	const parent = resolveLaunchVisibility({
+		selectedFields: ['accounts_o'],
+		knownFieldIds: accountsKnown,
+		repeatFieldIds: accountsRepeats
+	}).state;
+
+	// An error outside the item selection stays in the item. The parent is not saved.
+	it('reveals a hidden item field before saving the parent', () => {
+		const plan = selectedItemSavePlan({
+			draft: false,
+			itemVisibility: item,
+			itemInvalidFieldIds: ['url_s'],
+			itemFieldOrder: ['icon_s', 'url_s'],
+			parentVisibility: parent,
+			parentInvalidFieldIds: [],
+			parentFieldOrder: ['title_s']
+		});
+		assert.equal(plan.action, 'revealItem');
+	});
+
+	// The item is valid and the parent has an error the author cannot see. Nothing is written to the repository.
+	it('reveals a hidden parent field without saving', () => {
+		const plan = selectedItemSavePlan({
+			draft: false,
+			itemVisibility: item,
+			itemInvalidFieldIds: [],
+			itemFieldOrder: ['icon_s'],
+			parentVisibility: parent,
+			parentInvalidFieldIds: ['title_s'],
+			parentFieldOrder: ['title_s', 'accounts_o']
+		});
+		assert.equal(plan.action, 'revealParent');
+		if (plan.action !== 'revealParent') return;
+		assert.equal(plan.reveal.fieldId, 'title_s');
+		assert.equal(isScopeActive(plan.reveal.state.active), false);
+	});
+
+	// A draft still saves. Hidden errors do not stop it.
+	it('saves the parent for a draft', () => {
+		const plan = selectedItemSavePlan({
+			draft: true,
+			itemVisibility: item,
+			itemInvalidFieldIds: ['url_s'],
+			itemFieldOrder: ['icon_s', 'url_s'],
+			parentVisibility: parent,
+			parentInvalidFieldIds: ['title_s'],
+			parentFieldOrder: ['title_s']
+		});
+		assert.equal(plan.action, 'saveParent');
+	});
+});
+
+describe('unsaved changes', () => {
+	// Minimizing or closing the dialog must see edits that live only in the open item form.
+	it('includes stacked item forms', () => {
+		assert.equal(formHasUnsavedChanges(false, [true]), true);
+		assert.equal(formHasUnsavedChanges(false, [false]), false);
+		assert.equal(formHasUnsavedChanges(true, []), true);
 	});
 });

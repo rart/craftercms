@@ -561,7 +561,7 @@ export const extractAtomValues: (store: JotaiStore, valueAtoms: LookupTable<Atom
  */
 export function relevantFieldValidations(
 	validationByFieldId: LookupTable<Atom<Promise<FieldValidityState>>>,
-	irrelevantFieldPaths: Set<string> | null | undefined,
+	irrelevantFieldPaths: ReadonlySet<string> | null | undefined,
 	parentPath?: string
 ): Array<{ fieldId: string; atom: Atom<Promise<FieldValidityState>> }> {
 	return Object.entries(validationByFieldId).flatMap(([fieldId, atom]) =>
@@ -573,7 +573,7 @@ export function relevantFieldValidations(
 
 export function getValidationAtomsExcludingIrrelevant(
 	validationByFieldId: LookupTable<Atom<Promise<FieldValidityState>>>,
-	irrelevantFieldPaths: Set<string> | null | undefined,
+	irrelevantFieldPaths: ReadonlySet<string> | null | undefined,
 	parentPath?: string
 ): Array<Atom<Promise<FieldValidityState>>> {
 	return relevantFieldValidations(validationByFieldId, irrelevantFieldPaths, parentPath).map(({ atom }) => atom);

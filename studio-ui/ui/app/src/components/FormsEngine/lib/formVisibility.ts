@@ -40,10 +40,25 @@ export interface FormFieldScope {
 	repeatItem: RepeatItemScope | null;
 }
 
+/**
+ * This launch should open the repeat item's own form.
+ * `fieldIds === null` shows every field of the item. A list shows only those children.
+ */
+export interface ItemFormLaunch {
+	fieldId: string;
+	index: number;
+	fieldIds: readonly string[] | null;
+}
+
 export interface FormVisibilityState {
 	active: FormFieldScope;
 	/** Set when the form was opened on a subset, so the author can return to it. */
 	launch: FormFieldScope | null;
+	/**
+	 * Set when every selected field sits under one child-field group and the index is a plain number.
+	 * The parent still uses `launch.repeatItem` if the item form is not opened (for example the index is past the end).
+	 */
+	itemForm?: ItemFormLaunch | null;
 }
 
 /**
@@ -141,12 +156,15 @@ export interface ResolvedLaunchScope {
  * Turns a launch (`selectedFields` + `index`) into the visibility atom's first state.
  * Dotted ids select the base field. A numeric index scopes a repeat field in that
  * set to one item. An empty match does not produce an empty form: the scope is left off.
+ * When `fields` is passed, a selection that is entirely under one child-field group is
+ * also recorded as `itemForm` so the root can open that item's form.
  */
 export function resolveLaunchVisibility(args: {
 	selectedFields?: readonly string[];
 	index?: string | number;
 	knownFieldIds: ReadonlySet<string>;
 	repeatFieldIds: ReadonlySet<string>;
+	fields?: LaunchFieldsLookup;
 }): ResolvedLaunchScope {
 	const requested = args.selectedFields?.length ? [...new Set(args.selectedFields.map(baseFieldId))] : undefined;
 	const matched = requested?.filter((id) => args.knownFieldIds.has(id));
@@ -168,11 +186,17 @@ export function resolveLaunchVisibility(args: {
 	}
 
 	const active: FormFieldScope = { fieldIds, repeatItem };
+	const itemForm =
+		repeatItem && args.fields ? itemFormLaunchFromSelection(args.selectedFields, repeatItem, args.fields) : null;
 	// A selection that matches nothing still names the first requested field. The scroller
 	// uses it only when that field is actually in the form.
 	const scrollFieldId = !fieldIds && requested?.length ? baseFieldId(requested[0]) : undefined;
 	return {
-		state: { active, launch: isScopeActive(active) ? { fieldIds, repeatItem } : null },
+		state: {
+			active,
+			launch: isScopeActive(active) ? { fieldIds, repeatItem } : null,
+			...(itemForm ? { itemForm } : {})
+		},
 		...(unmatched?.length ? { unmatchedFieldIds: unmatched } : {}),
 		...(unsupportedRepeatIndex ? { unsupportedRepeatIndex } : {}),
 		...(ignoredRepeatIndex ? { ignoredRepeatIndex } : {}),
@@ -196,6 +220,235 @@ export function hasChildFields(field: { fields?: object | null } | null | undefi
 
 export function childFields<T>(field: { fields?: Record<string, T> | null } | null | undefined): T[] {
 	return field?.fields ? Object.values(field.fields) : [];
+}
+
+/**
+ * Item-form launch when every selected id sits under `repeatItem.fieldId`.
+ * A bare group id opens the whole item. Child ids are kept. Anything else returns null
+ * and the parent keeps today's item filter.
+ */
+export function itemFormLaunchFromSelection(
+	selectedFields: readonly string[] | undefined,
+	repeatItem: RepeatItemScope,
+	fields: LaunchFieldsLookup
+): ItemFormLaunch | null {
+	const group = fields[repeatItem.fieldId];
+	if (!selectedFields?.length || !hasChildFields(group)) return null;
+	const knownChildren = new Set(Object.keys(group.fields ?? {}));
+	const children: string[] = [];
+	let sawGroup = false;
+	for (const id of selectedFields) {
+		const base = baseFieldId(id);
+		if (base !== repeatItem.fieldId) return null;
+		const dot = id.indexOf('.');
+		if (dot === -1) {
+			sawGroup = true;
+			continue;
+		}
+		const child = id.slice(dot + 1);
+		if (!knownChildren.has(child)) return null;
+		children.push(child);
+	}
+	return {
+		fieldId: repeatItem.fieldId,
+		index: repeatItem.index,
+		fieldIds: children.length ? [...new Set(children)] : sawGroup ? null : null
+	};
+}
+
+/** Opens the item form only when the recorded launch is still inside the current value list. */
+export function itemLaunchFrom(state: FormVisibilityState, valueLength: number): ItemFormLaunch | null {
+	const launch = state.itemForm;
+	if (!launch) return null;
+	if (!Number.isInteger(launch.index) || launch.index < 0 || launch.index >= valueLength) return null;
+	return launch;
+}
+
+export interface ItemFormExit {
+	/** `parent` renders the parent's Save card. `item` is the item's own Done card. */
+	saveCard: 'parent' | 'item';
+	/** `closeDialog` dismisses the whole dialog. `pop` returns to the parent. */
+	dismiss: 'closeDialog' | 'pop';
+	/** The stacked drawer covers the parent, so no strip of it shows. */
+	fullWidth: boolean;
+}
+
+/**
+ * Selected-fields mode is an item form whose launch still limits the fields on screen.
+ * Callers use this for repeat item forms. A parent form's own launch is not an item form:
+ * it still has `repeatItem`.
+ */
+export function itemFormExit(visibility: FormVisibilityState): ItemFormExit {
+	const selected =
+		Boolean(visibility.launch?.fieldIds?.length) &&
+		!visibility.launch?.repeatItem &&
+		isScopeActive(visibility.active) &&
+		!visibility.active.repeatItem;
+	return selected
+		? { saveCard: 'parent', dismiss: 'closeDialog', fullWidth: true }
+		: { saveCard: 'item', dismiss: 'pop', fullWidth: false };
+}
+
+/** Parent view after an item form leaves selected-fields mode: the full form, scrolled to the repeat. */
+export function parentViewAfterItemScope(parent: FormVisibilityState, repeatFieldId: string): HiddenInvalidReveal {
+	return revealField(parent, repeatFieldId);
+}
+
+export function formHasUnsavedChanges(own: boolean, stacked: readonly boolean[]): boolean {
+	return own || stacked.some(Boolean);
+}
+
+/**
+ * The first invalid field the author cannot see.
+ * With a scope, that is an out-of-scope field. With `allUnseen`, every invalid field counts
+ * (the form is covered, for example by an open item form). Irrelevant fields are skipped.
+ */
+export function firstHiddenInvalidField(args: {
+	invalidFieldIds: readonly string[];
+	sectionOrder: readonly string[];
+	irrelevantFieldPaths?: ReadonlySet<string> | null;
+	parentPath?: string;
+	scopeFieldIds: readonly string[] | null;
+	allUnseen?: boolean;
+}): string | undefined {
+	if (args.allUnseen) {
+		const invalid = new Set(args.invalidFieldIds);
+		const ordered = [
+			...args.sectionOrder.filter((id) => invalid.has(id)),
+			...args.invalidFieldIds.filter((id) => !args.sectionOrder.includes(id))
+		];
+		return ordered.find(
+			(fieldId) =>
+				fieldVisibility({
+					fieldId,
+					irrelevantFieldPaths: args.irrelevantFieldPaths,
+					parentPath: args.parentPath,
+					scopeFieldIds: null
+				}) !== 'irrelevant'
+		);
+	}
+	return firstOutOfScopeInvalidField(args.invalidFieldIds, args.sectionOrder, args);
+}
+
+export interface HiddenFieldsAlert {
+	where: 'local' | 'parent';
+	fieldId: string;
+	count: number;
+}
+
+/** Alert for invalid fields the author cannot see. Local scope wins over a covered parent. */
+export function hiddenFieldsAlert(args: {
+	localInvalidFieldIds: readonly string[];
+	localSectionOrder: readonly string[];
+	localScopeFieldIds: readonly string[] | null;
+	localIrrelevant?: ReadonlySet<string> | null;
+	localParentPath?: string;
+	parent?: {
+		invalidFieldIds: readonly string[];
+		sectionOrder: readonly string[];
+		irrelevantFieldPaths?: ReadonlySet<string> | null;
+	};
+}): HiddenFieldsAlert | null {
+	const local = hiddenFieldIds({
+		invalidFieldIds: args.localInvalidFieldIds,
+		sectionOrder: args.localSectionOrder,
+		irrelevantFieldPaths: args.localIrrelevant,
+		parentPath: args.localParentPath,
+		scopeFieldIds: args.localScopeFieldIds
+	});
+	if (local.length) return { where: 'local', fieldId: local[0], count: local.length };
+	if (!args.parent) return null;
+	const parent = hiddenFieldIds({
+		invalidFieldIds: args.parent.invalidFieldIds,
+		sectionOrder: args.parent.sectionOrder,
+		irrelevantFieldPaths: args.parent.irrelevantFieldPaths,
+		scopeFieldIds: null,
+		allUnseen: true
+	});
+	if (!parent.length) return null;
+	return { where: 'parent', fieldId: parent[0], count: parent.length };
+}
+
+function hiddenFieldIds(args: {
+	invalidFieldIds: readonly string[];
+	sectionOrder: readonly string[];
+	irrelevantFieldPaths?: ReadonlySet<string> | null;
+	parentPath?: string;
+	scopeFieldIds: readonly string[] | null;
+	allUnseen?: boolean;
+}): string[] {
+	const first = firstHiddenInvalidField(args);
+	if (!first) return [];
+	if (args.allUnseen) {
+		return args.invalidFieldIds.filter(
+			(fieldId) =>
+				fieldVisibility({
+					fieldId,
+					irrelevantFieldPaths: args.irrelevantFieldPaths,
+					parentPath: args.parentPath,
+					scopeFieldIds: null
+				}) !== 'irrelevant'
+		);
+	}
+	return args.invalidFieldIds.filter(
+		(fieldId) =>
+			fieldVisibility({
+				fieldId,
+				irrelevantFieldPaths: args.irrelevantFieldPaths,
+				parentPath: args.parentPath,
+				scopeFieldIds: args.scopeFieldIds
+			}) === 'outOfScope'
+	);
+}
+
+export type SelectedItemSavePlan =
+	| { action: 'revealItem'; reveal: HiddenInvalidReveal }
+	| { action: 'blocked' }
+	| { action: 'revealParent'; reveal: HiddenInvalidReveal }
+	| { action: 'saveParent' };
+
+/**
+ * Save from a selected-fields item form. Item errors stay in the item.
+ * A hidden parent error is revealed on the parent after the item is written back, and nothing is saved.
+ */
+export function selectedItemSavePlan(args: {
+	draft: boolean;
+	itemVisibility: FormVisibilityState;
+	itemInvalidFieldIds: readonly string[];
+	itemFieldOrder: readonly string[];
+	parentVisibility: FormVisibilityState;
+	parentInvalidFieldIds: readonly string[];
+	parentFieldOrder: readonly string[];
+	itemIrrelevant?: ReadonlySet<string> | null;
+	parentIrrelevant?: ReadonlySet<string> | null;
+	itemParentPath?: string;
+}): SelectedItemSavePlan {
+	if (!args.draft) {
+		const itemReveal = hiddenInvalidReveal({
+			visibility: args.itemVisibility,
+			invalidFieldIds: args.itemInvalidFieldIds,
+			sectionOrder: args.itemFieldOrder,
+			irrelevantFieldPaths: args.itemIrrelevant,
+			parentPath: args.itemParentPath
+		});
+		if (itemReveal) return { action: 'revealItem', reveal: itemReveal };
+		if (args.itemInvalidFieldIds.length) return { action: 'blocked' };
+		const parentFieldId = firstHiddenInvalidField({
+			invalidFieldIds: args.parentInvalidFieldIds,
+			sectionOrder: args.parentFieldOrder,
+			irrelevantFieldPaths: args.parentIrrelevant,
+			scopeFieldIds: null,
+			allUnseen: true
+		});
+		if (parentFieldId) {
+			return { action: 'revealParent', reveal: revealField(args.parentVisibility, parentFieldId) };
+		}
+	}
+	return { action: 'saveParent' };
+}
+
+export function scopeChangeOpensParent(before: FormVisibilityState, after: FormVisibilityState): boolean {
+	return itemFormExit(before).saveCard === 'parent' && itemFormExit(after).saveCard === 'item';
 }
 
 export function itemGroupFieldIds(fields: LaunchFieldsLookup | null | undefined): Set<string> {
@@ -346,20 +599,19 @@ export type SaveRevealDecision =
 /**
  * The reveal decision. A draft writes. A completed save that is hiding an error
  * reveals it and does not write. A completed save whose errors are on screen is
- * the cannot-proceed dialog. Repeat-item editors have no launch scope to open.
+ * the cannot-proceed dialog. A form with no field scope has nothing hidden to reveal.
  * A write that later runs `onBeforeSave` may read validity again, only to refresh
  * the draft flag. It does not call this a second time.
  */
 export function decideSaveReveal(args: {
 	draft: boolean;
-	isRepeatMode: boolean;
 	visibility: FormVisibilityState;
 	invalidFieldIds: readonly string[];
 	sectionOrder: readonly string[];
 	irrelevantFieldPaths?: ReadonlySet<string> | null;
 	parentPath?: string;
 }): SaveRevealDecision {
-	if (!args.draft && !args.isRepeatMode) {
+	if (!args.draft) {
 		const reveal = hiddenInvalidReveal(args);
 		if (reveal) return { status: 'revealed', reveal };
 	}
@@ -379,7 +631,6 @@ export interface SaveValidity {
  */
 export async function gateSaveBeforeWrite(args: {
 	draft: boolean;
-	isRepeatMode: boolean;
 	visibility: FormVisibilityState;
 	sectionOrder: readonly string[];
 	irrelevantFieldPaths?: ReadonlySet<string> | null;
@@ -393,7 +644,6 @@ export async function gateSaveBeforeWrite(args: {
 	const validity = await args.readValidity();
 	const decision = decideSaveReveal({
 		draft: args.draft,
-		isRepeatMode: args.isRepeatMode,
 		visibility: args.visibility,
 		invalidFieldIds: validity.invalidFieldIds,
 		sectionOrder: args.sectionOrder,
@@ -523,7 +773,8 @@ export function visibilityFromLaunch(launch?: {
 		selectedFields: launch.selectedFields,
 		index: launch.index,
 		knownFieldIds: new Set(Object.keys(launch.fields)),
-		repeatFieldIds: itemGroupFieldIds(launch.fields)
+		repeatFieldIds: itemGroupFieldIds(launch.fields),
+		fields: launch.fields
 	});
 	for (const warning of launchScopeWarnings(resolved)) console.warn(warning);
 	return { state: resolved.state, scrollFieldId: resolved.scrollFieldId };

@@ -24,7 +24,16 @@ import MoreVertRounded from '@mui/icons-material/MoreVertRounded';
 import Collapse from '@mui/material/Collapse';
 import Alert, { alertClasses } from '@mui/material/Alert';
 import FormHelperText from '@mui/material/FormHelperText';
-import React, { forwardRef, PropsWithChildren, ReactNode, SyntheticEvent, useEffect, useRef, useState } from 'react';
+import React, {
+	forwardRef,
+	PropsWithChildren,
+	ReactNode,
+	SyntheticEvent,
+	useContext,
+	useEffect,
+	useRef,
+	useState
+} from 'react';
 import { type FieldValidityMessage, isEmptyValue, isFieldRequired } from '../lib/validators';
 import FormLabel from '@mui/material/FormLabel';
 import useItemsByPath from '../../../hooks/useItemsByPath';
@@ -38,11 +47,12 @@ import { SystemIconDescriptor } from '../../SystemIcon';
 import {
 	useFormApiContext,
 	useItemMetaContext,
+	StableGlobalContext,
 	useStableFormContext,
 	useStableGlobalApiContext
 } from '../lib/formsEngineContext';
 import { useAtomValue, useStore as useJotaiStore } from 'jotai';
-import { isScopeActive, revealField } from '../lib/formVisibility';
+import { isScopeActive, openFullForm, revealField, scopeChangeOpensParent } from '../lib/formVisibility';
 import { commitFormVisibility } from '../lib/formUtils';
 import { translateIfMessageDescriptor } from '../../ContentTypeManagement/utils';
 import useLoadableAtom from '../lib/useLoadableAtom';
@@ -110,6 +120,8 @@ export const FormsEngineField = forwardRef<HTMLDivElement, FormsEngineFieldProps
 	const stableForm = useStableFormContext();
 	const { changedFieldIds, atoms } = stableForm;
 	const jotai = useJotaiStore();
+	const { formsStackData } = useContext(StableGlobalContext);
+	const stackIndex = stableForm.props?.stackIndex ?? 0;
 	const visibility = useAtomValue(atoms.formVisibility);
 	const scopeActive = isScopeActive(visibility.active);
 	const formApi = useFormApiContext();
@@ -214,8 +226,17 @@ export const FormsEngineField = forwardRef<HTMLDivElement, FormsEngineFieldProps
 								{scopeActive && (
 									<MenuItem
 										onClick={() => {
-											const reveal = revealField(jotai.get(atoms.formVisibility), field.id);
+											const before = jotai.get(atoms.formVisibility);
+											const reveal = revealField(before, field.id);
 											commitFormVisibility(jotai.set, atoms, reveal.state, reveal.fieldId);
+											if (scopeChangeOpensParent(before, reveal.state) && stackIndex > 0) {
+												const parent = formsStackData[stackIndex - 1];
+												commitFormVisibility(
+													jotai.set,
+													parent.atoms,
+													openFullForm(jotai.get(parent.atoms.formVisibility))
+												);
+											}
 										}}
 									>
 										<ListItemText>

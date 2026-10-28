@@ -16,7 +16,7 @@
 
 import React from 'react';
 import { StableFormContext, useStableGlobalApiContext } from '../lib/formsEngineContext';
-import { useAtomValue } from 'jotai';
+import { useAtomValue, useStore as useJotaiStore } from 'jotai';
 import IconButton, { IconButtonProps } from '@mui/material/IconButton';
 import AddRounded from '@mui/icons-material/AddRounded';
 import DeleteOutlined from '@mui/icons-material/DeleteOutlined';
@@ -40,6 +40,7 @@ import type { TItem } from '../components/SortableList';
 import FieldBox from '../components/FieldBox';
 import { buttonClasses } from '@mui/material/Button';
 import { repeatIndexOutOfRangeWarning, visibleRepeatItems } from '../lib/formVisibility';
+import { repeatItemFormProps } from '../lib/repeatItemForm';
 import {
 	countLimitValue,
 	getRepeatMinimum,
@@ -87,7 +88,21 @@ export function Repeat(props: RepeatProps) {
 	const handleCancelReorder = () => setSortMode(false);
 	const onReorder = () => setSortMode(true);
 	const api = useStableGlobalApiContext();
+	const store = useJotaiStore();
 	const formAtoms = useContext(StableFormContext).atoms;
+	const valueAtom = formAtoms.valueByFieldId[field.id];
+	const openItemForm = (index?: number, item?: RepeatItem) => {
+		if (!valueAtom) return;
+		api.pushForm(
+			repeatItemFormProps({
+				fieldId: field.id,
+				index,
+				values: item,
+				getItems: () => (store.get(valueAtom) as RepeatItem[]) ?? [],
+				setItems: (next) => setValue(next)
+			})
+		);
+	};
 	const formVisibility = useAtomValue(formAtoms.formVisibility);
 	const selection = visibleRepeatItems(value, formVisibility.active.repeatItem, field.id);
 	const visibleItems = selection.items;
@@ -123,26 +138,12 @@ export function Repeat(props: RepeatProps) {
 		setValue(nextValue);
 	};
 	const handleEditItem = (event: ReactMouseEvent, item: RepeatItem, index: number) => {
-		api.pushForm({
-			repeat: { fieldId: field.id, values: item, index },
-			onSave(result) {
-				const nextValue = value.concat();
-				nextValue.splice(index, 1, result.values);
-				setValue(nextValue);
-				return Promise.resolve({ close: true });
-			}
-		});
+		openItemForm(index, item);
 	};
 	/** Opens a new repeat item unless adding is disabled. */
 	const handleAddItem: IconButtonProps['onClick'] = () => {
 		if (isAddDisabled) return;
-		api.pushForm({
-			repeat: { fieldId: field.id },
-			onSave(result) {
-				setValue(value.concat(result.values));
-				return Promise.resolve({ close: true });
-			}
-		});
+		openItemForm();
 	};
 	const sortList = useMemo<Array<TItem<RepeatItem>>>(
 		() => (sortMode ? value.map((i, index) => ({ key: String(index), value: getRepeatItemTitle(i), data: i })) : []),
