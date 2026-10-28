@@ -1318,7 +1318,7 @@ function FormOrchestrator(props: FormsEngineProps) {
 			const missed = missedItemLaunch(visibilityState, Array.isArray(items) ? items : null);
 			if (missed) {
 				itemLaunchStarted.current = true;
-				if (missed.warning) console.warn(missed.warning);
+				console.warn(missed.warning);
 				commitFormVisibility(store.set, atoms, missed.reveal.state, missed.reveal.fieldId);
 			}
 			return;
