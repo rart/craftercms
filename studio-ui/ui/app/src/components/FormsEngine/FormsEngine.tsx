@@ -180,12 +180,7 @@ import {
 	stackedFormsClosedByReload,
 	type ItemFormMode
 } from './lib/formVisibility';
-import {
-	repeatItemFormProps,
-	repeatItemValueAfterDiscard,
-	restoreOpenedRepeatItem,
-	writeItemToParent
-} from './lib/repeatItemForm';
+import { repeatItemFormProps, stackedRepeatItemAfterClose, writeItemToParent } from './lib/repeatItemForm';
 import HiddenFieldsAlert from './components/HiddenFieldsAlert';
 import { useInvalidFieldIds } from './lib/useInvalidFieldIds';
 
@@ -1184,21 +1179,19 @@ function FormOrchestrator(props: FormsEngineProps) {
 		childEntry?.props.stackIndex === 0 && (containerRef.current.style.overflowY = '');
 		if (restoreOpenedItem && childEntry) {
 			const repeat = childEntry.props.repeat;
-			const parentOfChild = stackEntryAtoms(formsStackData[formsStackData.length - 2]);
+			const parentEntry = formsStackData[formsStackData.length - 2];
+			const parentOfChild = stackEntryAtoms(parentEntry);
 			const itemsAtom = repeat?.fieldId ? parentOfChild?.valueByFieldId[repeat.fieldId] : undefined;
 			if (itemsAtom) {
 				const current = store.get(itemsAtom);
-				const restored = restoreOpenedRepeatItem({
+				const parentList = repeat?.fieldId ? parentEntry?.originalValues?.[repeat.fieldId] : undefined;
+				const next = stackedRepeatItemAfterClose({
+					restore: true,
 					wasSelectedItemForm: childEntry.itemFormMode != null,
 					items: Array.isArray(current) ? current : undefined,
 					index: repeat?.index,
-					openedValues: repeat?.values
-				});
-				const originalList = repeat?.fieldId ? stableFormContext.originalValues?.[repeat.fieldId] : undefined;
-				const next = repeatItemValueAfterDiscard({
-					current: Array.isArray(current) ? current : undefined,
-					restored,
-					original: Array.isArray(originalList) ? originalList : undefined
+					checkpoint: childEntry.originalValues ?? undefined,
+					parentCheckpoint: Array.isArray(parentList) ? parentList : undefined
 				});
 				if (next) store.set(itemsAtom, next);
 			}
@@ -1227,13 +1220,13 @@ function FormOrchestrator(props: FormsEngineProps) {
 			enhancedDialogOnClose?.(null, null);
 			return;
 		}
-		const doClose = () => popTopStackedForm(true);
 		if (action === 'wait') {
 			displayFormBeingSavedSnack(dispatch, formatMessage);
 		} else if (action === 'confirmPop') {
-			displayWithPendingChangesConfirm(dispatch, doClose);
+			displayWithPendingChangesConfirm(dispatch, () => popTopStackedForm(true));
 		} else {
-			doClose();
+			// Nothing is pending. Pop the form and do not write the checkpoint back.
+			popTopStackedForm(false);
 		}
 	};
 

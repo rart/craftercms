@@ -18,7 +18,8 @@
  * Covers the shared repeat-item opener. The save callback writes into whatever
  * array is current, so a change made after the form opened is kept. The selected-fields
  * write covers edits made in full mode that must reach the parent before Save.
- * Discard puts those edits back, and a parent save keeps an edit that arrived after the snapshot.
+ * Discard puts those edits back to the current checkpoint. A close with nothing pending does not write.
+ * A parent save keeps an edit that arrived after the snapshot.
  */
 
 import assert from 'node:assert/strict';
@@ -29,6 +30,7 @@ import {
 	repeatItemValueAfterDiscard,
 	restoreOpenedRepeatItem,
 	selectedItemPendingAfterSave,
+	stackedRepeatItemAfterClose,
 	writeItemToParent
 } from './repeatItemForm.ts';
 
@@ -101,6 +103,42 @@ describe('restoreOpenedRepeatItem', () => {
 			}),
 			undefined
 		);
+	});
+});
+
+describe('stackedRepeatItemAfterClose', () => {
+	// Save stored the edit and cleared pending. Open full form, then close, must not write the pre-save item back.
+	it('keeps the saved edit and does not dirty the parent when nothing is pending', () => {
+		const savedItem = { icon_s: 'saved' };
+		const savedList = [savedItem];
+		const next = stackedRepeatItemAfterClose({
+			restore: false,
+			wasSelectedItemForm: true,
+			items: savedList,
+			index: 0,
+			checkpoint: savedItem,
+			parentCheckpoint: savedList
+		});
+		assert.equal(next, undefined);
+	});
+
+	// A later edit is in the parent. Discard uses the saved checkpoint, not the item from when the form opened.
+	it('puts the item back to the saved value when a later edit is discarded', () => {
+		const openedItem = { icon_s: 'old' };
+		const savedItem = { icon_s: 'saved' };
+		const savedList = [savedItem];
+		const afterLaterEdit = writeItemToParent(savedList, 0, { icon_s: 'later' });
+		const next = stackedRepeatItemAfterClose({
+			restore: true,
+			wasSelectedItemForm: true,
+			items: afterLaterEdit,
+			index: 0,
+			checkpoint: savedItem,
+			parentCheckpoint: savedList
+		});
+		assert.equal(next, savedList);
+		assert.deepEqual(next, [{ icon_s: 'saved' }]);
+		assert.notDeepEqual(next, [openedItem]);
 	});
 });
 

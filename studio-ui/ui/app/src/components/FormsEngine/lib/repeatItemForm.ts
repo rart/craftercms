@@ -67,8 +67,9 @@ export function writeItemToParent<T>(items: readonly T[], index: number | undefi
 /**
  * Discard of a form that was opened in selected-fields mode.
  * Those edits are already in the parent, so dropping the stacked form would keep them.
- * `openedValues` is the item from when the form opened. A pencil form was never written
- * through, so this leaves it alone. An unchanged item is the same array `writeItemToParent` returns.
+ * `openedValues` is the item checkpoint: the opened item, then the saved item after a parent save.
+ * A pencil form was never written through, so this leaves it alone.
+ * An unchanged item is the same array `writeItemToParent` returns.
  */
 export function restoreOpenedRepeatItem<T>(args: {
 	wasSelectedItemForm: boolean;
@@ -100,6 +101,35 @@ export function repeatItemValueAfterDiscard<T>(args: {
 	if (!args.restored || args.restored === args.current) return undefined;
 	if (args.original && sameItem(args.original, args.restored)) return args.original;
 	return args.restored;
+}
+
+/**
+ * Parent array after a stacked item form closes.
+ * A close with nothing pending does not write. A confirmed discard writes the item checkpoint
+ * back through `restoreOpenedRepeatItem`. The parent's own saved array is used when that
+ * write lands on the last save, so the repeat field is not left dirty.
+ * Returns undefined when the parent should be left untouched.
+ */
+export function stackedRepeatItemAfterClose<T>(args: {
+	restore: boolean;
+	wasSelectedItemForm: boolean;
+	items: readonly T[] | null | undefined;
+	index: number | undefined;
+	checkpoint: T | undefined;
+	parentCheckpoint: readonly T[] | null | undefined;
+}): readonly T[] | undefined {
+	if (!args.restore) return undefined;
+	const restored = restoreOpenedRepeatItem({
+		wasSelectedItemForm: args.wasSelectedItemForm,
+		items: args.items,
+		index: args.index,
+		openedValues: args.checkpoint
+	});
+	return repeatItemValueAfterDiscard({
+		current: args.items,
+		restored,
+		original: args.parentCheckpoint
+	});
 }
 
 /** The repeat item inside a saved content object, or undefined when this entry is not that item. */
