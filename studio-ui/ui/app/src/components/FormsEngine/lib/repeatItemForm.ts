@@ -104,21 +104,20 @@ export function repeatItemValueAfterDiscard<T>(args: {
 }
 
 /**
- * Parent array after a stacked item form closes.
- * A close with nothing pending does not write. A confirmed discard writes the item checkpoint
- * back through `restoreOpenedRepeatItem`. The parent's own saved array is used when that
- * write lands on the last save, so the repeat field is not left dirty.
+ * Parent array after a stacked item form closes, other than Done or Save.
+ * The item checkpoint is written back through `restoreOpenedRepeatItem`. When nothing is
+ * pending, that checkpoint is what the item form is showing, including a value typed back
+ * to the last save. `writeItemToParent` leaves the array alone when the item already matches,
+ * and the parent's saved array is reused when the result is that save, so the parent stays clean.
  * Returns undefined when the parent should be left untouched.
  */
 export function stackedRepeatItemAfterClose<T>(args: {
-	restore: boolean;
 	wasSelectedItemForm: boolean;
 	items: readonly T[] | null | undefined;
 	index: number | undefined;
 	checkpoint: T | undefined;
 	parentCheckpoint: readonly T[] | null | undefined;
 }): readonly T[] | undefined {
-	if (!args.restore) return undefined;
 	const restored = restoreOpenedRepeatItem({
 		wasSelectedItemForm: args.wasSelectedItemForm,
 		items: args.items,

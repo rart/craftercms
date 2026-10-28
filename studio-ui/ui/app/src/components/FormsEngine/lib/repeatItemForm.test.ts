@@ -18,8 +18,9 @@
  * Covers the shared repeat-item opener. The save callback writes into whatever
  * array is current, so a change made after the form opened is kept. The selected-fields
  * write covers edits made in full mode that must reach the parent before Save.
- * Discard puts those edits back to the current checkpoint. A close with nothing pending does not write.
- * A parent save keeps an edit that arrived after the snapshot.
+ * Closing the item form puts the parent back to the item checkpoint. That write is a no-op when
+ * the parent already has it. Done and Save do not use this path. A parent save keeps an edit
+ * that arrived after the snapshot.
  */
 
 import assert from 'node:assert/strict';
@@ -107,17 +108,32 @@ describe('restoreOpenedRepeatItem', () => {
 });
 
 describe('stackedRepeatItemAfterClose', () => {
-	// Save stored the edit and cleared pending. Open full form, then close, must not write the pre-save item back.
-	it('keeps the saved edit and does not dirty the parent when nothing is pending', () => {
-		const savedItem = { icon_s: 'saved' };
-		const savedList = [savedItem];
+	// Selected mode wrote the new Icon. Typing the old value back clears pending, and a plain close must store that.
+	it('restores the parent and leaves it clean when the old value is typed back', () => {
+		const openedItem = { icon_s: 'old' };
+		const openedList = [openedItem];
+		const afterSelectedEdit = writeItemToParent(openedList, 0, { icon_s: 'new' });
 		const next = stackedRepeatItemAfterClose({
-			restore: false,
 			wasSelectedItemForm: true,
-			items: savedList,
+			items: afterSelectedEdit,
 			index: 0,
-			checkpoint: savedItem,
-			parentCheckpoint: savedList
+			checkpoint: openedItem,
+			parentCheckpoint: openedList
+		});
+		assert.equal(next, openedList);
+		assert.deepEqual(next, [{ icon_s: 'old' }]);
+	});
+
+	// The item form never changed, so closing it must not replace the parent array.
+	it('writes nothing when the item was never changed', () => {
+		const openedItem = { icon_s: 'old' };
+		const openedList = [openedItem];
+		const next = stackedRepeatItemAfterClose({
+			wasSelectedItemForm: true,
+			items: openedList,
+			index: 0,
+			checkpoint: openedItem,
+			parentCheckpoint: openedList
 		});
 		assert.equal(next, undefined);
 	});
@@ -129,7 +145,6 @@ describe('stackedRepeatItemAfterClose', () => {
 		const savedList = [savedItem];
 		const afterLaterEdit = writeItemToParent(savedList, 0, { icon_s: 'later' });
 		const next = stackedRepeatItemAfterClose({
-			restore: true,
 			wasSelectedItemForm: true,
 			items: afterLaterEdit,
 			index: 0,

@@ -1186,7 +1186,6 @@ function FormOrchestrator(props: FormsEngineProps) {
 				const current = store.get(itemsAtom);
 				const parentList = repeat?.fieldId ? parentEntry?.originalValues?.[repeat.fieldId] : undefined;
 				const next = stackedRepeatItemAfterClose({
-					restore: true,
 					wasSelectedItemForm: childEntry.itemFormMode != null,
 					items: Array.isArray(current) ? current : undefined,
 					index: repeat?.index,
@@ -1225,8 +1224,8 @@ function FormOrchestrator(props: FormsEngineProps) {
 		} else if (action === 'confirmPop') {
 			displayWithPendingChangesConfirm(dispatch, () => popTopStackedForm(true));
 		} else {
-			// Nothing is pending. Pop the form and do not write the checkpoint back.
-			popTopStackedForm(false);
+			// Nothing is pending, so the checkpoint is what the item form shows. Put that back.
+			popTopStackedForm(true);
 		}
 	};
 
