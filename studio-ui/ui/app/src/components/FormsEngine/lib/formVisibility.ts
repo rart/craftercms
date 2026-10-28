@@ -435,6 +435,9 @@ export async function applySaveGate<WriteResult>(
  * Clearing `pendingScrollFieldId` retriggers the effect. That follow-up keeps the
  * reveal's scroll, even when `fieldToScroll` is also set. A pending id focuses only
  * when `focusPending` is set; the launch fallback scroll leaves it off.
+ * A `fieldToScroll` is remembered only after it was actually scrolled, or when it
+ * is cleared. The first run often happens before the form body is mounted, and
+ * remembering the id then would skip the scroll once the content appears.
  */
 export function planSettledFieldScroll(args: {
 	pendingScrollFieldId?: string | null;
@@ -468,11 +471,12 @@ export function planSettledFieldScroll(args: {
 	}
 	const fieldId = args.pendingScrollFieldId || args.fieldToScroll || '';
 	if (!fieldId || !args.hasMainContent) {
+		// Nothing was scrolled. Keep the previous id, and still forget it when the target is cleared.
 		return {
 			action: 'idle',
 			retainSettledScroll: false,
 			cancelInFlight: !args.retainSettledScroll,
-			rememberFieldToScroll
+			rememberFieldToScroll: args.fieldToScroll ? (args.lastFieldToScroll ?? null) : null
 		};
 	}
 	return {

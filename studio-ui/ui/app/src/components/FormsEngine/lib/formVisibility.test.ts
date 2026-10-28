@@ -21,7 +21,7 @@
  * single decision that either reveals a hidden error, refuses the write, or
  * continues, and the draft flag that decision hands to the write. Scroll tests
  * check that a reveal keeps its field when fieldToScroll is also set, and that
- * a plain fieldToScroll scrolls once, and again after that target is cleared.
+ * a plain fieldToScroll scrolls once the form content is mounted, and again after that target is cleared.
  * They do not render the form.
  */
 
@@ -740,5 +740,35 @@ describe('settled field scroll', () => {
 		if (again.action !== 'scroll') return;
 		assert.equal(again.fieldId, 'title_s');
 		assert.equal(again.focus, false);
+	});
+
+	// The first effect run is before the form body exists. Remembering the id then would skip the scroll after it mounts.
+	it('scrolls an initial fieldToScroll once the form content mounts', () => {
+		const beforeMount = planSettledFieldScroll({
+			pendingScrollFieldId: null,
+			fieldToScroll: 'title_s',
+			clearingPending: false,
+			retainSettledScroll: false,
+			hasMainContent: false,
+			focusPending: false,
+			lastFieldToScroll: null
+		});
+		assert.equal(beforeMount.action, 'idle');
+		assert.equal(beforeMount.rememberFieldToScroll, null);
+
+		const mounted = planSettledFieldScroll({
+			pendingScrollFieldId: null,
+			fieldToScroll: 'title_s',
+			clearingPending: false,
+			retainSettledScroll: false,
+			hasMainContent: true,
+			focusPending: false,
+			lastFieldToScroll: beforeMount.rememberFieldToScroll
+		});
+		assert.equal(mounted.action, 'scroll');
+		if (mounted.action !== 'scroll') return;
+		assert.equal(mounted.fieldId, 'title_s');
+		assert.equal(mounted.focus, false);
+		assert.equal(mounted.rememberFieldToScroll, 'title_s');
 	});
 });
