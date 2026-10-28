@@ -20,6 +20,7 @@ import { useStore as useJotaiStore, type Atom } from 'jotai';
 import type LookupTable from '../../../models/LookupTable';
 import type { FieldValidityState } from './validators';
 import { readInvalidFieldIds } from './formUtils';
+import { isCurrentValidityRead } from './formVisibility';
 
 /** Live ids of fields that fail validation, excluding controller-irrelevant fields. */
 export function useInvalidFieldIds(
@@ -33,9 +34,11 @@ export function useInvalidFieldIds(
 	useEffect(() => {
 		if (!validationByFieldId) return;
 		let disposed = false;
+		let latest = 0;
 		const read = async () => {
+			const seq = ++latest;
 			const next = await readInvalidFieldIds(jotai, validationByFieldId, irrelevantFieldPaths, parentPath);
-			if (disposed) return;
+			if (!isCurrentValidityRead(seq, latest, disposed)) return;
 			setIds(next);
 		};
 		void read();

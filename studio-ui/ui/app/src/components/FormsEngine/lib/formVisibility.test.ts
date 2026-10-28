@@ -25,7 +25,7 @@
  * a plain fieldToScroll scrolls once the form content is mounted, and again after that target is cleared.
  * Stack tests check a form pushed before its atoms exist, selected-fields mode, the one close
  * decision, lock sharing, reload, which pending flags a parent save clears, and the width and
- * dirty flags of more than one stacked form.
+ * dirty flags of more than one stacked form. A validity read that finishes late is dropped.
  * They do not render the form.
  */
 
@@ -41,10 +41,10 @@ import {
 	saveAsDraftFlag,
 	fieldVisibility,
 	clearRepeatItemScope,
-	clearStackPendingFlags,
 	firstOutOfScopeInvalidField,
 	hasChildFields,
 	hasFormAtoms,
+	isCurrentValidityRead,
 	hiddenFieldsAlert,
 	itemFormExit,
 	itemLaunchFrom,
@@ -72,6 +72,7 @@ import {
 	visibilityFromLaunch,
 	visibleRepeatItems
 } from './formVisibility.ts';
+import { clearStackPendingFlags } from './repeatItemForm.ts';
 
 const known = new Set(['title_s', 'body_html', 'articles_o', 'sidebar_s']);
 const repeats = new Set(['articles_o']);
@@ -1040,6 +1041,15 @@ describe('selected item save', () => {
 	});
 });
 
+describe('validity read order', () => {
+	// Field validation is async. An earlier read can finish after a later edit has already started another.
+	it('drops a validity read that a newer read has replaced', () => {
+		assert.equal(isCurrentValidityRead(1, 2, false), false);
+		assert.equal(isCurrentValidityRead(2, 2, false), true);
+		assert.equal(isCurrentValidityRead(2, 2, true), false);
+	});
+});
+
 describe('stacked form guards', () => {
 	// pushForm inserts the entry before prep. The launch, pencil, Add, and node selector all do this.
 	it('does not read form visibility before atoms exist', () => {
@@ -1114,7 +1124,7 @@ describe('stacked form guards', () => {
 		assert.equal(stackedFormsClosedByReload(3, 1), 0);
 	});
 
-	// A parent save already stored selected-fields edits. A full-mode or pencil item was not written through.
+	// A parent save already stored selected-fields edits that still match. A full-mode or pencil item was not written through.
 	it('clears pending flags only for selected-fields entries', () => {
 		const selectedChanged = new Set(['icon_s']);
 		const fullChanged = new Set(['url_s']);
@@ -1128,6 +1138,30 @@ describe('stacked form guards', () => {
 		assert.equal(selectedChanged.size, 0);
 		assert.equal(fullPending, true);
 		assert.equal(fullChanged.size, 1);
+	});
+
+	// The selected item changed after the snapshot. Its flag stays, and rollback will use the saved item.
+	it('keeps a selected item dirty when it changed during the parent save', () => {
+		const changed = new Set(['icon_s']);
+		let pending = true;
+		let checkpoint: Record<string, unknown> | null = null;
+		clearStackPendingFlags([
+			{
+				selected: true,
+				changedFieldIds: changed,
+				savedItem: { icon_s: 'saved' },
+				currentItem: { icon_s: 'newer' },
+				setCheckpoint: (values) => {
+					checkpoint = values;
+				},
+				setPending: (value) => {
+					pending = value;
+				}
+			}
+		]);
+		assert.equal(pending, true);
+		assert.equal(changed.has('icon_s'), true);
+		assert.deepEqual(checkpoint, { icon_s: 'saved' });
 	});
 
 	// Close and minimize are the checkbox values read when Save is clicked.

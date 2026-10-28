@@ -1088,11 +1088,12 @@ export function generateDefaultCreationComment(
 	return newMessage;
 }
 
-/** Atoms of a stack entry, or null while prep has not finished. */
+/** True for an embedded component: an existing one (`update.modelId`) or a new one (`create.embedded`). */
 export function isEmbeddedForm(props: { update?: { modelId?: string }; create?: { embedded?: boolean } }): boolean {
 	return Boolean(props.update?.modelId) || Boolean(props.create?.embedded);
 }
 
+/** Atoms of a stack entry, or null while prep has not finished. */
 export function stackEntryAtoms(entry: { atoms: FormsEngineAtoms | null } | null | undefined): FormsEngineAtoms | null {
 	return hasFormAtoms(entry) ? entry.atoms : null;
 }

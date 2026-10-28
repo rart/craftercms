@@ -180,7 +180,12 @@ import {
 	stackedFormsClosedByReload,
 	type ItemFormMode
 } from './lib/formVisibility';
-import { repeatItemFormProps, writeItemToParent } from './lib/repeatItemForm';
+import {
+	repeatItemFormProps,
+	repeatItemValueAfterDiscard,
+	restoreOpenedRepeatItem,
+	writeItemToParent
+} from './lib/repeatItemForm';
 import HiddenFieldsAlert from './components/HiddenFieldsAlert';
 import { useInvalidFieldIds } from './lib/useInvalidFieldIds';
 
@@ -195,6 +200,8 @@ export interface BaseProps extends Partial<UpdateModeProps & RepeatModeProps & C
 	/** Whether the form is rendered in a dialog. Causes various layout adjustments. **/
 	isDialog?: boolean;
 	onClose?: EnhancedDialogProps['onClose'];
+	/** Closes a stacked form after its own save. Does not restore selected-fields edits. */
+	onCommittedClose?(): void;
 	onMinimize?: EnhancedDialogProps['onMinimize'];
 	onFullScreen?: EnhancedDialogProps['onFullScreen'];
 	onCancelFullScreen?: EnhancedDialogProps['onCancelFullScreen'];
@@ -1170,6 +1177,39 @@ function FormOrchestrator(props: FormsEngineProps) {
 		scroller.style.overflowY = '';
 		setOpenDrawerSidebar(false);
 	};
+	const popTopStackedForm = (restoreOpenedItem: boolean) => {
+		const childEntry = formsStackData[formsStackData.length - 1];
+		const childMode = childEntry?.itemFormMode ? store.get(childEntry.itemFormMode) : null;
+		// The child form item unlocking should be getting done by the FormOrchestrator of the unmounting form via useUnlockOnClose hook.
+		childEntry?.props.stackIndex === 0 && (containerRef.current.style.overflowY = '');
+		if (restoreOpenedItem && childEntry) {
+			const repeat = childEntry.props.repeat;
+			const parentOfChild = stackEntryAtoms(formsStackData[formsStackData.length - 2]);
+			const itemsAtom = repeat?.fieldId ? parentOfChild?.valueByFieldId[repeat.fieldId] : undefined;
+			if (itemsAtom) {
+				const current = store.get(itemsAtom);
+				const restored = restoreOpenedRepeatItem({
+					wasSelectedItemForm: childEntry.itemFormMode != null,
+					items: Array.isArray(current) ? current : undefined,
+					index: repeat?.index,
+					openedValues: repeat?.values
+				});
+				const originalList = repeat?.fieldId ? stableFormContext.originalValues?.[repeat.fieldId] : undefined;
+				const next = repeatItemValueAfterDiscard({
+					current: Array.isArray(current) ? current : undefined,
+					restored,
+					original: Array.isArray(originalList) ? originalList : undefined
+				});
+				if (next) store.set(itemsAtom, next);
+			}
+		}
+		contextApi.popForm();
+		// An item form that left selected-fields mode returns to the parent. Scroll to its repeat.
+		if (childMode === 'full' && childEntry?.props.repeat?.fieldId) {
+			const reveal = revealField(store.get(atoms.formVisibility), childEntry.props.repeat.fieldId);
+			commitFormVisibility(store.set, atoms, reveal.state, reveal.fieldId);
+		}
+	};
 	const handleCloseDrawerForm: DrawerProps['onClose'] = () => {
 		if (!hasStackedForms) return;
 		const childEntry = formsStackData[formsStackData.length - 1];
@@ -1187,16 +1227,7 @@ function FormOrchestrator(props: FormsEngineProps) {
 			enhancedDialogOnClose?.(null, null);
 			return;
 		}
-		const doClose = () => {
-			// The child form item unlocking should be getting done by the FormOrchestrator of the unmounting form via useUnlockOnClose hook.
-			childEntry.props.stackIndex === 0 && (containerRef.current.style.overflowY = '');
-			contextApi.popForm();
-			// An item form that left selected-fields mode returns to the parent. Scroll to its repeat.
-			if (childMode === 'full' && childEntry.props.repeat?.fieldId) {
-				const reveal = revealField(store.get(atoms.formVisibility), childEntry.props.repeat.fieldId);
-				commitFormVisibility(store.set, atoms, reveal.state, reveal.fieldId);
-			}
-		};
+		const doClose = () => popTopStackedForm(true);
 		if (action === 'wait') {
 			displayFormBeingSavedSnack(dispatch, formatMessage);
 		} else if (action === 'confirmPop') {
@@ -1247,7 +1278,14 @@ function FormOrchestrator(props: FormsEngineProps) {
 		isCreateMode,
 		isRepeatMode,
 		createPath: Boolean(create?.path) ? pathInSite : undefined, // pathInSite is the result of processing the create path with macros.
-		onClose: () => onCloseHandler(null, null),
+		onClose: () => {
+			// Done already wrote the item. Popping must not put the opened values back.
+			if (props.onCommittedClose) {
+				props.onCommittedClose();
+				return;
+			}
+			onCloseHandler?.(null, null);
+		},
 		onMinimize: () => props.onMinimize?.()
 	});
 
@@ -1825,6 +1863,7 @@ function FormOrchestrator(props: FormsEngineProps) {
 							stackTransitionEnded={!disableStackedFormDrawerAutoFocus}
 							isDialog={isDialog}
 							onClose={handleCloseDrawerForm}
+							onCommittedClose={() => popTopStackedForm(false)}
 						/>
 					)}
 				</Drawer>

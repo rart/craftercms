@@ -64,6 +64,108 @@ export function writeItemToParent<T>(items: readonly T[], index: number | undefi
 	return commitRepeatItem(items, index, nextItem);
 }
 
+/**
+ * Discard of a form that was opened in selected-fields mode.
+ * Those edits are already in the parent, so dropping the stacked form would keep them.
+ * `openedValues` is the item from when the form opened. A pencil form was never written
+ * through, so this leaves it alone. An unchanged item is the same array `writeItemToParent` returns.
+ */
+export function restoreOpenedRepeatItem<T>(args: {
+	wasSelectedItemForm: boolean;
+	items: readonly T[] | null | undefined;
+	index: number | undefined;
+	openedValues: T | undefined;
+}): T[] | undefined {
+	if (
+		!args.wasSelectedItemForm ||
+		args.openedValues === undefined ||
+		args.index === undefined ||
+		!Array.isArray(args.items)
+	) {
+		return undefined;
+	}
+	return writeItemToParent(args.items, args.index, args.openedValues);
+}
+
+/**
+ * The array to store after a discard, or undefined when nothing should be written.
+ * When the restored items match the parent's checkpoint, the checkpoint array itself is
+ * returned so the repeat field is not left looking dirty.
+ */
+export function repeatItemValueAfterDiscard<T>(args: {
+	current: readonly T[] | null | undefined;
+	restored: readonly T[] | null | undefined;
+	original: readonly T[] | null | undefined;
+}): readonly T[] | undefined {
+	if (!args.restored || args.restored === args.current) return undefined;
+	if (args.original && sameItem(args.original, args.restored)) return args.original;
+	return args.restored;
+}
+
+/** The repeat item inside a saved content object, or undefined when this entry is not that item. */
+export function repeatItemInValues(
+	values: Record<string, unknown> | null | undefined,
+	fieldId: string | undefined,
+	index: number | undefined
+): unknown {
+	if (!values || fieldId === undefined || index === undefined) return undefined;
+	const list = values[fieldId];
+	return Array.isArray(list) ? list[index] : undefined;
+}
+
+/**
+ * What a parent save should do with a stacked entry.
+ * A selected item that still matches the save drops its pending flag, and its checkpoint
+ * becomes the saved item so a later rollback restores that save.
+ * An edit made after the snapshot keeps the pending flag. The checkpoint is still the saved item.
+ * A full-mode or pencil entry is left alone.
+ */
+export function selectedItemPendingAfterSave(args: { selected: boolean; savedItem: unknown; currentItem: unknown }): {
+	clearPending: boolean;
+	checkpoint: Record<string, unknown> | null;
+} {
+	if (!args.selected) return { clearPending: false, checkpoint: null };
+	const checkpoint = isPlainRecord(args.savedItem) ? args.savedItem : null;
+	if (args.savedItem !== undefined && !formFieldsMatchSaved(args.savedItem, args.currentItem)) {
+		return { clearPending: false, checkpoint };
+	}
+	return { clearPending: true, checkpoint };
+}
+
+/**
+ * A parent save that stays open already stored selected-fields edits that match the save.
+ * Only those entries are cleared, and their checkpoint becomes the saved item.
+ * An edit made after the snapshot keeps its pending flag. A full-mode or pencil item is left alone.
+ */
+export function clearStackPendingFlags(
+	entries: readonly {
+		selected: boolean;
+		changedFieldIds: Set<string>;
+		setPending(value: boolean): void;
+		savedItem?: unknown;
+		currentItem?: unknown;
+		setCheckpoint?(values: Record<string, unknown>): void;
+	}[]
+): void {
+	for (const entry of entries) {
+		const decision = selectedItemPendingAfterSave({
+			selected: entry.selected,
+			savedItem: entry.savedItem,
+			currentItem: entry.currentItem
+		});
+		if (decision.checkpoint) entry.setCheckpoint?.(decision.checkpoint);
+		if (!decision.clearPending) continue;
+		entry.changedFieldIds.clear();
+		entry.setPending(false);
+	}
+}
+
+/** Compares the form's own fields. Extra keys on the stored item are not an in-flight edit. */
+function formFieldsMatchSaved(saved: unknown, current: unknown): boolean {
+	if (!isPlainRecord(current) || !isPlainRecord(saved)) return sameItem(saved, current);
+	return Object.keys(current).every((key) => sameItem(current[key], saved[key]));
+}
+
 export function repeatItemFormProps<T extends Record<string, unknown>>(args: {
 	fieldId: string;
 	index?: number;

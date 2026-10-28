@@ -475,18 +475,11 @@ export function stackedFormsClosedByReload(stackLength: number, stackIndex: numb
 }
 
 /**
- * A parent save that stays open already stored selected-fields edits.
- * Only those entries are cleared. A full-mode or pencil item was not written through,
- * so it keeps its pending flag and its dirty prompt.
+ * A validity read awaits every field, and a later edit can start another read before the first finishes.
+ * Only the newest read may be stored. `disposed` covers unmount.
  */
-export function clearStackPendingFlags(
-	entries: readonly { selected: boolean; changedFieldIds: Set<string>; setPending(value: boolean): void }[]
-): void {
-	for (const entry of entries) {
-		if (!entry.selected) continue;
-		entry.changedFieldIds.clear();
-		entry.setPending(false);
-	}
+export function isCurrentValidityRead(seq: number, latest: number, disposed: boolean): boolean {
+	return !disposed && seq === latest;
 }
 
 /** What a repository save does after the write, using the checkbox values read at save time. */

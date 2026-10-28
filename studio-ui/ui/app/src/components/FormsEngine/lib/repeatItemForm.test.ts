@@ -18,11 +18,19 @@
  * Covers the shared repeat-item opener. The save callback writes into whatever
  * array is current, so a change made after the form opened is kept. The selected-fields
  * write covers edits made in full mode that must reach the parent before Save.
+ * Discard puts those edits back, and a parent save keeps an edit that arrived after the snapshot.
  */
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { commitRepeatItem, repeatItemFormProps, writeItemToParent } from './repeatItemForm.ts';
+import {
+	commitRepeatItem,
+	repeatItemFormProps,
+	repeatItemValueAfterDiscard,
+	restoreOpenedRepeatItem,
+	selectedItemPendingAfterSave,
+	writeItemToParent
+} from './repeatItemForm.ts';
 
 describe('commitRepeatItem', () => {
 	// Editing an item replaces that index and leaves the others in place.
@@ -47,6 +55,87 @@ describe('writeItemToParent', () => {
 		assert.deepEqual(afterReturn, [{ icon_s: 'new' }]);
 		// Save reads this array. Writing the same item again does not replace it, so an unchanged open stays clean.
 		assert.equal(writeItemToParent(afterReturn, 0, editedInFullMode), afterReturn);
+	});
+});
+
+describe('restoreOpenedRepeatItem', () => {
+	// Selected mode already wrote the edit. Open full form does not undo it. Discard must.
+	it('puts back the opened item after a selected-mode edit is discarded', () => {
+		const openedItem = { icon_s: 'old' };
+		const original = [openedItem];
+		const afterEdit = writeItemToParent(original, 0, { icon_s: 'new' });
+		assert.deepEqual(afterEdit, [{ icon_s: 'new' }]);
+		const restored = restoreOpenedRepeatItem({
+			wasSelectedItemForm: true,
+			items: afterEdit,
+			index: 0,
+			openedValues: openedItem
+		});
+		const next = repeatItemValueAfterDiscard({ current: afterEdit, restored, original });
+		assert.equal(next, original);
+		assert.deepEqual(next, [{ icon_s: 'old' }]);
+	});
+
+	// Nothing changed, so discard must not replace the parent array.
+	it('leaves the parent array alone when discard has nothing to undo', () => {
+		const items = [{ icon_s: 'old' }];
+		const restored = restoreOpenedRepeatItem({
+			wasSelectedItemForm: true,
+			items,
+			index: 0,
+			openedValues: { icon_s: 'old' }
+		});
+		assert.equal(restored, items);
+		assert.equal(repeatItemValueAfterDiscard({ current: items, restored, original: items }), undefined);
+	});
+
+	// The pencil never wrote through, so discard does not touch the parent.
+	it('does not restore a pencil item form', () => {
+		const items = [{ icon_s: 'new' }];
+		assert.equal(
+			restoreOpenedRepeatItem({
+				wasSelectedItemForm: false,
+				items,
+				index: 0,
+				openedValues: { icon_s: 'old' }
+			}),
+			undefined
+		);
+	});
+});
+
+describe('selectedItemPendingAfterSave', () => {
+	// The item changed after the XML was built. The pending flag stays, and rollback uses the saved item.
+	it('keeps the pending flag when the item changed during the parent save', () => {
+		const decision = selectedItemPendingAfterSave({
+			selected: true,
+			savedItem: { icon_s: 'saved' },
+			currentItem: { icon_s: 'newer' }
+		});
+		assert.equal(decision.clearPending, false);
+		assert.deepEqual(decision.checkpoint, { icon_s: 'saved' });
+	});
+
+	// The open item matches what was saved. Extra stored keys are not a new edit.
+	it('clears the pending flag when the open item matches the save', () => {
+		const decision = selectedItemPendingAfterSave({
+			selected: true,
+			savedItem: { icon_s: 'saved', component: { id: '1' } },
+			currentItem: { icon_s: 'saved' }
+		});
+		assert.equal(decision.clearPending, true);
+		assert.deepEqual(decision.checkpoint, { icon_s: 'saved', component: { id: '1' } });
+	});
+
+	// A pencil or full-mode item was not written through, so the save does not clear it.
+	it('leaves a form that is not in selected-fields mode', () => {
+		const decision = selectedItemPendingAfterSave({
+			selected: false,
+			savedItem: { icon_s: 'saved' },
+			currentItem: { icon_s: 'saved' }
+		});
+		assert.equal(decision.clearPending, false);
+		assert.equal(decision.checkpoint, null);
 	});
 });
 

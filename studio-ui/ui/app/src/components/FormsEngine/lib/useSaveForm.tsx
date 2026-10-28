@@ -42,10 +42,10 @@ import { contentFormSaveAction } from '../../../utils/contentFormLaunch';
 import {
 	applySaveGate,
 	childFields,
-	clearStackPendingFlags,
 	repositorySaveFollowUp,
 	saveAsDraftFlag
 } from './formVisibility';
+import { clearStackPendingFlags, repeatItemInValues } from './repeatItemForm';
 import { XmlKeys } from './formConsts';
 import { fromString } from '../../../utils/xml';
 import {
@@ -226,17 +226,28 @@ export function useSaveForm(props: UseSaveFormProps) {
 						// TODO: What would `setValuesCheckpoint` do if called on a repeat group form?
 						!isRepeatMode && formContextApi.setValuesCheckpoint(values);
 					});
-					// Selected-fields edits are already in the parent. A full-mode or pencil item keeps its own pending flag.
+					// Selected-fields edits that match this save are already in the parent.
+					// An edit made after the snapshot keeps its pending flag. A full-mode or pencil item does too.
 					if (!isRepeatMode) {
-						clearStackPendingFlags(
-							formsStackData.map((entry) => ({
+						const entries = formsStackData.map((entry) => {
+							const repeat = entry.props?.repeat;
+							return {
 								selected: entry.itemFormMode ? jotai.get(entry.itemFormMode) === 'selected' : false,
 								changedFieldIds: entry.changedFieldIds,
-								setPending(value) {
+								savedItem: repeatItemInValues(values, repeat?.fieldId, repeat?.index),
+								currentItem: entry.atoms ? extractAtomValues(jotai, entry.atoms.valueByFieldId) : undefined,
+								setCheckpoint(next: Record<string, unknown>) {
+									entry.originalValues = next;
+								},
+								setPending(value: boolean) {
 									if (entry.atoms) jotai.set(entry.atoms.hasPendingChanges, value);
 								}
-							}))
-						);
+							};
+						});
+						clearStackPendingFlags(entries);
+						if (entries.some((entry) => entry.selected && entry.changedFieldIds.size > 0)) {
+							setHasPendingChanges(true);
+						}
 					}
 					const followUp = repositorySaveFollowUp({
 						resultClose: close,
