@@ -627,6 +627,11 @@ export function repeatIndexOutOfRangeWarning(fieldId: string, index: number, len
 	return `Repeat item index ${index} is outside "${fieldId}" (${length} items). Showing all items.`;
 }
 
+/** The repeat value is missing, so the item form cannot open. */
+export function repeatItemsMissingWarning(fieldId: string): string {
+	return `Item launch for "${fieldId}" has no repeat items to open. Showing the full form.`;
+}
+
 /** Drops the active repeat-item limit. Field scope and `launch` stay, so the author can return to the item. */
 export function clearRepeatItemScope(state: FormVisibilityState): FormVisibilityState {
 	if (!state.active.repeatItem) return state;
@@ -677,17 +682,36 @@ export function revealField(state: FormVisibilityState, fieldId?: string): Hidde
 /**
  * An item launch that cannot be opened. The parent stays full and scrolls to the repeat.
  * An array value means the index was past the end, so the warning names that.
+ * No array means the repeat value is missing, so the warning says there is nothing to open.
  */
 export function missedItemLaunch(
 	state: FormVisibilityState,
 	items: readonly unknown[] | null
-): { reveal: HiddenInvalidReveal; warning?: string } | null {
+): { reveal: HiddenInvalidReveal; warning: string } | null {
 	const itemForm = state.itemForm;
 	if (!itemForm) return null;
 	const reveal = revealField({ ...state, itemForm: null }, itemForm.fieldId);
-	return items
-		? { reveal, warning: repeatIndexOutOfRangeWarning(itemForm.fieldId, itemForm.index, items.length) }
-		: { reveal };
+	const warning = items
+		? repeatIndexOutOfRangeWarning(itemForm.fieldId, itemForm.index, items.length)
+		: repeatItemsMissingWarning(itemForm.fieldId);
+	return { reveal, warning };
+}
+
+export type InvalidFieldReadSettlement = 'apply' | 'report' | 'ignore';
+
+/**
+ * A current validity read replaces the invalid-field ids.
+ * A current rejection is reported and the last ids stay.
+ * A stale read, including a rejection that lost the race, is ignored so it cannot replace a newer result.
+ */
+export function settleInvalidFieldRead(args: {
+	disposed: boolean;
+	seq: number;
+	latest: number;
+	rejected: boolean;
+}): InvalidFieldReadSettlement {
+	if (args.disposed || args.seq !== args.latest) return 'ignore';
+	return args.rejected ? 'report' : 'apply';
 }
 
 export type SaveRevealDecision =

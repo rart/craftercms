@@ -19,6 +19,7 @@ import type { Observable } from 'rxjs';
 import { useStore as useJotaiStore, type Atom } from 'jotai';
 import type LookupTable from '../../../models/LookupTable';
 import type { FieldValidityState } from './validators';
+import { settleInvalidFieldRead } from './formVisibility';
 import { readInvalidFieldIds } from './formUtils';
 
 /** Live ids of fields that fail validation, excluding controller-irrelevant fields. */
@@ -36,9 +37,15 @@ export function useInvalidFieldIds(
 		let latest = 0;
 		const read = async () => {
 			const seq = ++latest;
-			const next = await readInvalidFieldIds(jotai, validationByFieldId, irrelevantFieldPaths, parentPath);
-			if (disposed || seq !== latest) return;
-			setIds(next);
+			try {
+				const next = await readInvalidFieldIds(jotai, validationByFieldId, irrelevantFieldPaths, parentPath);
+				if (settleInvalidFieldRead({ disposed, seq, latest, rejected: false }) !== 'apply') return;
+				setIds(next);
+			} catch (error) {
+				// A plugin validator can reject. Keep the last ids. A stale rejection must not replace a newer read.
+				if (settleInvalidFieldRead({ disposed, seq, latest, rejected: true }) !== 'report') return;
+				console.error(error);
+			}
 		};
 		void read();
 		const subscription = fieldUpdates$?.subscribe(() => void read());

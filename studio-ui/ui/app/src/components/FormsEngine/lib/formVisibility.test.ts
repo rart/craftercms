@@ -27,7 +27,9 @@
  * decision, lock sharing, reload, which pending flags a parent save clears, and the width and
  * dirty flags of more than one stacked form. A repeat-item launch leaves the parent unscoped.
  * An index past the end scrolls the parent to the repeat and warns.
+ * A repeat value that is missing does the same and warns that there is nothing to open.
  * A pending item launch hides the parent body, and that body stays hidden while its drawer is entering.
+ * A rejected validity read keeps the last invalid-field ids, and a stale rejection is ignored.
  * They do not render the form.
  */
 
@@ -52,6 +54,8 @@ import {
 	itemLaunchFrom,
 	parentBodyHiddenForItemLaunch,
 	missedItemLaunch,
+	repeatItemsMissingWarning,
+	settleInvalidFieldRead,
 	itemLaunchVisibleChildren,
 	scopeToggleVisible,
 	repeatFormLock,
@@ -880,6 +884,18 @@ describe('item form launch', () => {
 		assert.equal(missed.warning, repeatIndexOutOfRangeWarning('accounts_o', 5, 2));
 	});
 
+	// No value atom, or a value that is not a list, still opens the full form and says why.
+	it('warns when the repeat has no items to open', () => {
+		const state = resolve(['accounts_o.icon_s'], 0).state;
+		const missed = missedItemLaunch(state, null);
+		assert.ok(missed);
+		assert.equal(missed.reveal.fieldId, 'accounts_o');
+		assert.equal(missed.reveal.state.itemForm, null);
+		assert.equal(missed.reveal.state.launch, null);
+		assert.equal(missed.warning, repeatItemsMissingWarning('accounts_o'));
+		assert.equal(missed.warning, 'Item launch for "accounts_o" has no repeat items to open. Showing the full form.');
+	});
+
 	// A child id that is not on the group is not an item launch.
 	it('falls back when a child id is not on the group', () => {
 		const resolved = resolve(['accounts_o.missing_s'], 0);
@@ -1107,6 +1123,29 @@ describe('selected item save', () => {
 			parentFieldOrder: ['title_s']
 		});
 		assert.equal(plan.action, 'saveParent');
+	});
+});
+
+describe('invalid field read', () => {
+	// A plugin validator rejected the current read. Report it and leave the ids already on screen.
+	it('reports a rejected validity read and keeps the last ids', () => {
+		assert.equal(settleInvalidFieldRead({ disposed: false, seq: 1, latest: 1, rejected: true }), 'report');
+	});
+
+	// A newer read already finished. This rejection must not replace those ids.
+	it('ignores a stale validity rejection', () => {
+		assert.equal(settleInvalidFieldRead({ disposed: false, seq: 1, latest: 2, rejected: true }), 'ignore');
+	});
+
+	// The reader unmounted. A late rejection must not update state.
+	it('ignores a validity rejection after the read is disposed', () => {
+		assert.equal(settleInvalidFieldRead({ disposed: true, seq: 1, latest: 1, rejected: true }), 'ignore');
+	});
+
+	// The matching successful read is the one that replaces the ids.
+	it('applies the current validity read', () => {
+		assert.equal(settleInvalidFieldRead({ disposed: false, seq: 2, latest: 2, rejected: false }), 'apply');
+		assert.equal(settleInvalidFieldRead({ disposed: false, seq: 1, latest: 2, rejected: false }), 'ignore');
 	});
 });
 
