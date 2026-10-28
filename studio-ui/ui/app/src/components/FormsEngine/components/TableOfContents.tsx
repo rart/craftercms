@@ -29,7 +29,7 @@ import { FormattedMessage, useIntl } from 'react-intl';
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
 import { isScopeActive, revealField, returnToLaunchScope, scopeFieldCounts } from '../lib/formVisibility';
-import { hasFieldValidator, isEmptyValue, isFieldRequired } from '../lib/validators';
+import { hasFieldValidator, hasValidationKeyValidator, isEmptyValue, isFieldRequired } from '../lib/validators';
 import { immutableEmptyArray } from '../../../utils/array';
 import useLoadableAtom from '../lib/useLoadableAtom';
 import Skeleton from '@mui/material/Skeleton';
@@ -230,7 +230,7 @@ function TreeItemLabelContent({
 	const validityData = useLoadableAtom(validationAtom);
 	const isValid = validityData.state === 'hasData' ? validityData?.data.isValid : true;
 	const isRequired = isFieldRequired(field);
-	const hasValidator = hasFieldValidator(field.type);
+	const hasValidator = hasFieldValidator(field.type) || hasValidationKeyValidator(field);
 	return (
 		<Box
 			sx={{
