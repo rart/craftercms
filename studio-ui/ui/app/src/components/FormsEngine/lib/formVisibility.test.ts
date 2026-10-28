@@ -26,6 +26,7 @@
  * Stack tests check a form pushed before its atoms exist, selected-fields mode, the one close
  * decision, lock sharing, reload, which pending flags a parent save clears, and the width and
  * dirty flags of more than one stacked form. A repeat-item launch leaves the parent unscoped.
+ * An index past the end scrolls the parent to the repeat and warns.
  * They do not render the form.
  */
 
@@ -48,6 +49,7 @@ import {
 	itemFormExit,
 	itemLaunchBlocksParent,
 	itemLaunchFrom,
+	missedItemLaunch,
 	itemLaunchVisibleChildren,
 	scopeToggleVisible,
 	repeatFormLock,
@@ -863,6 +865,17 @@ describe('item form launch', () => {
 		const resolved = resolve(['accounts_o.icon_s'], 5);
 		assert.ok(resolved.state.itemForm);
 		assert.equal(itemLaunchFrom(resolved.state, 2), null);
+	});
+
+	// The parent opens full, scrolled to the repeat, and the warning names how far past the list the index was.
+	it('scrolls the parent to the repeat and warns when the item index is past the end', () => {
+		const state = resolve(['accounts_o.icon_s'], 5).state;
+		const missed = missedItemLaunch(state, [{}, {}]);
+		assert.ok(missed);
+		assert.equal(missed.reveal.fieldId, 'accounts_o');
+		assert.equal(missed.reveal.state.itemForm, null);
+		assert.equal(missed.reveal.state.launch, null);
+		assert.equal(missed.warning, repeatIndexOutOfRangeWarning('accounts_o', 5, 2));
 	});
 
 	// A child id that is not on the group is not an item launch.

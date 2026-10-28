@@ -662,6 +662,22 @@ export function revealField(state: FormVisibilityState, fieldId?: string): Hidde
 	return { state: openFullForm(state), ...(fieldId ? { fieldId } : {}) };
 }
 
+/**
+ * An item launch that cannot be opened. The parent stays full and scrolls to the repeat.
+ * An array value means the index was past the end, so the warning names that.
+ */
+export function missedItemLaunch(
+	state: FormVisibilityState,
+	items: readonly unknown[] | null
+): { reveal: HiddenInvalidReveal; warning?: string } | null {
+	const itemForm = state.itemForm;
+	if (!itemForm) return null;
+	const reveal = revealField({ ...state, itemForm: null }, itemForm.fieldId);
+	return items
+		? { reveal, warning: repeatIndexOutOfRangeWarning(itemForm.fieldId, itemForm.index, items.length) }
+		: { reveal };
+}
+
 export type SaveRevealDecision =
 	{ status: 'revealed'; reveal: HiddenInvalidReveal } | { status: 'invalid' } | { status: 'write' };
 

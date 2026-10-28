@@ -172,14 +172,14 @@ import {
 	itemLaunchBlocksParent,
 	itemLaunchFrom,
 	itemLaunchVisibleChildren,
+	missedItemLaunch,
 	planSettledFieldScroll,
 	repeatFormLock,
 	revealField,
 	selectedItemSavePlan,
 	stackEntryFlagsAtom,
 	stackedFormCloseAction,
-	stackedFormsClosedByReload,
-	type ItemFormMode
+	stackedFormsClosedByReload
 } from './lib/formVisibility';
 import { repeatItemFormProps, stackedRepeatItemAfterClose, writeItemToParent } from './lib/repeatItemForm';
 import HiddenFieldsAlert from './components/HiddenFieldsAlert';
@@ -1312,10 +1312,12 @@ function FormOrchestrator(props: FormsEngineProps) {
 		const items = valueAtom ? store.get(valueAtom) : undefined;
 		const launch = itemLaunchFrom(visibilityState, Array.isArray(items) ? items.length : 0);
 		if (!launch || !valueAtom || !Array.isArray(items)) {
-			// This launch will not open an item form. Drop the marker so the parent can render.
-			if (visibilityState.itemForm) {
+			// This launch will not open an item form. Scroll the parent to the repeat and drop the marker.
+			const missed = missedItemLaunch(visibilityState, Array.isArray(items) ? items : null);
+			if (missed) {
 				itemLaunchStarted.current = true;
-				store.set(atoms.formVisibility, { ...visibilityState, itemForm: null });
+				if (missed.warning) console.warn(missed.warning);
+				commitFormVisibility(store.set, atoms, missed.reveal.state, missed.reveal.fieldId);
 			}
 			return;
 		}
