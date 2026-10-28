@@ -139,6 +139,7 @@ export const FormLayout = forwardRef<HTMLDivElement, FormLayoutProps>(function (
 			return () => {
 				scrollContainer.style.overflow = '';
 				root.style.overflow = '';
+				root.style.removeProperty('--scroll-top');
 			};
 		}
 	}, [containerRef, hasStackedForms]);
