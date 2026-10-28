@@ -169,11 +169,11 @@ import {
 	fieldVisibility,
 	hasFormAtoms,
 	hiddenFieldsAlert,
+	itemLaunchBlocksParent,
 	itemLaunchFrom,
 	itemLaunchVisibleChildren,
 	missedItemLaunch,
-	parentViewWhileItemLaunchPending,
-	stackedDrawerEntered,
+	parentBodyHiddenForItemLaunch,
 	planSettledFieldScroll,
 	repeatFormLock,
 	revealField,
@@ -924,6 +924,7 @@ function FormOrchestrator(props: FormsEngineProps) {
 	const formControllerFileMissing = Boolean(formControllerState?.fileMissing);
 	const formControllerLoadFailed = Boolean(formControllerState?.loadFailed);
 	const [disableStackedFormDrawerAutoFocus, setDisableStackedFormDrawerAutoFocus] = useState(true);
+	const [itemLaunchEntering, setItemLaunchEntering] = useState(false);
 	const [enablingEditInProgress, setEnablingEditInProgress] = useState(false);
 	const [openDrawerSidebar, setOpenDrawerSidebar] = useAtom(atoms.tableOfContentsDrawerOpen);
 	const isSubmitting = useAtomValue(atoms.isSubmitting);
@@ -933,8 +934,6 @@ function FormOrchestrator(props: FormsEngineProps) {
 	const stackFormCount = useAtomValue(stackFormCountAtom);
 	const isStackedForm = stackIndex > 0;
 	const hasStackedForms = !isStackedForm && stackFormCount > 0;
-	// First paint only. A drawer that is already open on this render never runs its enter transition.
-	const drawerMountedOpenRef = useRef(hasStackedForms);
 	const isEmbedded = isEmbeddedForm({ update, create });
 	const isCreateMode = Boolean(create?.path);
 	const isRepeatMode = Boolean(repeat?.fieldId);
@@ -1332,6 +1331,8 @@ function FormOrchestrator(props: FormsEngineProps) {
 		}
 		itemLaunchStarted.current = true;
 		store.set(atoms.formVisibility, { ...visibilityState, itemForm: null });
+		// The marker is cleared in this same step. Hold the parent body through the drawer enter.
+		setItemLaunchEntering(true);
 		contextApi.pushForm({
 			...repeatItemFormProps({
 				fieldId: visibleLaunch.fieldId,
@@ -1582,10 +1583,11 @@ function FormOrchestrator(props: FormsEngineProps) {
 	]);
 	useEffect(() => cancelSettledScroll, [cancelSettledScroll]);
 
-	// The item form is not pushed yet. Hide the parent fields, and leave the layout and drawer mounted.
-	const pendingItemLaunchView =
-		!isStackedForm && !isRepeatMode ? parentViewWhileItemLaunchPending(visibility, pendingItemLength) : null;
-	const hideParentBody = pendingItemLaunchView?.hideBody === true;
+	// Hide the parent fields until the item drawer has entered. The layout and drawer stay mounted.
+	const hideParentBody =
+		!isStackedForm &&
+		!isRepeatMode &&
+		parentBodyHiddenForItemLaunch(itemLaunchBlocksParent(visibility, pendingItemLength), itemLaunchEntering);
 	const finishStackedDrawerEnter = useCallback(() => {
 		const paper = containerRef.current?.querySelector(
 			`[data-area-id="stackedFormDrawer"] .${drawerClasses.paper}`
@@ -1594,12 +1596,8 @@ function FormOrchestrator(props: FormsEngineProps) {
 			paper.focus();
 		}
 		setDisableStackedFormDrawerAutoFocus(false);
+		setItemLaunchEntering(false);
 	}, []);
-	useLayoutEffect(() => {
-		// Mounting already open skips the enter transition, so onTransitionEnd never fires.
-		if (!drawerMountedOpenRef.current || !hasStackedForms || !disableStackedFormDrawerAutoFocus) return;
-		finishStackedDrawerEnter();
-	}, [disableStackedFormDrawerAutoFocus, finishStackedDrawerEnter, hasStackedForms]);
 
 	const bodyFragment = (
 		<FormLayout
@@ -1846,6 +1844,7 @@ function FormOrchestrator(props: FormsEngineProps) {
 					disableAutoFocus={disableStackedFormDrawerAutoFocus}
 					onTransitionExited={() => {
 						setDisableStackedFormDrawerAutoFocus(true);
+						setItemLaunchEntering(false);
 					}}
 					onTransitionEnd={
 						// onTransitionEnd keeps triggering after the Drawer transition has finished on certain interactions (e.g. when hovering buttons)
@@ -1880,10 +1879,7 @@ function FormOrchestrator(props: FormsEngineProps) {
 							key={stackedFormKey}
 							stackIndex={formsStackData.length - 1}
 							{...currentStackedFormProps}
-							stackTransitionEnded={stackedDrawerEntered({
-								transitionEnded: !disableStackedFormDrawerAutoFocus,
-								mountedOpen: drawerMountedOpenRef.current
-							})}
+							stackTransitionEnded={!disableStackedFormDrawerAutoFocus}
 							isDialog={isDialog}
 							onClose={handleCloseDrawerForm}
 							onCommittedClose={() => popTopStackedForm(false)}
