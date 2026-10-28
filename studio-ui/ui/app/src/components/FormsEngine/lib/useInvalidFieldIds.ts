@@ -15,12 +15,11 @@
  */
 
 import { useEffect, useState } from 'react';
-import { debounceTime, type Observable } from 'rxjs';
-import { useStore as useJotaiStore } from 'jotai';
-import type { Atom } from 'jotai';
+import type { Observable } from 'rxjs';
+import { useStore as useJotaiStore, type Atom } from 'jotai';
 import type LookupTable from '../../../models/LookupTable';
 import type { FieldValidityState } from './validators';
-import { relevantFieldValidations } from './formUtils';
+import { readInvalidFieldIds } from './formUtils';
 
 /** Live ids of fields that fail validation, excluding controller-irrelevant fields. */
 export function useInvalidFieldIds(
@@ -35,13 +34,12 @@ export function useInvalidFieldIds(
 		if (!validationByFieldId) return;
 		let disposed = false;
 		const read = async () => {
-			const fields = relevantFieldValidations(validationByFieldId, irrelevantFieldPaths, parentPath);
-			const states = await Promise.all(fields.map(({ atom: validityAtom }) => jotai.get(validityAtom)));
+			const next = await readInvalidFieldIds(jotai, validationByFieldId, irrelevantFieldPaths, parentPath);
 			if (disposed) return;
-			setIds(fields.flatMap(({ fieldId }, index) => (states[index]?.isValid ? [] : [fieldId])));
+			setIds(next);
 		};
 		void read();
-		const subscription = fieldUpdates$?.pipe(debounceTime(300)).subscribe(() => void read());
+		const subscription = fieldUpdates$?.subscribe(() => void read());
 		return () => {
 			disposed = true;
 			subscription?.unsubscribe();

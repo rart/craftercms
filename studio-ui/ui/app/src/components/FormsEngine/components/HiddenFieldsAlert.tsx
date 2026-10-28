@@ -17,15 +17,20 @@
 import React from 'react';
 import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
-import { FormattedMessage } from 'react-intl';
+import { FormattedMessage, useIntl } from 'react-intl';
 
-export function HiddenFieldsAlert(props: { count: number; onShow(): void }) {
+export function HiddenFieldsAlert(props: { count: number; fieldName?: string; onShow(): void }) {
+	const { formatMessage } = useIntl();
+	const showLabel = props.fieldName
+		? formatMessage({ defaultMessage: 'Show {field}' }, { field: props.fieldName })
+		: formatMessage({ defaultMessage: 'Show the field' });
 	return (
 		<Alert
+			role="status"
 			severity="warning"
 			action={
-				<Button color="inherit" size="small" onClick={props.onShow}>
-					<FormattedMessage defaultMessage="Show the field" />
+				<Button color="inherit" size="small" onClick={props.onShow} aria-label={showLabel}>
+					{showLabel}
 				</Button>
 			}
 		>

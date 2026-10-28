@@ -124,11 +124,29 @@ export interface FormsEngineCachedStackedFormState {
 export interface StableGlobalContextProps {
 	formsStackData: StableFormContextProps[];
 	api: FormsEngineGlobalApiContextProps;
+	/**
+	 * The root form writes these every render. Stacked forms read them at click time,
+	 * so a selected-fields Save card runs the current root save.
+	 */
+	rootFormActions: {
+		save: (draft?: boolean) => Promise<'revealed' | 'invalid' | 'saved' | void>;
+		setSaveAsDraft: (value: boolean) => void;
+	};
 }
 
 // Consolidated base data store for the form instance (single form/item). Once initialised, it won't change (won't cause re-renders).
 export interface StableFormContextProps {
-	atoms: FormsEngineAtoms;
+	/**
+	 * Null until this entry's prep finishes. `pushForm` inserts the entry before atoms exist,
+	 * so readers must use {@link stackEntryAtoms} and skip entries that are not ready.
+	 */
+	atoms: FormsEngineAtoms | null;
+	/**
+	 * Set for an Experience Builder item launch. `selected` uses the parent's Save card.
+	 * Only Open full form, View in form, and Back to selected fields change it.
+	 * Null for the pencil and for Add.
+	 */
+	itemFormMode: PrimitiveAtom<'selected' | 'full'> | null;
 	changedFieldIds: Set<string>;
 	fieldUpdates$: Subject<string>;
 	itemMeta: FormsEngineItemMetaContextProps; // TODO: There's a dedicated ItemMetaContext; why have here too?
@@ -160,7 +178,9 @@ export const StableGlobalContext = /*#__PURE__*/ createContext<StableGlobalConte
 StableGlobalContext.displayName = 'StableGlobalContext';
 
 // Each form (e.g. root form and stacked child form) has one
-export const StableFormContext = /*#__PURE__*/ createContext<StableFormContextProps>(undefined);
+export type ReadyFormContext = StableFormContextProps & { atoms: FormsEngineAtoms };
+
+export const StableFormContext = /*#__PURE__*/ createContext<ReadyFormContext>(undefined);
 StableFormContext.displayName = 'StableFormContext';
 
 export const ItemContext = /*#__PURE__*/ createContext<ContentItem>(undefined);

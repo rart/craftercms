@@ -23,6 +23,8 @@
  * tests check when Experience Builder opens a repeat item's own form. Scroll tests
  * check that a reveal keeps its field when fieldToScroll is also set, and that
  * a plain fieldToScroll scrolls once the form content is mounted, and again after that target is cleared.
+ * Stack tests check a form pushed before its atoms exist, selected-fields mode, the one close
+ * decision, lock sharing, reload, and the width and dirty flags of more than one stacked form.
  * They do not render the form.
  */
 
@@ -39,14 +41,23 @@ import {
 	fieldVisibility,
 	formHasUnsavedChanges,
 	clearRepeatItemScope,
+	clearStackPendingFlags,
 	firstOutOfScopeInvalidField,
 	hasChildFields,
+	hasFormAtoms,
 	hiddenFieldsAlert,
 	itemFormExit,
 	itemLaunchFrom,
+	itemLaunchVisibleChildren,
 	parentViewAfterItemScope,
+	parentVisibilityForItemMode,
+	repeatFormLock,
+	repositorySaveFollowUp,
 	scopeChangeOpensParent,
 	selectedItemSavePlan,
+	aggregateStackFlags,
+	stackedFormCloseAction,
+	stackedFormsClosedByReload,
 	hiddenInvalidReveal,
 	isScopeActive,
 	itemGroupFieldIds,
@@ -866,24 +877,46 @@ describe('item form exit', () => {
 		repeatFieldIds: new Set<string>()
 	}).state;
 
-	// While the launch selection is on screen, Save is the parent's and dismissing leaves the dialog.
+	// A whole item and a single child both start in this mode. Save is the parent's, and dismiss leaves the dialog.
 	it('uses the parent Save card and closes the dialog in selected-fields mode', () => {
-		assert.deepEqual(itemFormExit(selected), { saveCard: 'parent', dismiss: 'closeDialog', fullWidth: true });
+		assert.deepEqual(itemFormExit('selected'), { saveCard: 'parent', dismiss: 'closeDialog', fullWidth: true });
 	});
 
-	// Open full form clears the active scope. The item then has its own Done button and the parent strip returns.
+	// Open full form is an author action. The item then has its own Done button and the parent strip returns.
 	it('returns to the item Done card after the full item form is opened', () => {
-		const opened = openFullForm(selected);
-		assert.deepEqual(itemFormExit(opened), { saveCard: 'item', dismiss: 'pop', fullWidth: false });
-		assert.equal(scopeChangeOpensParent(selected, opened), true);
+		assert.deepEqual(itemFormExit('full'), { saveCard: 'item', dismiss: 'pop', fullWidth: false });
+		assert.equal(scopeChangeOpensParent('selected', 'full'), true);
+		assert.equal(scopeChangeOpensParent('selected', 'selected'), false);
 	});
 
-	// The pencil has no launch, so it stays on the item's own Done button.
+	// A reveal clears the scope. The mode stays selected, so the parent Save card stays.
+	it('keeps selected-fields mode when a hidden field is revealed', () => {
+		const revealed = revealField(selected, 'url_s');
+		assert.equal(isScopeActive(revealed.state.active), false);
+		assert.equal(itemFormExit('selected').saveCard, 'parent');
+	});
+
+	// The pencil and Add have no mode, so they stay on the item's own Done button.
 	it('keeps the pencil item form on its own Done card', () => {
-		assert.equal(itemFormExit({ active: { fieldIds: null, repeatItem: null }, launch: null }).saveCard, 'item');
+		assert.equal(itemFormExit(null).saveCard, 'item');
 	});
 
-	// Leaving selected-fields mode opens the parent in full and names the repeat as the scroll target.
+	// Open full form opens the parent. Back to selected fields restores the parent's launch filter.
+	it('restores the parent launch filter when the item returns to selected fields', () => {
+		const parent = resolveLaunchVisibility({
+			selectedFields: ['accounts_o.icon_s'],
+			index: 0,
+			knownFieldIds: accountsKnown,
+			repeatFieldIds: accountsRepeats,
+			fields: accountsFields
+		}).state;
+		const opened = parentVisibilityForItemMode(parent, 'full');
+		assert.equal(isScopeActive(opened.active), false);
+		const restored = parentVisibilityForItemMode(opened, 'selected');
+		assert.deepEqual(restored.active, parent.launch);
+	});
+
+	// Leaving selected-fields mode and then closing the item scrolls the parent to the repeat.
 	it('opens the parent full form scrolled to the repeat', () => {
 		const parent = resolveLaunchVisibility({
 			selectedFields: ['accounts_o.icon_s'],
@@ -916,15 +949,39 @@ describe('hidden field alert', () => {
 		assert.deepEqual(alert, { where: 'local', fieldId: 'body_html', count: 2 });
 	});
 
-	// While an item form covers the parent, a parent error is unseen even if it would be on the parent form.
-	it('points at a parent field while an item form is open', () => {
+	// While a selected-fields item form covers the parent, a parent error is unseen.
+	it('points at a parent field while a selected item form is open', () => {
 		const alert = hiddenFieldsAlert({
 			localInvalidFieldIds: [],
 			localSectionOrder: ['icon_s'],
 			localScopeFieldIds: ['icon_s'],
+			includeParent: true,
 			parent: { invalidFieldIds: ['title_s'], sectionOrder: ['title_s', 'accounts_o'] }
 		});
 		assert.deepEqual(alert, { where: 'parent', fieldId: 'title_s', count: 1 });
+	});
+
+	// The pencil uses Done. A parent error must not show on that item form.
+	it('ignores parent errors on a pencil item form', () => {
+		const alert = hiddenFieldsAlert({
+			localInvalidFieldIds: [],
+			localSectionOrder: ['icon_s'],
+			localScopeFieldIds: null,
+			includeParent: false,
+			parent: { invalidFieldIds: ['title_s'], sectionOrder: ['title_s', 'accounts_o'] }
+		});
+		assert.equal(alert, null);
+	});
+
+	// Section order names the field, even when the invalid list is in another order.
+	it('names the first hidden field in section order', () => {
+		const alert = hiddenFieldsAlert({
+			localInvalidFieldIds: ['sidebar_s', 'body_html'],
+			localSectionOrder: ['title_s', 'body_html', 'sidebar_s'],
+			localScopeFieldIds: ['title_s']
+		});
+		assert.equal(alert?.fieldId, 'body_html');
+		assert.equal(alert?.count, 2);
 	});
 });
 
@@ -983,6 +1040,141 @@ describe('selected item save', () => {
 			parentFieldOrder: ['title_s']
 		});
 		assert.equal(plan.action, 'saveParent');
+	});
+});
+
+describe('stacked form guards', () => {
+	// pushForm inserts the entry before prep. The launch, pencil, Add, and node selector all do this.
+	it('does not read form visibility before atoms exist', () => {
+		const entry: { atoms: { formVisibility: string } | null } = { atoms: null };
+		assert.equal(hasFormAtoms(entry), false);
+		const visibility = hasFormAtoms(entry) ? entry.atoms.formVisibility : undefined;
+		assert.equal(visibility, undefined);
+		assert.equal(hasFormAtoms({ atoms: { formVisibility: 'ready' } }), true);
+	});
+
+	// Edit and Release Lock on the item update the same atoms the parent reads.
+	it('shares the parent lock atoms with the item form', () => {
+		const lockResult = { locked: true };
+		const readonly = { current: false };
+		const shared = repeatFormLock({ lockResult, readonly });
+		assert.equal(shared.lockResult, lockResult);
+		assert.equal(shared.readonly, readonly);
+	});
+
+	// A selected item form asks the dialog, which owns the one unsaved prompt. It does not pop first.
+	it('closes the dialog once when a selected item form is dismissed', () => {
+		assert.equal(
+			stackedFormCloseAction({
+				mode: 'selected',
+				isRepeatItem: true,
+				isSubmitting: false,
+				hasPendingChanges: true
+			}),
+			'closeDialog'
+		);
+	});
+
+	// A pencil item with edits confirms, then pops. A clean one pops. A save in progress waits.
+	it('confirms before popping a dirty pencil item and waits while saving', () => {
+		assert.equal(
+			stackedFormCloseAction({ mode: null, isRepeatItem: true, isSubmitting: false, hasPendingChanges: true }),
+			'confirmPop'
+		);
+		assert.equal(
+			stackedFormCloseAction({ mode: 'full', isRepeatItem: true, isSubmitting: false, hasPendingChanges: false }),
+			'pop'
+		);
+		assert.equal(
+			stackedFormCloseAction({ mode: 'selected', isRepeatItem: true, isSubmitting: true, hasPendingChanges: true }),
+			'wait'
+		);
+	});
+
+	// A node selector is not an item launch, so it pops instead of closing the dialog.
+	it('pops a node-selector form after confirming when it is dirty', () => {
+		assert.equal(
+			stackedFormCloseAction({ mode: null, isRepeatItem: false, isSubmitting: false, hasPendingChanges: true }),
+			'confirmPop'
+		);
+	});
+
+	// A form pushed on top of a selected item must not drop the dirty flag or bring the parent strip back.
+	it('keeps width and dirty state from every stacked entry', () => {
+		assert.deepEqual(
+			aggregateStackFlags({
+				'1': { pending: true, submitting: false, selected: true },
+				'2': { pending: false, submitting: false, selected: false }
+			}),
+			{ pending: true, submitting: false, fullWidth: true }
+		);
+	});
+
+	// Reloading the root closes stacked forms so they cannot keep the old atoms. A stacked form does not.
+	it('closes every stacked form when the root reloads', () => {
+		assert.equal(stackedFormsClosedByReload(3, 0), 2);
+		assert.equal(stackedFormsClosedByReload(1, 0), 0);
+		assert.equal(stackedFormsClosedByReload(3, 1), 0);
+	});
+
+	// A parent save that stays open already stored the live item edits.
+	it('clears pending flags after the parent save', () => {
+		const changed = new Set(['icon_s']);
+		let pending = true;
+		clearStackPendingFlags([{ changedFieldIds: changed, setPending: (value) => (pending = value) }]);
+		assert.equal(pending, false);
+		assert.equal(changed.size, 0);
+	});
+
+	// Close and minimize are the checkbox values read when Save is clicked.
+	it('minimizes only when close after save is off', () => {
+		assert.equal(
+			repositorySaveFollowUp({ resultClose: false, closeAfterSave: false, minimizeAfterSave: true }),
+			'minimize'
+		);
+		assert.equal(
+			repositorySaveFollowUp({ resultClose: false, closeAfterSave: true, minimizeAfterSave: true }),
+			'close'
+		);
+		assert.equal(
+			repositorySaveFollowUp({ resultClose: false, closeAfterSave: false, minimizeAfterSave: false }),
+			'stay'
+		);
+	});
+});
+
+describe('item launch visibility', () => {
+	// A child the controller hid on this group is not counted. Without the group path it would be.
+	it('counts fields with the repeat group path', () => {
+		const hidden = scopeFieldCounts(['icon_s', 'url_s'], {
+			irrelevantFieldPaths: new Set(['accounts_o.icon_s']),
+			parentPath: 'accounts_o',
+			scopeFieldIds: ['url_s']
+		});
+		assert.deepEqual(hidden, { showing: 1, total: 1 });
+		const withoutPath = scopeFieldCounts(['icon_s', 'url_s'], {
+			irrelevantFieldPaths: new Set(['accounts_o.icon_s']),
+			scopeFieldIds: ['url_s']
+		});
+		assert.equal(withoutPath.total, 2);
+	});
+
+	// Every selected child is hidden, so the item form opens on the whole item.
+	it('opens the whole item when every selected child is hidden', () => {
+		const next = itemLaunchVisibleChildren(
+			{ fieldId: 'accounts_o', index: 0, fieldIds: ['icon_s'] },
+			new Set(['accounts_o.icon_s'])
+		);
+		assert.equal(next.fieldIds, null);
+	});
+
+	// A hidden child drops out. A child that can be shown stays.
+	it('keeps the selected children that can be shown', () => {
+		const next = itemLaunchVisibleChildren(
+			{ fieldId: 'accounts_o', index: 0, fieldIds: ['icon_s', 'url_s'] },
+			new Set(['accounts_o.icon_s'])
+		);
+		assert.deepEqual(next.fieldIds, ['url_s']);
 	});
 });
 

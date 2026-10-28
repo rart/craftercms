@@ -17,7 +17,7 @@
 import React, { RefObject, SyntheticEvent, useContext, useMemo, useState } from 'react';
 import { ContentTypeField } from '../../../models';
 import type { ContentTypeSection } from '../../../models/ContentType';
-import { FormsEngineAtoms, ItemMetaContext, StableFormContext, StableGlobalContext } from '../lib/formsEngineContext';
+import { FormsEngineAtoms, ItemMetaContext, StableFormContext } from '../lib/formsEngineContext';
 import { commitFormVisibility, getScrollContainer } from '../lib/formUtils';
 import useDebouncedInput from '../../../hooks/useDebouncedInput';
 import { TreeItem } from '@mui/x-tree-view/TreeItem';
@@ -28,14 +28,7 @@ import { atom, useAtomValue, useSetAtom, useStore as useJotaiStore } from 'jotai
 import { FormattedMessage, useIntl } from 'react-intl';
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
-import {
-	isScopeActive,
-	openFullForm,
-	revealField,
-	returnToLaunchScope,
-	scopeChangeOpensParent,
-	scopeFieldCounts
-} from '../lib/formVisibility';
+import { isScopeActive, revealField, returnToLaunchScope, scopeFieldCounts } from '../lib/formVisibility';
 import { hasFieldValidator, hasValidationKeyValidator, isEmptyValue, isFieldRequired } from '../lib/validators';
 import { immutableEmptyArray } from '../../../utils/array';
 import useLoadableAtom from '../lib/useLoadableAtom';
@@ -170,14 +163,14 @@ export function FieldScopeNotice({ countFieldIds }: { countFieldIds: string[] })
 	const { formatMessage } = useIntl();
 	const store = useJotaiStore();
 	const stableForm = useContext(StableFormContext);
-	const { formsStackData } = useContext(StableGlobalContext);
-	const stackIndex = stableForm.props?.stackIndex ?? 0;
 	const visibility = useAtomValue(stableForm.atoms.formVisibility);
 	useAtomValue(stableForm.atoms.relevanceVersion);
+	const repeatFieldId = stableForm.props?.repeat?.fieldId;
 	if (!visibility.launch || !isScopeActive(visibility.launch)) return null;
 	const viewingFullForm = !isScopeActive(visibility.active);
 	const { showing, total } = scopeFieldCounts(countFieldIds, {
 		irrelevantFieldPaths: stableForm.formControllerState?.irrelevantFieldPaths,
+		parentPath: repeatFieldId,
 		scopeFieldIds: visibility.active.fieldIds
 	});
 	return (
@@ -197,14 +190,12 @@ export function FieldScopeNotice({ countFieldIds }: { countFieldIds: string[] })
 					const current = store.get(stableForm.atoms.formVisibility);
 					if (viewingFullForm) {
 						commitFormVisibility(store.set, stableForm.atoms, returnToLaunchScope(current));
+						if (stableForm.itemFormMode) store.set(stableForm.itemFormMode, 'selected');
 						return;
 					}
 					const reveal = revealField(current);
 					commitFormVisibility(store.set, stableForm.atoms, reveal.state);
-					if (scopeChangeOpensParent(current, reveal.state) && stackIndex > 0) {
-						const parent = formsStackData[stackIndex - 1];
-						commitFormVisibility(store.set, parent.atoms, openFullForm(store.get(parent.atoms.formVisibility)));
-					}
+					if (stableForm.itemFormMode) store.set(stableForm.itemFormMode, 'full');
 				}}
 			>
 				{viewingFullForm ? (

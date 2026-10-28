@@ -24,7 +24,8 @@ import {
 	ItemContext,
 	ItemMetaContext,
 	RenamedPathContext,
-	StableFormContext
+	StableFormContext,
+	StableGlobalContext
 } from './formsEngineContext';
 import {
 	commitFormVisibility,
@@ -33,12 +34,18 @@ import {
 	extractAtomValues,
 	getBasePath,
 	getFileNameValueFromPath,
-	relevantFieldValidations,
+	readInvalidFieldIds,
 	showAlert
 } from './formUtils';
 import { FormSavePromiseResult, FormsEngineProps } from '../FormsEngine';
 import { contentFormSaveAction } from '../../../utils/contentFormLaunch';
-import { applySaveGate, childFields, saveAsDraftFlag } from './formVisibility';
+import {
+	applySaveGate,
+	childFields,
+	clearStackPendingFlags,
+	repositorySaveFollowUp,
+	saveAsDraftFlag
+} from './formVisibility';
 import { XmlKeys } from './formConsts';
 import { fromString } from '../../../utils/xml';
 import {
@@ -61,7 +68,7 @@ import { validateActionPolicy } from '../../../services/sites';
 import { createComponentId, pushConfirmDialog } from '../../../utils/system';
 import { nanoid } from 'nanoid';
 import { popDialog, pushDialog } from '../../../state/actions/dialogStack';
-import { atom, PrimitiveAtom, useAtomValue, useSetAtom, useStore as useJotaiStore } from 'jotai';
+import { useAtomValue, useSetAtom, useStore as useJotaiStore } from 'jotai';
 import { showSystemNotification } from '../../../state/actions/system';
 import {
 	AffectedPluginControlField,
@@ -99,11 +106,10 @@ export function useSaveForm(props: UseSaveFormProps) {
 	const { id, contentType, contentObject, path: itemPath } = useContext(ItemMetaContext);
 	const isPage = contentType.type === 'page';
 	const stableFormContext = useContext(StableFormContext);
+	const { formsStackData } = useContext(StableGlobalContext);
 	const { affectedPackages } = useAtomValue(stableFormContext.atoms.lockResult);
 	const formContextApi = useContext(FormsEngineFormContextApi);
 	const setIsSubmitting = useSetAtom(stableFormContext.atoms.isSubmitting);
-	const closeAfterSave = useAtomValue(stableFormContext.atoms.closeAfterSave);
-	const minimizeAfterSave = useAtomValue(stableFormContext.atoms.minimizeAfterSave);
 	const setVersionComment = useSetAtom(stableFormContext.atoms.versionComment);
 	const setHasPendingChanges = useSetAtom(stableFormContext.atoms.hasPendingChanges);
 	const onSave = wrapOnSaveProp(props.onSave);
@@ -113,13 +119,12 @@ export function useSaveForm(props: UseSaveFormProps) {
 	const repeatFieldId = isRepeatMode ? stableFormContext.props?.repeat?.fieldId : undefined;
 	const readCurrentValidity = async () => {
 		// Out-of-scope fields stay in this list. Only controller-irrelevant fields are skipped.
-		const fields = relevantFieldValidations(
+		const invalidFieldIds = await readInvalidFieldIds(
+			jotai,
 			stableFormContext.atoms.validationByFieldId,
 			stableFormContext.formControllerState?.irrelevantFieldPaths,
 			repeatFieldId
 		);
-		const states = await Promise.all(fields.map(({ atom: validityAtom }) => jotai.get(validityAtom)));
-		const invalidFieldIds = fields.flatMap(({ fieldId }, index) => (states[index]?.isValid ? [] : [fieldId]));
 		return { isFormInvalid: invalidFieldIds.length > 0, invalidFieldIds };
 	};
 	const save = async (draft?: boolean): Promise<SaveFormResult | void> => {
@@ -156,8 +161,10 @@ export function useSaveForm(props: UseSaveFormProps) {
 		let saveAsDraft = false;
 		const preloadAndWrite = async (nextSaveAsDraft: boolean) => {
 			saveAsDraft = nextSaveAsDraft;
-			// Read at save time. A render snapshot is stale when the parent save runs right after an item commit.
+			// Read at save time. A render snapshot is stale when the parent save runs right after an item edit.
 			const versionComment = jotai.get(stableFormContext.atoms.versionComment);
+			const closeAfterSave = jotai.get(stableFormContext.atoms.closeAfterSave);
+			const minimizeAfterSave = jotai.get(stableFormContext.atoms.minimizeAfterSave);
 			try {
 				const fieldListMessage = (fields: AffectedPluginControlField[]) =>
 					fields.map((field) => `"${field.fieldName}" (${field.fieldId})`).join(', ');
@@ -219,9 +226,25 @@ export function useSaveForm(props: UseSaveFormProps) {
 						// TODO: What would `setValuesCheckpoint` do if called on a repeat group form?
 						!isRepeatMode && formContextApi.setValuesCheckpoint(values);
 					});
-					if (close || closeAfterSave) {
+					// Live item edits were stored with the parent. Drop stacked dirty flags so a later close does not ask again.
+					if (!isRepeatMode) {
+						clearStackPendingFlags(
+							formsStackData.map((entry) => ({
+								changedFieldIds: entry.changedFieldIds,
+								setPending(value) {
+									if (entry.atoms) jotai.set(entry.atoms.hasPendingChanges, value);
+								}
+							}))
+						);
+					}
+					const followUp = repositorySaveFollowUp({
+						resultClose: close,
+						closeAfterSave,
+						minimizeAfterSave
+					});
+					if (followUp === 'close') {
 						onClose?.();
-					} else if (minimizeAfterSave) {
+					} else if (followUp === 'minimize') {
 						setVersionComment('');
 						onMinimize?.();
 					}
@@ -374,7 +397,9 @@ export function useSaveForm(props: UseSaveFormProps) {
 									const result = ((await onSave?.(repositorySaveArgs(path, dom, xml))) ?? {
 										close: false
 									}) as FormSavePromiseResult;
-									const shouldClose = result.close || closeAfterSave;
+									const shouldClose =
+										repositorySaveFollowUp({ resultClose: result.close, closeAfterSave, minimizeAfterSave }) ===
+										'close';
 									if (!shouldClose && isAmended) {
 										triggerReload();
 									}
@@ -438,7 +463,8 @@ export function useSaveForm(props: UseSaveFormProps) {
 							const result = ((await onSave?.(repositorySaveArgs(path, dom, xml))) ?? {
 								close: false
 							}) as FormSavePromiseResult;
-							const shouldClose = result.close || closeAfterSave;
+							const shouldClose =
+								repositorySaveFollowUp({ resultClose: result.close, closeAfterSave, minimizeAfterSave }) === 'close';
 							if (!shouldClose) {
 								if (isCreateMode) {
 									setSavedCreatePath(path);

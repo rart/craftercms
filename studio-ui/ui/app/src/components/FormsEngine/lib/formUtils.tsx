@@ -72,6 +72,7 @@ import {
 	childFields,
 	createFormVisibilityAtoms,
 	fieldVisibility,
+	hasFormAtoms,
 	type FormVisibilityState,
 	type LaunchFieldsLookup,
 	visibilityFromLaunch
@@ -378,7 +379,8 @@ export function createFieldAtoms(
 	);
 	const validationAtom = atom(async (get) => {
 		// Relevance is stored after these atoms are created. Depending on the version forces a fresh verdict.
-		get(formContextRef.current.atoms.relevanceVersion);
+		const relevanceVersion = formContextRef.current.atoms?.relevanceVersion;
+		if (relevanceVersion) get(relevanceVersion);
 		const value = get(valueAtom);
 		return validateFieldValue(field, value, {
 			siteId: validatorsData?.siteId,
@@ -387,7 +389,7 @@ export function createFieldAtoms(
 			currentIds: validatorsData?.currentIds,
 			additionalFields: validatorsData?.additionalFields,
 			itemMeta: formContextRef.current.itemMeta as FormsEngineItemMetaContextProps,
-			fileName: formContextRef.current.atoms.fileName ? get(formContextRef.current.atoms.fileName) : '',
+			fileName: formContextRef.current.atoms?.fileName ? get(formContextRef.current.atoms.fileName) : '',
 			// Read at validation time. `validatorsData` is captured at bootstrap, before relevance exists.
 			irrelevantFieldPaths: formContextRef.current.formControllerState?.irrelevantFieldPaths,
 			resolveEmbeddedRelevance: validatorsData?.resolveEmbeddedRelevance,
@@ -484,6 +486,7 @@ export const computePathFromFileName = (fileName: string, isPage: boolean, baseP
 export function createFormStackData(mixin?: Partial<StableFormContextProps>): StableFormContextProps {
 	const data: StableFormContextProps = {
 		atoms: null,
+		itemFormMode: null,
 		changedFieldIds: new Set<string>(),
 		fieldUpdates$: new Subject<string>(),
 		itemMeta: null,
@@ -569,6 +572,19 @@ export function relevantFieldValidations(
 			? []
 			: [{ fieldId, atom }]
 	);
+}
+
+/** Live invalid field ids. The alert and a selected-item save both read through this. */
+export async function readInvalidFieldIds(
+	store: { get<Value>(atom: Atom<Value>): Value },
+	validationByFieldId: LookupTable<Atom<Promise<FieldValidityState>>> | undefined,
+	irrelevantFieldPaths: ReadonlySet<string> | null | undefined,
+	parentPath?: string
+): Promise<string[]> {
+	if (!validationByFieldId) return [];
+	const fields = relevantFieldValidations(validationByFieldId, irrelevantFieldPaths, parentPath);
+	const states = await Promise.all(fields.map(({ atom: validityAtom }) => store.get(validityAtom)));
+	return fields.flatMap(({ fieldId }, index) => (states[index]?.isValid ? [] : [fieldId]));
 }
 
 export function getValidationAtomsExcludingIrrelevant(
@@ -962,6 +978,7 @@ export function useUnlockOnClose(
 	// it will have an outdated value).
 	const currentFileName = useAtomValue(atoms.fileName);
 	const isRenamed = itemPath ? currentFileName !== getFileNameValueFromPath(itemPath, isPagePath(itemPath)) : false;
+	const parentAtoms = stackEntryAtoms(formsStackData[stackIndex - 1]);
 
 	const unlockEffectRefs = useUpdateRefs<ShouldUnlockArguments & { dispatch: ReduxDispatch }>({
 		dispatch,
@@ -970,7 +987,7 @@ export function useUnlockOnClose(
 		readonly,
 		isEmbedded,
 		isStackedForm,
-		isParentReadonly: formsStackData[stackIndex - 1] ? store.get(formsStackData[stackIndex - 1].atoms.readonly) : false,
+		isParentReadonly: parentAtoms ? store.get(parentAtoms.readonly) : false,
 		siteId,
 		isRenamed,
 		saveAsDraft,
@@ -1071,9 +1088,15 @@ export function generateDefaultCreationComment(
 	return newMessage;
 }
 
-/**
- * Creates a summary of the state the current stacked form being rendered (last one on the stack)
- **/
+/** Atoms of a stack entry, or null while prep has not finished. */
+export function isEmbeddedForm(props: { update?: { modelId?: string }; create?: { embedded?: boolean } }): boolean {
+	return Boolean(props.update?.modelId) || Boolean(props.create?.embedded);
+}
+
+export function stackEntryAtoms(entry: { atoms: FormsEngineAtoms | null } | null | undefined): FormsEngineAtoms | null {
+	return hasFormAtoms(entry) ? entry.atoms : null;
+}
+
 export function getCurrentChildFormStateSummary(
 	store: JotaiStore,
 	formsStackData: StableGlobalContextProps['formsStackData']
@@ -1082,10 +1105,13 @@ export function getCurrentChildFormStateSummary(
 	hasPendingChanges: boolean;
 	readonly: boolean;
 } {
+	const atoms = stackEntryAtoms(formsStackData[formsStackData.length - 1]);
+	if (!atoms) return { isSubmitting: false, hasPendingChanges: false, readonly: true };
 	return {
-		isSubmitting: store.get(formsStackData[formsStackData.length - 1].atoms.isSubmitting),
-		hasPendingChanges: store.get(formsStackData[formsStackData.length - 1].atoms.hasPendingChanges),
-		readonly: store.get(formsStackData[formsStackData.length - 1].atoms.readonly)
+		isSubmitting: store.get(atoms.isSubmitting),
+		hasPendingChanges:
+			store.get(atoms.hasPendingChanges) || formsStackData[formsStackData.length - 1].changedFieldIds.size > 0,
+		readonly: store.get(atoms.readonly)
 	};
 }
 

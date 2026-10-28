@@ -524,6 +524,10 @@ export const fooStableGlobalContext: StableGlobalContextProps = Object.freeze<St
 		popForm: noOp,
 		updateProps: noOp,
 		setStateCache: noOp
+	},
+	rootFormActions: {
+		save: () => Promise.resolve(),
+		setSaveAsDraft: noOp
 	}
 });
 
@@ -600,6 +604,7 @@ export const createStableFormContextProps = (
 			relevanceVersion: atom(0),
 			...createFormVisibilityAtoms()
 		},
+		itemFormMode: null,
 		changedFieldIds: null,
 		fieldUpdates$: null,
 		itemMeta: createFieldItemMetaContext(type), // TODO: Property may be removed from this context altogether

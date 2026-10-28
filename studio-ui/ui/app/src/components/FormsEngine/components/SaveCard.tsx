@@ -109,7 +109,7 @@ export function SaveCard(props: SaveCardProps) {
 			else if (status === 'revealed') {
 				dispatch(
 					showSystemNotification({
-						options: { variant: 'warning' },
+						options: { variant: 'warning', autoHideDuration: 10000 },
 						message: formatMessage({
 							defaultMessage: 'Not saved. A field with an error was out of view.'
 						})
