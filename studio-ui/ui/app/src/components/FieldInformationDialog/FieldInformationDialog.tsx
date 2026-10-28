@@ -29,6 +29,9 @@ import CardContent from '@mui/material/CardContent';
 import { Chip } from '@mui/material';
 import inputDescriptor from '../ContentTypeManagement/descriptors/controls/input';
 import { nnou } from '../../utils/object';
+import useSelection from '../../hooks/useSelection';
+import { resolveControlDescriptors } from '../FormsEngine/lib/formUtils';
+import { controlTypeLabel } from './controlTypeLabel';
 
 export interface FieldInformationDialogProps extends EnhancedDialogProps {
 	field: ContentTypeField;
@@ -56,6 +59,8 @@ type FieldInformationDialogBodyProps = Pick<FieldInformationDialogProps, 'field'
 function Body(props: FieldInformationDialogBodyProps) {
 	const { field } = props;
 	const { formatMessage } = useIntl();
+	const customControls = useSelection((state) => state.uiConfig.controls);
+	const typeLabel = controlTypeLabel(field.type, resolveControlDescriptors(customControls));
 
 	// retrieve control descriptor for field type
 	const descriptor = controlDescriptors[field.type] ?? inputDescriptor;
@@ -72,6 +77,17 @@ function Body(props: FieldInformationDialogBodyProps) {
 					>
 						<FormattedMessage defaultMessage="Basic Properties" />
 					</Typography>
+
+					<Grid container spacing={2} sx={{ mt: 0.5 }}>
+						<Grid size={{ xs: 4 }}>
+							<Typography sx={{ color: 'text.secondary' }}>
+								<FormattedMessage defaultMessage="Type" />
+							</Typography>
+						</Grid>
+						<Grid size={{ xs: 8 }}>
+							<Typography>{getPossibleTranslation(typeLabel, formatMessage)}</Typography>
+						</Grid>
+					</Grid>
 
 					{Object.values(commonControlFieldsDescriptors).map((descriptor) => {
 						const value = field[basicPropsMap[descriptor.id] ?? descriptor.id];
