@@ -107,6 +107,8 @@ export interface FormsEngineAtoms {
 	formVisibility: PrimitiveAtom<FormVisibilityState>;
 	/** Set when a save or "View in form" should scroll to a field after the scope changes. */
 	pendingScrollFieldId: PrimitiveAtom<string | null>;
+	/** A reveal moves focus. The launch fallback scroll names a field and leaves this false. */
+	pendingScrollFocus: PrimitiveAtom<boolean>;
 }
 
 // Contains information to restore the state of a form when it comes back to being the active form on the stack

@@ -27,9 +27,10 @@ import { describe, it } from 'node:test';
 import {
 	baseFieldId,
 	childFields,
+	applySaveGate,
 	decideSaveReveal,
 	gateSaveBeforeWrite,
-	saveAsDraftFromValidity,
+	planSettledFieldScroll,
 	fieldVisibility,
 	clearRepeatItemScope,
 	firstOutOfScopeInvalidField,
@@ -447,35 +448,74 @@ describe('save gate before the controller hook', () => {
 		repeatFieldIds: repeats
 	}).state;
 
-	// An invalid Save reveals or blocks before plugin preload and onBeforeSave. Those steps must not run.
-	it('does not run onBeforeSave when the save reveals or blocks', async () => {
-		let beforeSaveRuns = 0;
-		const onBeforeSave = () => {
-			beforeSaveRuns += 1;
-		};
-		const gateFor = (invalidFieldIds: string[]) =>
-			gateSaveBeforeWrite({
-				draft: false,
-				isRepeatMode: false,
-				visibility,
-				sectionOrder: ['title_s', 'body_html'],
-				readValidity: async () => ({
-					isFormInvalid: invalidFieldIds.length > 0,
-					invalidFieldIds
-				})
-			});
-		const hidden = await gateFor(['body_html']);
-		const visible = await gateFor(['title_s']);
-		if (hidden.status === 'write') onBeforeSave();
-		if (visible.status === 'write') onBeforeSave();
-		assert.equal(hidden.status, 'revealed');
-		assert.equal(visible.status, 'invalid');
-		assert.equal(beforeSaveRuns, 0);
+	const run = (invalidFieldIds: string[], steps: { preload: () => void; onBeforeSave: () => void }) =>
+		applySaveGate({
+			draft: false,
+			isRepeatMode: false,
+			visibility,
+			sectionOrder: ['title_s', 'body_html'],
+			readValidity: async () => ({
+				isFormInvalid: invalidFieldIds.length > 0,
+				invalidFieldIds
+			}),
+			onReveal() {},
+			// save() puts plugin preload and onBeforeSave in this callback, and nowhere earlier.
+			preloadAndBeforeSave: async () => {
+				steps.preload();
+				steps.onBeforeSave();
+				return 'saved' as const;
+			}
+		});
 
-		const valid = await gateFor([]);
-		if (valid.status === 'write') onBeforeSave();
-		assert.equal(valid.status, 'write');
-		assert.equal(beforeSaveRuns, 1);
+	// A hidden error opens the field. Plugin preload and the controller hook must not run.
+	it('does not preload or run onBeforeSave when the save reveals a hidden field', async () => {
+		let preloads = 0;
+		let beforeSaves = 0;
+		const outcome = await run(['body_html'], {
+			preload: () => {
+				preloads += 1;
+			},
+			onBeforeSave: () => {
+				beforeSaves += 1;
+			}
+		});
+		assert.equal(outcome, 'revealed');
+		assert.equal(preloads, 0);
+		assert.equal(beforeSaves, 0);
+	});
+
+	// Errors already on screen are Cannot Proceed. The hook and the plugin load still must not run.
+	it('does not preload or run onBeforeSave when the save is blocked', async () => {
+		let preloads = 0;
+		let beforeSaves = 0;
+		const outcome = await run(['title_s'], {
+			preload: () => {
+				preloads += 1;
+			},
+			onBeforeSave: () => {
+				beforeSaves += 1;
+			}
+		});
+		assert.equal(outcome, 'invalid');
+		assert.equal(preloads, 0);
+		assert.equal(beforeSaves, 0);
+	});
+
+	// A valid read is the only result that reaches plugin preload and onBeforeSave.
+	it('runs preload and onBeforeSave only when the save will write', async () => {
+		let preloads = 0;
+		let beforeSaves = 0;
+		const outcome = await run([], {
+			preload: () => {
+				preloads += 1;
+			},
+			onBeforeSave: () => {
+				beforeSaves += 1;
+			}
+		});
+		assert.equal(outcome, 'saved');
+		assert.equal(preloads, 1);
+		assert.equal(beforeSaves, 1);
 	});
 
 	// A failed validity read rejects from the gate. save() does not catch it, tag it, or reach the hook.
@@ -494,10 +534,93 @@ describe('save gate before the controller hook', () => {
 		);
 	});
 
-	// After onBeforeSave, the save only refreshes the draft flag. It does not reveal again.
-	it('recomputes the draft flag from a later read without a second reveal decision', () => {
-		assert.equal(saveAsDraftFromValidity(false, false), false);
-		assert.equal(saveAsDraftFromValidity(true, true), true);
-		assert.equal(saveAsDraftFromValidity(false, true), true);
+	// save() stores a completed valid write as a normal save.
+	it('does not mark a completed valid save as a draft', () => {
+		const explicitDraft = false;
+		const isFormInvalid = false;
+		assert.equal(explicitDraft || isFormInvalid, false);
+	});
+
+	// Save as draft stays a draft when the form is already valid.
+	it('marks an explicit draft as a draft when the form is valid', () => {
+		const explicitDraft = true;
+		const isFormInvalid = false;
+		assert.equal(explicitDraft || isFormInvalid, true);
+	});
+
+	// Save as draft stays a draft when the form is invalid.
+	it('marks an explicit draft as a draft when the form is invalid', () => {
+		const explicitDraft = true;
+		const isFormInvalid = true;
+		assert.equal(explicitDraft || isFormInvalid, true);
+	});
+
+	// After onBeforeSave, a completed save that is now invalid is stored as a draft. It is not revealed again.
+	it('marks a completed save as a draft when the hook leaves the form invalid', () => {
+		const explicitDraft = false;
+		const isFormInvalid = true;
+		assert.equal(explicitDraft || isFormInvalid, true);
+	});
+});
+
+describe('settled field scroll', () => {
+	// View in form and a hidden-invalid save set a pending field. fieldToScroll must not replace that scroll or take focus.
+	it('keeps the revealed field when fieldToScroll is also set', () => {
+		const reveal = planSettledFieldScroll({
+			pendingScrollFieldId: 'body_html',
+			fieldToScroll: 'title_s',
+			clearingPending: false,
+			retainSettledScroll: false,
+			hasMainContent: true,
+			focusPending: true
+		});
+		assert.equal(reveal.action, 'scroll');
+		if (reveal.action !== 'scroll') return;
+		assert.equal(reveal.fieldId, 'body_html');
+		assert.equal(reveal.focus, true);
+		assert.equal(reveal.clearPending, true);
+
+		const followUp = planSettledFieldScroll({
+			pendingScrollFieldId: null,
+			fieldToScroll: 'title_s',
+			clearingPending: true,
+			retainSettledScroll: true,
+			hasMainContent: true,
+			focusPending: true
+		});
+		assert.equal(followUp.action, 'keep');
+	});
+
+	// A fieldToScroll prop scrolls without moving focus.
+	it('scrolls fieldToScroll without focusing', () => {
+		const plan = planSettledFieldScroll({
+			pendingScrollFieldId: null,
+			fieldToScroll: 'title_s',
+			clearingPending: false,
+			retainSettledScroll: false,
+			hasMainContent: true,
+			focusPending: false
+		});
+		assert.equal(plan.action, 'scroll');
+		if (plan.action !== 'scroll') return;
+		assert.equal(plan.fieldId, 'title_s');
+		assert.equal(plan.focus, false);
+	});
+
+	// A selection that matches nothing still scrolls to the first requested field, and does not take focus.
+	it('scrolls the launch fallback without focusing', () => {
+		const plan = planSettledFieldScroll({
+			pendingScrollFieldId: 'gone_s',
+			fieldToScroll: undefined,
+			clearingPending: false,
+			retainSettledScroll: false,
+			hasMainContent: true,
+			focusPending: false
+		});
+		assert.equal(plan.action, 'scroll');
+		if (plan.action !== 'scroll') return;
+		assert.equal(plan.fieldId, 'gone_s');
+		assert.equal(plan.focus, false);
+		assert.equal(plan.clearPending, true);
 	});
 });

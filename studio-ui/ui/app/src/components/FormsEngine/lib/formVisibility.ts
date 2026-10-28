@@ -340,7 +340,8 @@ export function revealField(state: FormVisibilityState, fieldId?: string): Hidde
 	return { state: openFullForm(state), ...(fieldId ? { fieldId } : {}) };
 }
 
-export type SaveRevealStatus = 'revealed' | 'invalid' | 'write';
+export type SaveRevealDecision =
+	{ status: 'revealed'; reveal: HiddenInvalidReveal } | { status: 'invalid' } | { status: 'write' };
 
 /**
  * The reveal decision. A draft writes. A completed save that is hiding an error
@@ -357,21 +358,13 @@ export function decideSaveReveal(args: {
 	sectionOrder: readonly string[];
 	irrelevantFieldPaths?: ReadonlySet<string> | null;
 	parentPath?: string;
-}): { status: SaveRevealStatus; reveal?: HiddenInvalidReveal } {
+}): SaveRevealDecision {
 	if (!args.draft && !args.isRepeatMode) {
 		const reveal = hiddenInvalidReveal(args);
-		if (reveal?.fieldId) return { status: 'revealed', reveal };
+		if (reveal) return { status: 'revealed', reveal };
 	}
 	if (!args.draft && args.invalidFieldIds.length > 0) return { status: 'invalid' };
 	return { status: 'write' };
-}
-
-/**
- * Draft flag for a write. `onBeforeSave` may change validity; the save recomputes
- * this from a fresh read and does not run the reveal decision again.
- */
-export function saveAsDraftFromValidity(explicitDraft: boolean, isFormInvalid: boolean): boolean {
-	return explicitDraft || isFormInvalid;
 }
 
 export interface SaveValidity {
@@ -407,11 +400,71 @@ export async function gateSaveBeforeWrite(args: {
 		irrelevantFieldPaths: args.irrelevantFieldPaths,
 		parentPath: args.parentPath
 	});
-	if (decision.status === 'revealed' && decision.reveal) {
-		return { status: 'revealed', reveal: decision.reveal };
-	}
-	if (decision.status === 'invalid') return { status: 'invalid' };
+	if (decision.status === 'revealed') return decision;
+	if (decision.status === 'invalid') return decision;
 	return { status: 'write', isFormInvalid: validity.isFormInvalid };
+}
+
+/**
+ * The save order. A reveal or a block returns before `preloadAndBeforeSave`,
+ * which is where plugin preload and `onBeforeSave` live.
+ */
+export async function applySaveGate<WriteResult>(
+	args: Parameters<typeof gateSaveBeforeWrite>[0] & {
+		onReveal: (reveal: HiddenInvalidReveal) => void;
+		preloadAndBeforeSave: (isFormInvalid: boolean) => Promise<WriteResult>;
+	}
+): Promise<'revealed' | 'invalid' | WriteResult> {
+	const gate = await gateSaveBeforeWrite(args);
+	if (gate.status === 'revealed') {
+		args.onReveal(gate.reveal);
+		return 'revealed';
+	}
+	if (gate.status === 'invalid') return 'invalid';
+	return args.preloadAndBeforeSave(gate.isFormInvalid);
+}
+
+/**
+ * One run of the form's scroll effect.
+ * Clearing `pendingScrollFieldId` retriggers the effect. That follow-up keeps the
+ * reveal's scroll, even when `fieldToScroll` is also set. A pending id focuses only
+ * when `focusPending` is set; the launch fallback scroll leaves it off.
+ */
+export function planSettledFieldScroll(args: {
+	pendingScrollFieldId?: string | null;
+	fieldToScroll?: string | null;
+	clearingPending: boolean;
+	retainSettledScroll: boolean;
+	hasMainContent: boolean;
+	focusPending?: boolean;
+}):
+	| { action: 'keep'; retainSettledScroll: boolean }
+	| { action: 'idle'; retainSettledScroll: boolean; cancelInFlight: boolean }
+	| {
+			action: 'scroll';
+			fieldId: string;
+			focus: boolean;
+			clearPending: boolean;
+			retainSettledScroll: boolean;
+	  } {
+	if (!args.pendingScrollFieldId && args.clearingPending) {
+		return { action: 'keep', retainSettledScroll: args.retainSettledScroll };
+	}
+	const fieldId = args.pendingScrollFieldId || args.fieldToScroll || '';
+	if (!fieldId || !args.hasMainContent) {
+		return {
+			action: 'idle',
+			retainSettledScroll: false,
+			cancelInFlight: !args.retainSettledScroll
+		};
+	}
+	return {
+		action: 'scroll',
+		fieldId,
+		focus: Boolean(args.pendingScrollFieldId) && Boolean(args.focusPending),
+		clearPending: Boolean(args.pendingScrollFieldId),
+		retainSettledScroll: true
+	};
 }
 
 /**
@@ -420,15 +473,20 @@ export async function gateSaveBeforeWrite(args: {
  */
 export function createFormVisibilityAtoms(
 	initial?: FormVisibilityState,
-	scrollFieldId?: string | null
+	scrollFieldId?: string | null,
+	/** True when the seeded scroll should move focus. The launch fallback leaves this off. */
+	scrollFocus = false
 ): {
 	formVisibility: PrimitiveAtom<FormVisibilityState>;
 	pendingScrollFieldId: PrimitiveAtom<string | null>;
+	pendingScrollFocus: PrimitiveAtom<boolean>;
 } {
 	const scroll: string | null = scrollFieldId ?? null;
+	const focus = Boolean(scroll) && scrollFocus;
 	return {
 		formVisibility: atom<FormVisibilityState>(initial ?? { active: emptyFieldScope(), launch: null }),
-		pendingScrollFieldId: atom(scroll)
+		pendingScrollFieldId: atom(scroll),
+		pendingScrollFocus: atom(focus)
 	};
 }
 

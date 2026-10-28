@@ -703,12 +703,16 @@ export function commitFormVisibility(
 	atoms: {
 		formVisibility: PrimitiveAtom<FormVisibilityState>;
 		pendingScrollFieldId: PrimitiveAtom<string | null>;
+		pendingScrollFocus: PrimitiveAtom<boolean>;
 	},
 	next: FormVisibilityState,
 	scrollFieldId?: string
 ): void {
 	set(atoms.formVisibility, next);
-	if (scrollFieldId) set(atoms.pendingScrollFieldId, scrollFieldId);
+	if (scrollFieldId) {
+		set(atoms.pendingScrollFieldId, scrollFieldId);
+		set(atoms.pendingScrollFocus, true);
+	}
 }
 
 /**

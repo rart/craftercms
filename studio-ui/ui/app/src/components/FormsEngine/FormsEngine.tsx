@@ -157,7 +157,7 @@ import {
 	runFormControllerCleanup
 } from './formControllers/runtime';
 import { createEmbeddedRelevanceResolver } from './formControllers/relevance';
-import { childFields, fieldVisibility } from './lib/formVisibility';
+import { childFields, fieldVisibility, planSettledFieldScroll } from './lib/formVisibility';
 
 export interface FormSavePromiseResult {
 	close: boolean;
@@ -1211,32 +1211,43 @@ function FormOrchestrator(props: FormsEngineProps) {
 	}, [mainContent]);
 
 	const pendingScrollFieldId = useAtomValue(atoms.pendingScrollFieldId);
+	const pendingScrollFocus = useAtomValue(atoms.pendingScrollFocus);
 	// True between starting a scroll and the effect re-running because that start cleared
 	// `pendingScrollFieldId`. That re-run has no target and must leave the observer in place.
 	// A later run with no target (the scope changed and the field is gone) cancels it.
 	const retainSettledScrollRef = useRef(false);
-	// Set when a reveal names a field. Survives the re-run that clears pendingScrollFieldId,
-	// then drops so a later fieldToScroll pass does not move focus.
-	const focusPendingScrollRef = useRef(false);
+	// Set immediately before clearing pendingScrollFieldId, so the follow-up run does not
+	// scroll to fieldToScroll and take the reveal's place.
+	const clearingPendingRef = useRef(false);
 	const cancelSettledScroll = useCallback(() => {
 		cancelFieldScrollRef.current?.();
 		cancelFieldScrollRef.current = null;
 		pendingFieldScrollRef.current = null;
 	}, []);
 	// Scroll to a requested field once form body layout settles (lazy controls, RTEs, images).
-	// `fieldToScroll` is a prop. `pendingScrollFieldId` is set when the scope opens up and a
-	// field that was hidden needs to be brought into view.
+	// `fieldToScroll` is a prop and does not move focus. `pendingScrollFieldId` is a reveal,
+	// or the launch fallback scroll, which sets pendingScrollFocus false.
 	useEffect(() => {
-		const fieldId = pendingScrollFieldId || fieldToScroll;
-		const focus = Boolean(pendingScrollFieldId) || (retainSettledScrollRef.current && focusPendingScrollRef.current);
-		if (pendingScrollFieldId) focusPendingScrollRef.current = true;
-		else focusPendingScrollRef.current = false;
-		if (!fieldId || !mainContent) {
-			if (!retainSettledScrollRef.current) cancelSettledScroll();
-			retainSettledScrollRef.current = false;
+		const plan = planSettledFieldScroll({
+			pendingScrollFieldId,
+			fieldToScroll,
+			clearingPending: clearingPendingRef.current,
+			retainSettledScroll: retainSettledScrollRef.current,
+			hasMainContent: Boolean(mainContent),
+			focusPending: pendingScrollFocus
+		});
+		if (plan.action === 'keep') {
+			clearingPendingRef.current = false;
+			return;
+		}
+		retainSettledScrollRef.current = plan.retainSettledScroll;
+		if (plan.action === 'idle') {
+			if (plan.cancelInFlight) cancelSettledScroll();
 			return;
 		}
 		cancelSettledScroll();
+		const fieldId = plan.fieldId;
+		const focus = Boolean(plan.focus);
 		const sectionId = visibleSections.find((section) => section.fields.includes(fieldId))?.id;
 		const expandedAtom = sectionId ? atoms.expandedStateBySectionId[sectionId] : null;
 		const isExpanding = expandedAtom && !store.get(expandedAtom);
@@ -1249,10 +1260,13 @@ function FormOrchestrator(props: FormsEngineProps) {
 		} else {
 			beginSettledFieldScroll(fieldId, focus);
 		}
-		retainSettledScrollRef.current = true;
-		if (pendingScrollFieldId) store.set(atoms.pendingScrollFieldId, null);
+		if (plan.clearPending) {
+			clearingPendingRef.current = true;
+			store.set(atoms.pendingScrollFieldId, null);
+		}
 	}, [
 		pendingScrollFieldId,
+		pendingScrollFocus,
 		fieldToScroll,
 		mainContent,
 		visibleSections,
