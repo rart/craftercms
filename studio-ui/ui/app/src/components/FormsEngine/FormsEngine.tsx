@@ -1239,7 +1239,7 @@ function FormOrchestrator(props: FormsEngineProps) {
 			focusPending: pendingScrollFocus,
 			lastFieldToScroll: lastFieldToScrollRef.current
 		});
-		if (plan.action === 'scroll') lastFieldToScrollRef.current = plan.rememberFieldToScroll;
+		lastFieldToScrollRef.current = plan.rememberFieldToScroll;
 		if (plan.action === 'keep') {
 			clearingPendingRef.current = false;
 			return;

@@ -411,14 +411,14 @@ export function saveAsDraftFlag(explicitDraft: boolean, isFormInvalid: boolean):
 }
 
 /**
- * The save order. A reveal or a block returns before `preloadAndBeforeSave`,
- * which is where plugin preload and `onBeforeSave` live.
+ * The save order. A reveal or a block returns before `preloadAndWrite`,
+ * which is where plugin preload, `onBeforeSave`, and the write live.
  */
 export async function applySaveGate<WriteResult>(
 	args: Parameters<typeof gateSaveBeforeWrite>[0] & {
 		onReveal: (reveal: HiddenInvalidReveal) => void;
 		/** Receives the draft flag for this write (`saveAsDraftFlag`). */
-		preloadAndBeforeSave: (saveAsDraft: boolean) => Promise<WriteResult>;
+		preloadAndWrite: (saveAsDraft: boolean) => Promise<WriteResult>;
 	}
 ): Promise<'revealed' | 'invalid' | WriteResult> {
 	const gate = await gateSaveBeforeWrite(args);
@@ -427,7 +427,7 @@ export async function applySaveGate<WriteResult>(
 		return 'revealed';
 	}
 	if (gate.status === 'invalid') return 'invalid';
-	return args.preloadAndBeforeSave(saveAsDraftFlag(args.draft, gate.isFormInvalid));
+	return args.preloadAndWrite(saveAsDraftFlag(args.draft, gate.isFormInvalid));
 }
 
 /**
@@ -446,30 +446,33 @@ export function planSettledFieldScroll(args: {
 	/** The fieldToScroll value a previous run already accounted for. */
 	lastFieldToScroll?: string | null;
 }):
-	| { action: 'keep'; retainSettledScroll: boolean }
-	| { action: 'idle'; retainSettledScroll: boolean; cancelInFlight: boolean }
+	| { action: 'keep'; retainSettledScroll: boolean; rememberFieldToScroll: string | null }
+	| { action: 'idle'; retainSettledScroll: boolean; cancelInFlight: boolean; rememberFieldToScroll: string | null }
 	| {
 			action: 'scroll';
 			fieldId: string;
 			focus: boolean;
 			clearPending: boolean;
 			retainSettledScroll: boolean;
-			/** Store this so a later visibility change does not scroll the same fieldToScroll again. */
+			/** Store this so a later visibility change does not scroll the same fieldToScroll again. Null clears it. */
 			rememberFieldToScroll: string | null;
 	  } {
+	// An empty target forgets the previous id, so setting that same id later scrolls again.
+	const rememberFieldToScroll = args.fieldToScroll || null;
 	if (!args.pendingScrollFieldId && args.clearingPending) {
-		return { action: 'keep', retainSettledScroll: args.retainSettledScroll };
+		return { action: 'keep', retainSettledScroll: args.retainSettledScroll, rememberFieldToScroll };
 	}
 	// A scope or relevance change re-runs the effect. The same fieldToScroll must not jump the form back.
 	if (!args.pendingScrollFieldId && args.fieldToScroll && args.fieldToScroll === args.lastFieldToScroll) {
-		return { action: 'keep', retainSettledScroll: args.retainSettledScroll };
+		return { action: 'keep', retainSettledScroll: args.retainSettledScroll, rememberFieldToScroll };
 	}
 	const fieldId = args.pendingScrollFieldId || args.fieldToScroll || '';
 	if (!fieldId || !args.hasMainContent) {
 		return {
 			action: 'idle',
 			retainSettledScroll: false,
-			cancelInFlight: !args.retainSettledScroll
+			cancelInFlight: !args.retainSettledScroll,
+			rememberFieldToScroll
 		};
 	}
 	return {
@@ -478,7 +481,7 @@ export function planSettledFieldScroll(args: {
 		focus: Boolean(args.pendingScrollFieldId) && Boolean(args.focusPending),
 		clearPending: Boolean(args.pendingScrollFieldId),
 		retainSettledScroll: true,
-		rememberFieldToScroll: args.fieldToScroll || null
+		rememberFieldToScroll
 	};
 }
 

@@ -592,7 +592,7 @@ export function useSaveForm(props: UseSaveFormProps) {
 				onReveal(reveal) {
 					commitFormVisibility(jotai.set, stableFormContext.atoms, reveal.state, reveal.fieldId);
 				},
-				preloadAndBeforeSave: preloadAndWrite
+				preloadAndWrite
 			});
 			if (outcome === 'revealed' || outcome === 'invalid') setIsSubmitting(false);
 			return outcome;

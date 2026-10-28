@@ -21,7 +21,8 @@
  * single decision that either reveals a hidden error, refuses the write, or
  * continues, and the draft flag that decision hands to the write. Scroll tests
  * check that a reveal keeps its field when fieldToScroll is also set, and that
- * a plain fieldToScroll scrolls once. They do not render the form.
+ * a plain fieldToScroll scrolls once, and again after that target is cleared.
+ * They do not render the form.
  */
 
 import assert from 'node:assert/strict';
@@ -463,7 +464,7 @@ describe('save gate before the controller hook', () => {
 			}),
 			onReveal() {},
 			// save() puts plugin preload and onBeforeSave in this callback, and nowhere earlier.
-			preloadAndBeforeSave: async () => {
+			preloadAndWrite: async () => {
 				steps.preload();
 				steps.onBeforeSave();
 				return 'saved' as const;
@@ -549,7 +550,7 @@ describe('save gate before the controller hook', () => {
 				invalidFieldIds: options.invalidFieldIds
 			}),
 			onReveal() {},
-			preloadAndBeforeSave: async (saveAsDraft) => {
+			preloadAndWrite: async (saveAsDraft) => {
 				passed = saveAsDraft;
 				return 'saved' as const;
 			}
@@ -698,5 +699,46 @@ describe('settled field scroll', () => {
 		if (changed.action !== 'scroll') return;
 		assert.equal(changed.fieldId, 'body_html');
 		assert.equal(changed.focus, false);
+	});
+
+	// Clearing the prop forgets the id. Setting that same id later scrolls again.
+	it('scrolls the same fieldToScroll again after it is cleared', () => {
+		const first = planSettledFieldScroll({
+			pendingScrollFieldId: null,
+			fieldToScroll: 'title_s',
+			clearingPending: false,
+			retainSettledScroll: false,
+			hasMainContent: true,
+			focusPending: false,
+			lastFieldToScroll: null
+		});
+		assert.equal(first.action, 'scroll');
+		if (first.action !== 'scroll') return;
+
+		const cleared = planSettledFieldScroll({
+			pendingScrollFieldId: null,
+			fieldToScroll: null,
+			clearingPending: false,
+			retainSettledScroll: true,
+			hasMainContent: true,
+			focusPending: false,
+			lastFieldToScroll: first.rememberFieldToScroll
+		});
+		assert.equal(cleared.rememberFieldToScroll, null);
+		assert.equal(cleared.action, 'idle');
+
+		const again = planSettledFieldScroll({
+			pendingScrollFieldId: null,
+			fieldToScroll: 'title_s',
+			clearingPending: false,
+			retainSettledScroll: false,
+			hasMainContent: true,
+			focusPending: false,
+			lastFieldToScroll: cleared.rememberFieldToScroll
+		});
+		assert.equal(again.action, 'scroll');
+		if (again.action !== 'scroll') return;
+		assert.equal(again.fieldId, 'title_s');
+		assert.equal(again.focus, false);
 	});
 });
