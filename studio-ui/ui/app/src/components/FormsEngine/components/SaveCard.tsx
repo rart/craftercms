@@ -19,6 +19,7 @@ import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import React, { MouseEvent, useContext, useRef } from 'react';
 import { StableFormContext } from '../lib/formsEngineContext';
 import Paper from '@mui/material/Paper';
+import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import Checkbox from '@mui/material/Checkbox';
@@ -63,6 +64,8 @@ export function SaveCard(props: SaveCardProps) {
 	const [closeAfterSave, setCloseAfterSave] = useAtom(formAtoms.closeAfterSave);
 	const [minimizeAfterSave, setMinimizeAfterSave] = useAtom(formAtoms.minimizeAfterSave);
 	const disableSave = !isEmbedded && !isRepeatMode && (isSubmitting || !versionComment);
+	const showVersionComment = (!isEmbedded || !isStackedForm) && !isRepeatMode;
+	const showSaveOptions = !isEmbedded && !isRepeatMode;
 	const { formatMessage } = useIntl();
 	const dispatch = useDispatch();
 	// Click guard. It returns before setSaveAsDraft, so a second click cannot flip the draft
@@ -129,79 +132,82 @@ export function SaveCard(props: SaveCardProps) {
 
 	return (
 		<Paper sx={{ p: 1 }}>
-			{(!isEmbedded || !isStackedForm) && !isRepeatMode && (
-				// TODO: Should embedded components and repeats get a version comment? How would that work?
-				<TextField
-					size="small"
-					multiline
+			{/* One gap between whichever blocks are actually shown, so the button is not flush with the comment. */}
+			<Stack spacing={1}>
+				{showVersionComment && (
+					// TODO: Should embedded components and repeats get a version comment? How would that work?
+					<TextField
+						size="small"
+						multiline
+						fullWidth
+						label={<FormattedMessage defaultMessage="Version Comment" />}
+						value={versionComment}
+						onChange={(e) => setVersionComment(e.target.value)}
+						onFocus={(e) => e.target.select()}
+					/>
+				)}
+				{showSaveOptions && (
+					<Stack spacing={0}>
+						<FormControlLabel
+							label={<FormattedMessage defaultMessage="Minimize after saving" />}
+							control={
+								<Checkbox
+									size="small"
+									checked={minimizeAfterSave}
+									onChange={(e, checked) => handleSetMinimizeAfterSave(checked)}
+								/>
+							}
+						/>
+						<FormControlLabel
+							label={<FormattedMessage defaultMessage="Close after saving" />}
+							control={
+								<Checkbox
+									size="small"
+									checked={closeAfterSave}
+									onChange={(e, checked) => handleSetCloseAfterSave(checked)}
+								/>
+							}
+						/>
+					</Stack>
+				)}
+				<SplitButton
 					fullWidth
-					label={<FormattedMessage defaultMessage="Version Comment" />}
-					value={versionComment}
-					onChange={(e) => setVersionComment(e.target.value)}
-					onFocus={(e) => e.target.select()}
+					loading={isSubmitting}
+					disabled={disableSave}
+					options={[
+						{
+							id: 'save',
+							label:
+								isRepeatMode || (isEmbedded && isStackedForm)
+									? formatMessage({ defaultMessage: 'Done' })
+									: formatMessage({ defaultMessage: 'Save' }),
+							callback: (e) => {
+								handleSave(e);
+							}
+						},
+						{
+							id: 'saveDraft',
+							label:
+								isRepeatMode || (isEmbedded && isStackedForm)
+									? formatMessage({ defaultMessage: 'Done (Draft)' })
+									: formatMessage({ defaultMessage: 'Save Draft' }),
+							callback: (e) => {
+								handleSave(e, true);
+							}
+						}
+					]}
 				/>
-			)}
-			{!isEmbedded && !isRepeatMode && (
-				<>
-					<FormControlLabel
-						label={<FormattedMessage defaultMessage="Minimize after saving" />}
-						control={
-							<Checkbox
-								size="small"
-								checked={minimizeAfterSave}
-								onChange={(e, checked) => handleSetMinimizeAfterSave(checked)}
-							/>
-						}
-					/>
-					<FormControlLabel
-						label={<FormattedMessage defaultMessage="Close after saving" />}
-						control={
-							<Checkbox
-								size="small"
-								checked={closeAfterSave}
-								onChange={(e, checked) => handleSetCloseAfterSave(checked)}
-							/>
-						}
-					/>
-				</>
-			)}
-			<SplitButton
-				fullWidth
-				loading={isSubmitting}
-				disabled={disableSave}
-				options={[
-					{
-						id: 'save',
-						label:
-							isRepeatMode || (isEmbedded && isStackedForm)
-								? formatMessage({ defaultMessage: 'Done' })
-								: formatMessage({ defaultMessage: 'Save' }),
-						callback: (e) => {
-							handleSave(e);
-						}
-					},
-					{
-						id: 'saveDraft',
-						label:
-							isRepeatMode || (isEmbedded && isStackedForm)
-								? formatMessage({ defaultMessage: 'Done (Draft)' })
-								: formatMessage({ defaultMessage: 'Save Draft' }),
-						callback: (e) => {
-							handleSave(e, true);
-						}
-					}
-				]}
-			/>
-			{isStackedForm && isEmbedded && (
-				<FormHelperText sx={{ textAlign: 'center' }}>
-					<FormattedMessage defaultMessage="Changes are saved with the main item." />
-				</FormHelperText>
-			)}
-			<Grow in={!hasPendingChanges} appear unmountOnExit>
-				<Alert severity="info" variant="outlined" sx={{ p: 0, border: 'none', placeContent: 'center' }}>
-					<FormattedMessage defaultMessage="No changes detected" />
-				</Alert>
-			</Grow>
+				{isStackedForm && isEmbedded && (
+					<FormHelperText sx={{ m: 0, textAlign: 'center' }}>
+						<FormattedMessage defaultMessage="Changes are saved with the main item." />
+					</FormHelperText>
+				)}
+				<Grow in={!hasPendingChanges} appear unmountOnExit>
+					<Alert severity="info" variant="outlined" sx={{ p: 0, border: 'none', placeContent: 'center' }}>
+						<FormattedMessage defaultMessage="No changes detected" />
+					</Alert>
+				</Grow>
+			</Stack>
 		</Paper>
 	);
 }
