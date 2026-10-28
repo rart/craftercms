@@ -353,7 +353,12 @@ function orderedInvalidFieldIds(invalidFieldIds: readonly string[], sectionOrder
 	return [...sectionOrder.filter((id) => invalid.has(id)), ...invalidFieldIds.filter((id) => !inSection.has(id))];
 }
 
-/** Invalid fields the author cannot see, in section order. The alert uses `[0]` and the length. */
+/**
+ * Invalid fields the author cannot see, in section order.
+ * With a scope, that is an out-of-scope field. With `allUnseen`, every relevant invalid field counts
+ * (the form is covered, for example by an open item form). Irrelevant fields are skipped.
+ * A save reveal uses `[0]`.
+ */
 export function hiddenFieldIds(args: {
 	invalidFieldIds: readonly string[];
 	sectionOrder: readonly string[];
@@ -362,15 +367,24 @@ export function hiddenFieldIds(args: {
 	scopeFieldIds: readonly string[] | null;
 	allUnseen?: boolean;
 }): string[] {
-	if (!args.allUnseen && !args.scopeFieldIds) return [];
-	return orderedInvalidFieldIds(args.invalidFieldIds, args.sectionOrder).filter((fieldId) => {
-		const visibility = fieldVisibility({
-			fieldId,
+	if (args.allUnseen) {
+		return relevantInvalidFieldIds({
+			invalidFieldIds: args.invalidFieldIds,
+			sectionOrder: args.sectionOrder,
 			irrelevantFieldPaths: args.irrelevantFieldPaths,
-			parentPath: args.parentPath,
-			scopeFieldIds: args.allUnseen ? null : args.scopeFieldIds
+			parentPath: args.parentPath
 		});
-		return args.allUnseen ? visibility !== 'irrelevant' : visibility === 'outOfScope';
+	}
+	if (!args.scopeFieldIds) return [];
+	return orderedInvalidFieldIds(args.invalidFieldIds, args.sectionOrder).filter((fieldId) => {
+		return (
+			fieldVisibility({
+				fieldId,
+				irrelevantFieldPaths: args.irrelevantFieldPaths,
+				parentPath: args.parentPath,
+				scopeFieldIds: args.scopeFieldIds
+			}) === 'outOfScope'
+		);
 	});
 }
 
@@ -706,6 +720,29 @@ export function hiddenInvalidReveal(args: {
  */
 export function revealField(state: FormVisibilityState, fieldId?: string): HiddenInvalidReveal {
 	return { state: openFullForm(state), ...(fieldId ? { fieldId } : {}) };
+}
+
+/**
+ * Show on the validation alert names one field.
+ * A field the author cannot see opens the full form. A field already on screen keeps the scope.
+ * Either way the field is named so the form can scroll to it and focus it.
+ * This is not the save reveal: that one searches for the first hidden error.
+ */
+export function showValidationError(args: {
+	visibility: FormVisibilityState;
+	fieldId: string;
+	irrelevantFieldPaths?: ReadonlySet<string> | null;
+	parentPath?: string;
+}): HiddenInvalidReveal {
+	const onScreen =
+		fieldVisibility({
+			fieldId: args.fieldId,
+			irrelevantFieldPaths: args.irrelevantFieldPaths,
+			parentPath: args.parentPath,
+			scopeFieldIds: args.visibility.active.fieldIds
+		}) === 'visible';
+	if (onScreen) return { state: args.visibility, fieldId: args.fieldId };
+	return revealField(args.visibility, args.fieldId);
 }
 
 /**

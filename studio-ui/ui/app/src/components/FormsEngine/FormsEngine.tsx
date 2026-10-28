@@ -177,6 +177,7 @@ import {
 	planSettledFieldScroll,
 	repeatFormLock,
 	revealField,
+	showValidationError,
 	selectedItemSavePlan,
 	stackEntryFlagsAtom,
 	stackedFormCloseAction,
@@ -1414,17 +1415,12 @@ function FormOrchestrator(props: FormsEngineProps) {
 	const showValidationField = () => {
 		if (!validationErrors) return;
 		if (validationErrors.where === 'local') {
-			const state = store.get(atoms.formVisibility);
-			const hidden =
-				fieldVisibility({
-					fieldId: validationErrors.fieldId,
-					irrelevantFieldPaths,
-					parentPath: repeat?.fieldId,
-					scopeFieldIds: state.active.fieldIds
-				}) !== 'visible';
-			const reveal = hidden
-				? revealField(state, validationErrors.fieldId)
-				: { state, fieldId: validationErrors.fieldId };
+			const reveal = showValidationError({
+				visibility: store.get(atoms.formVisibility),
+				fieldId: validationErrors.fieldId,
+				irrelevantFieldPaths,
+				parentPath: repeat?.fieldId
+			});
 			commitFormVisibility(store.set, atoms, reveal.state, reveal.fieldId);
 			return;
 		}

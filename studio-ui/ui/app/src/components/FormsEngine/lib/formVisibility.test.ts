@@ -30,7 +30,8 @@
  * A repeat value that is missing does the same and warns that there is nothing to open.
  * A pending item launch hides the parent body, and that body stays hidden while its drawer is entering.
  * A rejected validity read keeps the last invalid-field ids, and a stale rejection is ignored.
- * Every form with a relevant validation error shows the advance alert, including errors already on screen.
+ * Every form with a relevant validation error shows the validation alert, including errors already on screen.
+ * Show on that alert opens the full form only when the named field is out of scope.
  * An item form that has its own error does not point that alert at the parent repeat field.
  * They do not render the form.
  */
@@ -67,6 +68,7 @@ import {
 	stackedFormCloseAction,
 	stackedFormsClosedByReload,
 	hiddenInvalidReveal,
+	showValidationError,
 	isScopeActive,
 	itemGroupFieldIds,
 	launchScopeWarnings,
@@ -352,6 +354,30 @@ describe('hiddenInvalidReveal', () => {
 			}),
 			undefined
 		);
+	});
+});
+
+describe('show validation error', () => {
+	const scoped = resolveLaunchVisibility({
+		selectedFields: ['title_s'],
+		knownFieldIds: known,
+		repeatFieldIds: repeats
+	}).state;
+
+	// The named field is outside the launch scope, so Show opens the full form and scrolls to it.
+	it('opens the full form when the named field is out of scope', () => {
+		const reveal = showValidationError({ visibility: scoped, fieldId: 'body_html' });
+		assert.equal(reveal.fieldId, 'body_html');
+		assert.equal(isScopeActive(reveal.state.active), false);
+		assert.ok(reveal.state.launch);
+	});
+
+	// The named field is already on screen. Show keeps the scope and still names the field to scroll to.
+	it('keeps the scope when the named field is on screen', () => {
+		const reveal = showValidationError({ visibility: scoped, fieldId: 'title_s' });
+		assert.equal(reveal.state, scoped);
+		assert.equal(reveal.fieldId, 'title_s');
+		assert.equal(isScopeActive(reveal.state.active), true);
 	});
 });
 
