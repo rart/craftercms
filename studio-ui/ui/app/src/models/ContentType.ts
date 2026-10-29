@@ -137,8 +137,8 @@ export interface ContentTypeField {
 	values?: { label: string; value: string }[];
 	helpText?: string;
 	/**
-	 * Constraints as parsed (name, value, type, label). Save writes the constraints Type Builder
-	 * models, then any of these it did not already write. Item-count constraints stay with countLimits.
+	 * Constraints as parsed (name, value, type, label). Save writes them in their original order,
+	 * updating the ones Type Builder edits in place. Item-count constraints stay with countLimits.
 	 */
 	rawConstraints?: LegacyFormDefinitionProperty[];
 	// localized: boolean;
@@ -218,8 +218,8 @@ export interface ContentType {
 	/** Roles allowed to create content of this type. Omitted from the form definition when empty. */
 	allowedRoles: string[];
 	/**
-	 * Every form `<property>` as parsed. Save rewrites display-template, no-template-required and
-	 * merge-strategy, then writes the rest unchanged.
+	 * Every form `<property>` as parsed. Save writes them in their original order, updating
+	 * display-template, no-template-required and merge-strategy in place.
 	 */
 	formProperties?: LegacyFormDefinitionProperty[];
 	sections: ContentTypeSection[];

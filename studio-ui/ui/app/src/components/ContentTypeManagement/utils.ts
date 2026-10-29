@@ -794,23 +794,20 @@ function convertFieldStructToXmlStruct(field: ContentTypeField): Required<Legacy
 						value: validation.value,
 						type: typeof validation.value
 					}))
-					// An undefined value is an empty editor field. `typeof undefined` would write <type>undefined</type>.
-					.filter(
-						(validation) =>
-							validation.name && validation.value !== undefined && !strippedValidationNames.includes(validation.name)
-					)
+					.filter((validation) => validation.name && !strippedValidationNames.includes(validation.name))
 			: [];
 	for (const constraint of countXml?.constraints ?? []) {
-		if (!handledConstraints.some((item) => item.name === constraint.name)) {
-			// The table stores the constraint name as a string. The list's name is the validation-id union.
-			handledConstraints.push({
-				name: constraint.name as (typeof handledConstraints)[number]['name'],
-				value: constraint.value,
-				type: constraint.type as (typeof handledConstraints)[number]['type']
-			});
-		}
+		const existing = handledConstraints.findIndex((item) => item.name === constraint.name);
+		// The table stores the constraint name as a string. The list's name is the validation-id union.
+		const written = {
+			name: constraint.name as (typeof handledConstraints)[number]['name'],
+			value: constraint.value,
+			type: constraint.type as (typeof handledConstraints)[number]['type']
+		};
+		if (existing === -1) handledConstraints.push(written);
+		else if (handledConstraints[existing].value === undefined) handledConstraints[existing] = written;
 	}
-	// Original constraint order. Handled names are updated in place; count-limit omissions stay omitted.
+	// Original constraint order. Handled names are updated in place; an undefined value means the stored one is cleared.
 	const handledByName = new Map<string, (typeof handledConstraints)[number]>(
 		handledConstraints.map((item) => [item.name, item])
 	);
@@ -823,12 +820,15 @@ function convertFieldStructToXmlStruct(field: ContentTypeField): Required<Legacy
 	const constraintList: Array<(typeof handledConstraints)[number] | LegacyFormDefinitionProperty> = [];
 	for (const raw of field.rawConstraints ?? []) {
 		if (!raw?.name || omittedConstraintNames.has(raw.name)) continue;
-		seenConstraintNames.add(raw.name);
 		const update = handledByName.get(raw.name);
+		// A cleared editor value must not bring the stored constraint back, or write type "undefined".
+		if (update && update.value === undefined) continue;
+		seenConstraintNames.add(raw.name);
 		constraintList.push(update ? { ...raw, value: update.value, type: update.type } : { ...raw });
 	}
 	for (const constraint of handledConstraints) {
 		if (seenConstraintNames.has(constraint.name) || omittedConstraintNames.has(constraint.name)) continue;
+		if (constraint.value === undefined) continue;
 		constraintList.push(constraint);
 	}
 	const constraints = constraintList.length > 0 ? { constraint: constraintList } : undefined;

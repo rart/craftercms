@@ -264,6 +264,38 @@ describe('form property and constraint pass-through', () => {
 		);
 		assert.equal(buildContentTypeXml(savedType(parsed)).includes('<type>undefined</type>'), false);
 	});
+
+	// Given a stored pattern of abc, clearing the validation drops the constraint instead of writing abc back.
+	it('does not write a stored pattern back when its validation value is undefined', () => {
+		const parsed = parseLegacyFormDefinition({
+			'content-type': '/page/custom',
+			title: 'Custom',
+			description: '',
+			objectType: 'page',
+			sections: {
+				section: {
+					title: 'Main',
+					description: '',
+					defaultOpen: 'true',
+					fields: {
+						field: {
+							id: 'title_t',
+							title: 'Title',
+							description: '',
+							type: 'input',
+							constraints: { constraint: { name: 'pattern', value: 'abc', type: 'string' } }
+						}
+					}
+				}
+			}
+		} as never);
+		parsed.fields.title_t.validations.pattern = { id: 'pattern', value: undefined, level: 'required' };
+		const constraints = fieldConstraints(parsed, 'title_t');
+		assert.equal(
+			constraints.some((item) => item.name === 'pattern'),
+			false
+		);
+	});
 });
 
 describe('allowed roles', () => {

@@ -159,13 +159,6 @@ export function getCountLimitStorage(fieldType?: string | null): CountLimitContr
 	return countLimitStorage[fieldType];
 }
 
-/** True when some control stores an item-count bound under this constraint name. */
-export function isCountLimitConstraint(name: string): boolean {
-	return Object.values(countLimitStorage).some((control) =>
-		[control.min, control.max].some((bound) => bound?.sources.includes('constraint') && bound.name === name)
-	);
-}
-
 /** Constraint names the validations loop must not copy onto the content field (checkbox `minSize`). */
 export function countLimitValidationKeys(storage: CountLimitControl | undefined): string[] {
 	if (!storage) return [];
