@@ -35,7 +35,7 @@ export function TypeAllowedRolesSelector(props: TypeAllowedRolesSelectorProps) {
 	const maxLength = field.validations.maxLength?.value;
 	return (
 		<FormsEngineField htmlFor={htmlId} field={field} max={maxLength}>
-			<Box sx={{ display: 'flex', flexDirection: 'column', rowGap: 2 }}>
+			<Box sx={{ display: 'flex', flexDirection: 'column', rowGap: 2, mt: 2 }}>
 				<StringListEditor
 					values={value}
 					onChange={setValue}
