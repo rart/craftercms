@@ -100,7 +100,12 @@ export function TableOfContents({ containerRef, fields, sections, countFieldIds 
 	const handleSectionExpansionToggleClick = (event: SyntheticEvent, itemId: string, expanded: boolean) => {
 		event.stopPropagation(); // Avoid accordion expansion
 		store.set(expandedStateAtoms[itemId], expanded);
+		// Closing via atom does not invoke Drawer.onClose; restore scroll freeze from open.
 		setOpenDrawerSidebar(false);
+		const root = containerRef.current;
+		getScrollContainer(root).style.overflowY = '';
+		root.style.overflowY = '';
+		root.style.removeProperty('--scroll-top');
 	};
 	const [searchFieldValue, setSearchFieldValue] = useState('');
 	const [filteredFields, setFilteredFields] = useState<ContentTypeField[]>(null);
