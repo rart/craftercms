@@ -31,7 +31,7 @@ import React, {
 	useRef,
 	useState
 } from 'react';
-import { ContentTypeField, PublishPackage } from '../../models';
+import { PublishPackage } from '../../models';
 import {
 	FormsEngineAtoms,
 	FormsEngineEditContextProps,
@@ -139,7 +139,6 @@ import {
 	preloadControlPluginsForFields,
 	type ControlPluginPreloadFailure
 } from './lib/controlPluginLoader';
-import { fromString } from '../../utils/xml';
 import { displayWithPendingChangesConfirm } from '../../utils/ui';
 import useActiveUser from '../../hooks/useActiveUser';
 import FormBackToTop from './components/FormBackToTop';
@@ -154,7 +153,7 @@ import {
 import { getHostToHostBus } from '../../utils/subjects';
 import { fetchAffectedPackages } from '../../services/workflow';
 import useMount from '../../hooks/useMount';
-import { nnou, nou } from '../../utils/object';
+import { nnou } from '../../utils/object';
 import { buildContentXml } from './lib/valueSerializers';
 import { processPathMacros } from '../../utils/path';
 import {
@@ -263,6 +262,14 @@ export interface CreateModeProps {
 }
 
 export type FormsEngineProps = BaseProps & (UpdateModeProps | RepeatModeProps | CreateModeProps);
+
+type RootFormActions = StableGlobalContextProps['rootFormActions'];
+
+/** Writes the latest parent save into the stack's mutable slot. The slot is not React state. */
+function publishRootFormActions(actions: RootFormActions, refs: { current: RootFormActions }) {
+	actions.save = (draft) => refs.current.save(draft);
+	actions.setSaveAsDraft = (value) => refs.current.setSaveAsDraft(value);
+}
 
 // Entry point for the form engine. It validates the props and continues if valid.
 function FormGuard(props: FormsEngineProps) {
@@ -950,6 +957,15 @@ function FormOrchestrator(props: FormsEngineProps) {
 		(pendingItemFieldId ? atoms.valueByFieldId[pendingItemFieldId] : undefined) ?? idlePendingValue
 	);
 	const pendingItemLength = Array.isArray(pendingRepeatValue) ? pendingRepeatValue.length : null;
+	// Hide the parent as soon as the item can open. Setting this in the launch effect flashes the body.
+	const canOpenItemLaunch =
+		pendingItemFieldId != null &&
+		atoms.valueByFieldId[pendingItemFieldId] != null &&
+		pendingItemLength != null &&
+		itemLaunchFrom(visibility, pendingItemLength) != null;
+	if (canOpenItemLaunch && !itemLaunchEntering) {
+		setItemLaunchEntering(true);
+	}
 	const formSections = useMemo(() => {
 		let sections = contentType.sections;
 		if (isEmbedded) {
@@ -1021,8 +1037,6 @@ function FormOrchestrator(props: FormsEngineProps) {
 	const lastCreationCommentRef = useRef(generateDefaultCreationComment('', formatMessage));
 	const [collapseHeader, setCollapseHeader] = useState(false);
 	const [saveAsDraftAction, setSaveAsDraftAction] = useState(false);
-	const [invalidForm, setInvalidForm] = useState(false);
-	const jotai = useJotaiStore();
 
 	useMount(() => {
 		// If 'update.changeTypeId' has content, it means the content type has changed, so we set pending changes to true
@@ -1132,6 +1146,22 @@ function FormOrchestrator(props: FormsEngineProps) {
 				hasPendingChanges: stackSummary.pending
 			});
 	}, [isStackedForm, stackSummary.pending, stackSummary.submitting, updateSubmittingOrHasPendingChanges]);
+
+	// Live invalid ids. The first read is immediate; later edits wait out the pause in the hook,
+	// so the alert's count is not rewritten on every keystroke.
+	const localInvalidFieldIds = useInvalidFieldIds(
+		atoms.validationByFieldId,
+		irrelevantFieldPaths,
+		repeat?.fieldId,
+		fieldUpdates$
+	);
+	const invalidForm = localInvalidFieldIds.length > 0;
+	const parentInvalidFieldIds = useInvalidFieldIds(
+		parentAtoms?.validationByFieldId,
+		parentEntry?.formControllerState?.irrelevantFieldPaths,
+		undefined,
+		parentEntry?.fieldUpdates$
+	);
 
 	// Unlock content when the form is closed.
 	useUnlockOnClose({
@@ -1297,8 +1327,8 @@ function FormOrchestrator(props: FormsEngineProps) {
 	const rootActionRefs = useUpdateRefs({ save: saveFn, setSaveAsDraft: setSaveAsDraftAction });
 	useLayoutEffect(() => {
 		if (stackIndex !== 0) return;
-		rootFormActions.save = (draft) => rootActionRefs.current.save(draft);
-		rootFormActions.setSaveAsDraft = (value) => rootActionRefs.current.setSaveAsDraft(value);
+		// Stable mutable registry for the item form, not React state. Read .current when Save is clicked.
+		publishRootFormActions(rootFormActions, rootActionRefs);
 	}, [rootActionRefs, rootFormActions, stackIndex]);
 
 	const itemLaunchStarted = useRef(false);
@@ -1332,8 +1362,7 @@ function FormOrchestrator(props: FormsEngineProps) {
 		}
 		itemLaunchStarted.current = true;
 		store.set(atoms.formVisibility, { ...visibilityState, itemForm: null });
-		// The marker is cleared in this same step. Hold the parent body through the drawer enter.
-		setItemLaunchEntering(true);
+		// The marker is cleared in this same step. The parent body stays hidden until the drawer enters.
 		contextApi.pushForm({
 			...repeatItemFormProps({
 				fieldId: visibleLaunch.fieldId,
@@ -1367,21 +1396,6 @@ function FormOrchestrator(props: FormsEngineProps) {
 		return () => subscription.unsubscribe();
 	}, [atoms.valueByFieldId, fieldUpdates$, itemMode, parentAtoms, repeat?.fieldId, repeat?.index, store]);
 
-	const localInvalidFieldIds = useInvalidFieldIds(
-		atoms.validationByFieldId,
-		irrelevantFieldPaths,
-		repeat?.fieldId,
-		fieldUpdates$
-	);
-	useEffect(() => {
-		setInvalidForm(localInvalidFieldIds.length > 0);
-	}, [localInvalidFieldIds]);
-	const parentInvalidFieldIds = useInvalidFieldIds(
-		parentAtoms?.validationByFieldId,
-		parentEntry?.formControllerState?.irrelevantFieldPaths,
-		undefined,
-		parentEntry?.fieldUpdates$
-	);
 	const parentFieldOrder = useMemo(
 		() => parentEntry?.itemMeta.contentType.sections?.flatMap((section) => section.fields) ?? [],
 		[parentEntry]

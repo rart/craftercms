@@ -69,7 +69,6 @@ import { areAllPairsEqual } from '../../../utils/array';
 import { deserializeContentDoc } from './valueRetrievers';
 import { buildContentXml } from './valueSerializers';
 import {
-	childFields,
 	createFormVisibilityAtoms,
 	fieldVisibility,
 	aggregateStackFlags,
@@ -106,6 +105,11 @@ export function getScrollContainer(container: HTMLElement): HTMLElement {
 const focusableControl =
 	'input:not([type=hidden]):not([aria-hidden="true"]):not([disabled]), textarea:not([disabled]), select:not([disabled]), [contenteditable="true"], [role="combobox"], [tabindex="0"]';
 
+/** Attribute selector for a field. Ids are not a closed set, so the value is escaped. */
+export function fieldIdSelector(fieldId: string): string {
+	return `[data-field-id="${CSS.escape(fieldId)}"]`;
+}
+
 function focusField(field: HTMLElement): void {
 	const inner = field.querySelector<HTMLElement>(focusableControl);
 	const target = inner ?? field;
@@ -125,9 +129,8 @@ export function scrollToFieldWhenSettled(
 ): () => void {
 	const formBody = root.querySelector('[data-area-id="formBody"]');
 	const scroll = () => {
-		const field = formBody
-			? formBody.querySelector(`[data-field-id="${fieldId}"]`)
-			: root.querySelector(`[data-field-id="${fieldId}"]`);
+		const selector = fieldIdSelector(fieldId);
+		const field = formBody ? formBody.querySelector(selector) : root.querySelector(selector);
 		if (!(field instanceof HTMLElement)) return;
 		field.scrollIntoView({ behavior: 'instant', block: 'center', inline: 'nearest' });
 		// Plain `fieldToScroll` passes focus off. A reveal sets it so opening a hidden field moves focus.

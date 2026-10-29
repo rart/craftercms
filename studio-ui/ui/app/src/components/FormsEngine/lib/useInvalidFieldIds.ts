@@ -15,12 +15,26 @@
  */
 
 import { useEffect, useState } from 'react';
-import type { Observable } from 'rxjs';
+import type { Observable, SchedulerLike, Subscription } from 'rxjs';
+import { debounceTime } from 'rxjs/operators';
 import { useStore as useJotaiStore, type Atom } from 'jotai';
 import type LookupTable from '../../../models/LookupTable';
 import type { FieldValidityState } from './validators';
 import { settleInvalidFieldRead } from './formVisibility';
 import { readInvalidFieldIds } from './formUtils';
+
+/** Same pause as the version comment. A keystroke must not re-run every validator. */
+export const invalidFieldReadDebounceMs = 300;
+
+/** Subscribes to field edits and calls `read` once the author pauses. */
+export function watchInvalidFieldUpdates(
+	fieldUpdates$: Observable<string> | null | undefined,
+	read: () => void,
+	dueTime = invalidFieldReadDebounceMs,
+	scheduler?: SchedulerLike
+): Subscription | undefined {
+	return fieldUpdates$?.pipe(debounceTime(dueTime, scheduler)).subscribe(() => read());
+}
 
 /** Live ids of fields that fail validation, excluding controller-irrelevant fields. */
 export function useInvalidFieldIds(
@@ -48,7 +62,7 @@ export function useInvalidFieldIds(
 			}
 		};
 		void read();
-		const subscription = fieldUpdates$?.subscribe(() => void read());
+		const subscription = watchInvalidFieldUpdates(fieldUpdates$, () => void read());
 		return () => {
 			disposed = true;
 			subscription?.unsubscribe();
