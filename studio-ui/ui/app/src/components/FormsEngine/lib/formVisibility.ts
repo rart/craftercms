@@ -343,9 +343,7 @@ export function itemFormExit(mode: ItemFormMode | null): ItemFormExit {
 }
 
 /**
- * The first invalid field the author cannot see.
- * With a scope, that is an out-of-scope field. With `allUnseen`, every invalid field counts
- * (the form is covered, for example by an open item form). Irrelevant fields are skipped.
+ * Invalid field ids in section order. Ids that are in no section follow, in their original order.
  */
 function orderedInvalidFieldIds(invalidFieldIds: readonly string[], sectionOrder: readonly string[]): string[] {
 	const invalid = new Set(invalidFieldIds);
