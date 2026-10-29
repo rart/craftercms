@@ -14,16 +14,13 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-import React, { ReactNode, useId } from 'react';
-import FormsEngineField from '../../FormsEngine/components/FormsEngineField';
+import React, { ReactNode } from 'react';
 import Box from '@mui/material/Box';
-import { FormattedMessage } from 'react-intl';
 import TextField from '@mui/material/TextField';
 import IconButton from '@mui/material/IconButton';
 import AddCircleOutlineRoundedIcon from '@mui/icons-material/AddCircleOutlineRounded';
 import Tooltip from '@mui/material/Tooltip';
 import RemoveCircleOutlineRoundedIcon from '@mui/icons-material/RemoveCircleOutlineRounded';
-import { TypeBuilderControl } from '../utils';
 
 export interface StringListEditorProps {
 	values: string[];
@@ -35,7 +32,7 @@ export interface StringListEditorProps {
 }
 
 /**
- * Free-text list with add and remove. Includes, Excludes and Allowed Roles all use this.
+ * Free-text list with add and remove. Callers supply the labels.
  */
 export function StringListEditor(props: StringListEditorProps) {
 	const { values, onChange, itemLabel, addLabel, removeLabel, maxLength } = props;
@@ -98,30 +95,4 @@ export function StringListEditor(props: StringListEditorProps) {
 	);
 }
 
-export interface StringListControlProps extends TypeBuilderControl {
-	value: string[];
-}
-
-/** Allowed Roles field. The list itself is {@link StringListEditor}. */
-export function StringListControl(props: StringListControlProps) {
-	const { field, setValue } = props;
-	const value = Array.isArray(props.value) ? props.value : [];
-	const htmlId = useId();
-	const maxLength = field.validations.maxLength?.value;
-	return (
-		<FormsEngineField htmlFor={htmlId} field={field} max={maxLength}>
-			<Box sx={{ display: 'flex', flexDirection: 'column', rowGap: 2 }}>
-				<StringListEditor
-					values={value}
-					onChange={setValue}
-					maxLength={maxLength}
-					itemLabel={<FormattedMessage defaultMessage="Role" />}
-					addLabel={<FormattedMessage defaultMessage="Add Role" />}
-					removeLabel={<FormattedMessage defaultMessage="Remove Role" />}
-				/>
-			</Box>
-		</FormsEngineField>
-	);
-}
-
-export default StringListControl;
+export default StringListEditor;

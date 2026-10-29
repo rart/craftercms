@@ -637,80 +637,51 @@ export function makeIntoTypeFieldStructPath(fieldPath: string): string {
 		.replace(/.fields$/, '');
 }
 
-/** Form properties Type Builder edits. Everything else in `formProperties` is written back after these. */
-const modeledFormPropertySpecs: Array<{
-	name: string;
-	label: string;
-	type: string;
-	value: (type: ContentType) => string;
-	unchanged: (original: string, type: ContentType) => boolean;
-	empty: (type: ContentType) => boolean;
-}> = [
-	{
-		name: XmlKeys.displayTemplate,
-		label: 'Display Template',
-		type: 'template',
-		value: (type) => type.displayTemplate ?? '',
-		unchanged: (original, type) => (original.trim() || null) === (type.displayTemplate || null),
-		empty: (type) => !type.displayTemplate
-	},
-	{
-		name: XmlKeys.templateNotRequired,
-		label: 'No Template Required',
-		type: 'boolean',
-		value: (type) => toBooleanString(type.isHeadless),
-		unchanged: (original, type) => (original.trim() === 'true') === Boolean(type.isHeadless),
-		empty: (type) => !type.isHeadless
-	},
-	{
-		name: XmlKeys.mergeStrategy,
-		label: 'Merge Strategy',
-		type: 'string',
-		value: (type) => type.mergeStrategy ?? '',
-		unchanged: (original, type) => (original.trim() || null) === (type.mergeStrategy || null),
-		empty: (type) => !type.mergeStrategy
-	}
-];
-
-function formPropertyText(property: LegacyFormDefinitionProperty): string {
-	return typeof property.value === 'string' ? property.value : property.value == null ? '' : String(property.value);
-}
-
 /**
- * Writes the form properties Type Builder models, then any property it does not model, unchanged.
- * A parsed type keeps an empty modeled property that was already in the file. A new type (no
- * `formProperties` snapshot) still writes the three properties Type Builder has always written.
+ * The three form properties Type Builder edits. A parsed type updates those entries in place and
+ * keeps every other property where it was. A new type (no snapshot) still writes all three.
  */
 function buildFormProperties(type: ContentType): LegacyFormDefinitionProperty[] {
-	const canonical = modeledFormPropertySpecs.map((spec) => ({
-		label: spec.label,
-		name: spec.name,
-		type: spec.type,
-		value: spec.value(type)
-	}));
+	const canonical: LegacyFormDefinitionProperty[] = [
+		{
+			label: 'Display Template',
+			name: XmlKeys.displayTemplate,
+			type: 'template',
+			value: type.displayTemplate
+		},
+		{
+			label: 'No Template Required',
+			name: XmlKeys.templateNotRequired,
+			type: 'boolean',
+			value: toBooleanString(type.isHeadless)
+		},
+		{
+			label: 'Merge Strategy',
+			name: XmlKeys.mergeStrategy,
+			type: 'string',
+			value: type.mergeStrategy
+		}
+	];
 	if (!type.formProperties) return canonical;
 
-	const modeledNames = new Set(modeledFormPropertySpecs.map((spec) => spec.name));
-	const originals = new Map<string, LegacyFormDefinitionProperty>();
-	for (const property of type.formProperties) {
-		if (modeledNames.has(property.name) && !originals.has(property.name)) originals.set(property.name, property);
-	}
-	const written: LegacyFormDefinitionProperty[] = [];
-	for (const spec of modeledFormPropertySpecs) {
-		const original = originals.get(spec.name);
-		if (original && spec.unchanged(formPropertyText(original), type)) {
-			written.push(original);
-		} else if (original || !spec.empty(type)) {
-			written.push({
-				label: spec.label,
-				name: spec.name,
-				type: spec.type,
-				value: spec.value(type)
-			});
-		}
-	}
-	for (const property of type.formProperties) {
-		if (!modeledNames.has(property.name)) written.push(property);
+	const byName = new Map(canonical.map((property) => [property.name, property]));
+	const seen = new Set<string>();
+	const written = type.formProperties.map((property) => {
+		const next = byName.get(property.name);
+		if (!next) return property;
+		seen.add(property.name);
+		const original = typeof property.value === 'string' ? property.value.trim() : '';
+		const unchanged =
+			property.name === XmlKeys.templateNotRequired
+				? (original === 'true') === Boolean(type.isHeadless)
+				: (original || null) === (next.value || null);
+		// Keep label and type. Only the value changes, and only when the model disagrees.
+		return unchanged ? property : { ...property, value: next.value };
+	});
+	for (const property of canonical) {
+		if (seen.has(property.name)) continue;
+		const hasValue = property.name === XmlKeys.templateNotRequired ? Boolean(type.isHeadless) : Boolean(property.value);
+		if (hasValue) written.push(property);
 	}
 	return written;
 }
@@ -815,7 +786,7 @@ function convertFieldStructToXmlStruct(field: ContentTypeField): Required<Legacy
 		...(countXml?.stripConstraints ?? [])
 	];
 
-	const constraintList =
+	const handledConstraints =
 		field.validations && Object.keys(field.validations).length > 0
 			? Object.values(field.validations)
 					.map((validation) => ({
@@ -823,35 +794,42 @@ function convertFieldStructToXmlStruct(field: ContentTypeField): Required<Legacy
 						value: validation.value,
 						type: typeof validation.value
 					}))
-					.filter((validation) => validation.name && !strippedValidationNames.includes(validation.name))
+					// An undefined value is an empty editor field. `typeof undefined` would write <type>undefined</type>.
+					.filter(
+						(validation) =>
+							validation.name && validation.value !== undefined && !strippedValidationNames.includes(validation.name)
+					)
 			: [];
 	for (const constraint of countXml?.constraints ?? []) {
-		if (!constraintList.some((item) => item.name === constraint.name)) {
+		if (!handledConstraints.some((item) => item.name === constraint.name)) {
 			// The table stores the constraint name as a string. The list's name is the validation-id union.
-			constraintList.push({
-				name: constraint.name as (typeof constraintList)[number]['name'],
+			handledConstraints.push({
+				name: constraint.name as (typeof handledConstraints)[number]['name'],
 				value: constraint.value,
-				type: constraint.type as (typeof constraintList)[number]['type']
+				type: constraint.type as (typeof handledConstraints)[number]['type']
 			});
 		}
 	}
-	// Constraints Type Builder does not model are written after the ones it does, unchanged.
-	// Count-limit constraints, and constraints that contract strips (a repeat's required), stay with countLimits.
-	const writtenConstraintNames = new Set<string>(constraintList.map((item) => item.name));
+	// Original constraint order. Handled names are updated in place; count-limit omissions stay omitted.
+	const handledByName = new Map<string, (typeof handledConstraints)[number]>(
+		handledConstraints.map((item) => [item.name, item])
+	);
 	const countStorage = getCountLimitStorage(field.type);
-	const suppressedConstraintNames = new Set([
-		...countLimitValidationKeys(countStorage),
-		...(countStorage?.stripConstraints ?? [])
-	]);
+	const omittedConstraintNames = new Set<string>(countStorage?.stripConstraints ?? []);
+	for (const name of countLimitValidationKeys(countStorage)) {
+		if (!handledByName.has(name)) omittedConstraintNames.add(name);
+	}
+	const seenConstraintNames = new Set<string>();
+	const constraintList: Array<(typeof handledConstraints)[number] | LegacyFormDefinitionProperty> = [];
 	for (const raw of field.rawConstraints ?? []) {
-		if (!raw?.name || writtenConstraintNames.has(raw.name) || suppressedConstraintNames.has(raw.name)) continue;
-		constraintList.push({
-			name: raw.name as (typeof constraintList)[number]['name'],
-			value: raw.value as (typeof constraintList)[number]['value'],
-			type: (raw.type ?? '') as (typeof constraintList)[number]['type'],
-			...(typeof raw.label === 'string' ? { label: raw.label } : {})
-		});
-		writtenConstraintNames.add(raw.name as (typeof constraintList)[number]['name']);
+		if (!raw?.name || omittedConstraintNames.has(raw.name)) continue;
+		seenConstraintNames.add(raw.name);
+		const update = handledByName.get(raw.name);
+		constraintList.push(update ? { ...raw, value: update.value, type: update.type } : { ...raw });
+	}
+	for (const constraint of handledConstraints) {
+		if (seenConstraintNames.has(constraint.name) || omittedConstraintNames.has(constraint.name)) continue;
+		constraintList.push(constraint);
 	}
 	const constraints = constraintList.length > 0 ? { constraint: constraintList } : undefined;
 

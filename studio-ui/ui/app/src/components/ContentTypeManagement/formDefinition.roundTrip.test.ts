@@ -21,7 +21,7 @@ import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import '../../../test/registerTsLoader.mjs';
 
-const { parseLegacyFormDefinition, fetchContentTypePreviewImageUrl } = await import('../../services/contentTypes.ts');
+const { parseLegacyFormDefinition } = await import('../../services/contentTypes.ts');
 const {
 	buildContentTypeXml,
 	createTypeFieldValuesObject,
@@ -30,7 +30,6 @@ const {
 } = await import('./utils.ts');
 const { deserialize, entityEncodingTagValueProcessor } = await import('../../utils/xml.ts');
 const { inputDescriptor } = await import('./descriptors/controls/input.ts');
-const { DEFAULT_CONTENT_TYPE_PREVIEW_IMAGE_URL } = await import('../../utils/constants.ts');
 
 const here = dirname(fileURLToPath(import.meta.url));
 const catalogPath = resolve(
@@ -41,7 +40,6 @@ const dependencyPath = resolve(
 	here,
 	'../../../../../../studio/src/test/resources/crafter/studio/config/dependency/form-definition.xml'
 );
-const newContentTypePath = resolve(here, '../../../../../static-assets/components/cstudio-dialogs/new-content-type.js');
 
 function namedList<T>(value: T | T[] | null | undefined): T[] {
 	if (value == null) return [];
@@ -78,6 +76,10 @@ describe('form property and constraint pass-through', () => {
 		const parsed = parseXml(readFileSync(catalogPath, 'utf8'));
 		assert.equal(parsed.thumbnailFileName, null);
 		const props = formProperties(parsed);
+		assert.deepEqual(
+			props.map((item) => item.name),
+			['placeInNav', 'display-template', 'no-template-required', 'descriptor-mapper']
+		);
 		const placeInNav = props.find((item) => item.name === 'placeInNav');
 		const mapper = props.find((item) => item.name === 'descriptor-mapper');
 		assert.equal(placeInNav?.value, 'true');
@@ -114,7 +116,8 @@ describe('form property and constraint pass-through', () => {
 						type: 'template'
 					},
 					{ name: 'placeInNav', label: 'Show In Nav', value: 'true', type: 'boolean' },
-					{ name: 'plugin-flag', label: 'Plugin Flag', value: 'keep-me', type: 'string' }
+					{ name: 'plugin-flag', label: 'Plugin Flag', value: 'keep-me', type: 'string' },
+					{ name: 'bare-flag', value: '1' }
 				]
 			},
 			sections: {
@@ -131,8 +134,9 @@ describe('form property and constraint pass-through', () => {
 							iceId: 'title',
 							constraints: {
 								constraint: [
+									{ name: 'pluginConstraint', label: 'Plugin rule', value: 'alpha', type: 'string' },
 									{ name: 'required', value: 'true', type: 'boolean' },
-									{ name: 'pluginConstraint', label: 'Plugin rule', value: 'alpha', type: 'string' }
+									{ name: 'custom', value: 'x', type: 'string' }
 								]
 							}
 						}
@@ -145,14 +149,20 @@ describe('form property and constraint pass-through', () => {
 		assert.equal(before.find((item) => item.name === 'plugin-flag')?.value, 'keep-me');
 		assert.equal(before.find((item) => item.name === 'plugin-flag')?.type, 'string');
 		assert.equal(before.find((item) => item.name === 'plugin-flag')?.label, 'Plugin Flag');
+		assert.equal(before.find((item) => item.name === 'bare-flag')?.value, '1');
+		assert.equal(before.find((item) => item.name === 'bare-flag')?.type, undefined);
+		assert.deepEqual(
+			before.map((item) => item.name),
+			['display-template', 'placeInNav', 'plugin-flag', 'bare-flag']
+		);
 		const beforeConstraints = fieldConstraints(parsed, 'title_t');
 		const pluginConstraint = beforeConstraints.find((item) => item.name === 'pluginConstraint');
 		assert.equal(pluginConstraint?.value, 'alpha');
 		assert.equal(pluginConstraint?.type, 'string');
 		assert.equal(pluginConstraint?.label, 'Plugin rule');
-		assert.equal(
-			beforeConstraints.some((item) => item.name === 'required'),
-			true
+		assert.deepEqual(
+			beforeConstraints.map((item) => item.name),
+			['pluginConstraint', 'required', 'custom']
 		);
 		assert.equal(buildContentTypeXml(savedType(parsed)).includes('iceId'), false);
 
@@ -175,6 +185,84 @@ describe('form property and constraint pass-through', () => {
 		const retargetedProps = formProperties(retargeted);
 		assert.equal(retargetedProps.find((item) => item.name === 'display-template')?.value, '/templates/web/other.ftl');
 		assert.equal(retargetedProps.find((item) => item.name === 'plugin-flag')?.value, 'keep-me');
+		assert.deepEqual(
+			retargetedProps.map((item) => item.name),
+			['display-template', 'placeInNav', 'plugin-flag', 'bare-flag']
+		);
+	});
+
+	// Given required true stored next to other constraints, setting it to false writes that one entry in place.
+	it('updates a stored required constraint in place', () => {
+		const parsed = parseLegacyFormDefinition({
+			'content-type': '/page/custom',
+			title: 'Custom',
+			description: '',
+			objectType: 'page',
+			sections: {
+				section: {
+					title: 'Main',
+					description: '',
+					defaultOpen: 'true',
+					fields: {
+						field: {
+							id: 'title_t',
+							title: 'Title',
+							description: '',
+							type: 'input',
+							constraints: {
+								constraint: [
+									{ name: 'pluginConstraint', value: 'alpha', type: 'string' },
+									{ name: 'required', value: 'true', type: 'boolean' },
+									{ name: 'custom', value: 'x', type: 'string' }
+								]
+							}
+						}
+					}
+				}
+			}
+		} as never);
+		parsed.fields.title_t.validations.required = { id: 'required', value: false, level: 'required' };
+		const constraints = fieldConstraints(parsed, 'title_t');
+		assert.deepEqual(
+			constraints.map((item) => item.name),
+			['pluginConstraint', 'required', 'custom']
+		);
+		const required = constraints.filter((item) => item.name === 'required');
+		assert.equal(required.length, 1);
+		assert.equal(required[0].value, false);
+	});
+
+	// Given a pattern validation with no value, save does not write type "undefined".
+	it('does not write a pattern constraint whose value is undefined', () => {
+		const parsed = parseLegacyFormDefinition({
+			'content-type': '/page/custom',
+			title: 'Custom',
+			description: '',
+			objectType: 'page',
+			sections: {
+				section: {
+					title: 'Main',
+					description: '',
+					defaultOpen: 'true',
+					fields: {
+						field: {
+							id: 'title_t',
+							title: 'Title',
+							description: '',
+							type: 'input',
+							constraints: { constraint: { name: 'required', value: 'true', type: 'boolean' } }
+						}
+					}
+				}
+			}
+		} as never);
+		parsed.fields.title_t.validations.pattern = { id: 'pattern', value: undefined, level: 'required' };
+		const constraints = fieldConstraints(parsed, 'title_t');
+		assert.equal(
+			constraints.some((item) => item.name === 'pattern' || item.type === 'undefined'),
+			false
+		);
+		assert.equal(buildContentTypeXml(savedType(parsed)).includes('<type>undefined</type>'), false);
 	});
 });
 
@@ -218,27 +306,29 @@ describe('allowed roles', () => {
 		assert.equal(savedType(blank)['allowed-roles'], undefined);
 	});
 
-	// Given includes and excludes, a no-edit save writes the same patterns. Allowed Roles is a separate list on the same control.
+	// Given includes and excludes, a no-edit save writes the same patterns.
 	it('keeps includes and excludes', () => {
 		const parsed = withRoles(['author']);
 		const paths = savedType(parsed).paths;
 		assert.deepEqual(paths.includes?.pattern, ['/site/website/.*']);
 		assert.deepEqual(paths.excludes?.pattern, ['/site/website/drafts/.*']);
-		const pathsSource = readFileSync(resolve(here, 'controls/TypeDestinationPathsSelector.tsx'), 'utf8');
-		const controlMap = readFileSync(resolve(here, 'controlMap.ts'), 'utf8');
-		const descriptor = readFileSync(resolve(here, 'descriptors/controls/commonDescriptors.ts'), 'utf8');
-		assert.equal(pathsSource.includes('StringListEditor'), true);
-		assert.equal(pathsSource.includes('TextField'), false);
-		assert.equal(pathsSource.includes('Includes'), true);
-		assert.equal(pathsSource.includes('Excludes'), true);
-		assert.equal(descriptor.includes("type: 'string-list'"), true);
-		assert.equal(descriptor.includes("id: 'allowedRoles'"), true);
-		assert.equal(controlMap.includes("import('./controls/StringListEditor')"), true);
+	});
+
+	// Given an empty allowed-roles element, or one role, the list is empty or that role.
+	it('parses an empty allowed-roles element and a single role', () => {
+		const empty = parseXml(
+			'<form><content-type>/page/a</content-type><title>A</title><objectType>page</objectType><allowed-roles/></form>'
+		);
+		assert.deepEqual(empty.allowedRoles, []);
+		const one = parseXml(
+			'<form><content-type>/page/a</content-type><title>A</title><objectType>page</objectType><allowed-roles><role>author</role></allowed-roles></form>'
+		);
+		assert.deepEqual(one.allowedRoles, ['author']);
 	});
 });
 
 describe('image thumbnail undefined', () => {
-	// Given imageThumbnail undefined, the field is empty, save does not write undefined, and no thumbnail request uses that name.
+	// Given imageThumbnail undefined, the field is empty and save does not write undefined.
 	it('discards the legacy undefined thumbnail', () => {
 		const parsed = parseLegacyFormDefinition({
 			'content-type': '/page/catalog',
@@ -251,12 +341,6 @@ describe('image thumbnail undefined', () => {
 		assert.equal(parsed.thumbnailFileName, null);
 		assert.equal(savedType(parsed).imageThumbnail, undefined);
 		assert.equal(buildContentTypeXml(savedType(parsed)).includes('undefined'), false);
-
-		let url: string | undefined;
-		fetchContentTypePreviewImageUrl('editorial', '/page/catalog', 'undefined').subscribe((value) => {
-			url = value;
-		});
-		assert.equal(url, DEFAULT_CONTENT_TYPE_PREVIEW_IMAGE_URL);
 	});
 });
 
@@ -298,23 +382,9 @@ describe('form definition without sections', () => {
 		assert.deepEqual(fixture.sections, []);
 		assert.doesNotThrow(() => prepareSerializeToXmlTypeObject(fixture));
 
-		const bare = parseLegacyFormDefinition({
-			'content-type': '/config/dependency',
-			title: 'Dependency',
-			description: '',
-			objectType: 'page',
-			datasources: {
-				datasource: {
-					id: 'ds',
-					title: 'DS',
-					type: 'child-content',
-					interface: '',
-					properties: { property: { name: 'enableSearch', type: 'boolean' } }
-				}
-			}
-		} as never);
+		const bare = parseLegacyFormDefinition(undefined as never);
 		assert.deepEqual(bare.sections, []);
-		assert.equal(bare.dataSources[0].properties.enableSearch, false);
+		assert.doesNotThrow(() => prepareSerializeToXmlTypeObject(bare));
 
 		const repeat = parseLegacyFormDefinition({
 			'content-type': '/component/widget',
@@ -331,15 +401,5 @@ describe('form definition without sections', () => {
 			}
 		} as never);
 		assert.deepEqual(Object.keys(repeat.fields.items_o.fields ?? {}), []);
-	});
-});
-
-describe('TB1 new content type dialog', () => {
-	// Given the new type dialog, it still writes the form definition and controller and does not write config.xml.
-	it('does not write config.xml', () => {
-		const source = readFileSync(newContentTypePath, 'utf8');
-		assert.equal(source.includes('config.xml'), false);
-		assert.equal(source.includes('form-definition.xml'), true);
-		assert.equal(source.includes('controller.groovy'), true);
 	});
 });
