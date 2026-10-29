@@ -39,7 +39,6 @@ import {
 	countLimitPropertyWrites,
 	countLimitsFromLegacy,
 	getCountLimitStorage,
-	isCountLimitConstraint,
 	itemCountEditorValue,
 	type CountLimits
 } from '../utils/countLimits';
@@ -53,6 +52,7 @@ import { fromPromise } from 'rxjs/internal/observable/innerFrom';
 import AllowedContentTypesData from '../models/AllowedContentTypesData';
 import {
 	createFormDefinitionPathFromTypeId,
+	normalizeThumbnailFileName,
 	systemValidationsKeysMap,
 	systemValidationsNames
 } from '../utils/contentType';
@@ -251,6 +251,55 @@ function getFieldDataSourceValidations(
 	return validations;
 }
 
+/** String form of a parsed tag. Non-strings (booleans from a loose parse, missing tags) do not throw. */
+function trimmedText(value: unknown): string {
+	if (typeof value === 'string') return value.trim();
+	if (typeof value === 'boolean' || typeof value === 'number') return String(value);
+	return '';
+}
+
+/** Keep name, value, type and label exactly as parsed so save can write the property back. */
+function snapshotFormProperty(property: LegacyFormDefinitionProperty): LegacyFormDefinitionProperty {
+	const value =
+		typeof property.value === 'string' ? property.value : property.value == null ? '' : String(property.value);
+	const type = property.type ?? '';
+	if (typeof property.label === 'string') {
+		return { name: property.name, label: property.label, value, type };
+	}
+	return { name: property.name, value, type };
+}
+
+function emptyContentType(): ContentType {
+	return {
+		id: null,
+		name: null,
+		description: null,
+		type: undefined,
+		quickCreate: false,
+		quickCreatePath: null,
+		displayTemplate: null,
+		mergeStrategy: null,
+		hasJsController: false,
+		thumbnailFileName: null,
+		isHeadless: false,
+		paths: { includes: { pattern: [] }, excludes: { pattern: [] } },
+		'delete-dependencies': { 'delete-dependency': [] },
+		'copy-dependencies': { 'copy-dependency': [] },
+		previewable: false,
+		allowedRoles: [],
+		formProperties: [],
+		sections: [],
+		fields: {},
+		dataSources: []
+	};
+}
+
+function parseAllowedRoles(definition: LegacyFormDefinition): string[] {
+	return asArray(definition['allowed-roles']?.role)
+		.filter((role) => trimmedText(role) !== '')
+		.map((role) => (typeof role === 'string' ? role : String(role)));
+}
+
 function rawLegacyPropertyValue(legacyField: LegacyFormDefinitionField, name: string): unknown {
 	return asArray(legacyField.properties?.property).find((prop) => prop.name === name)?.value;
 }
@@ -328,12 +377,14 @@ function parseLegacyFormDefinitionFields(
 	contentTypeId?: string
 ): void {
 	asArray<LegacyFormDefinitionField>(legacyFieldsToBeParsed).forEach((legacyField) => {
+		if (!legacyField || typeof legacyField !== 'object') return;
 		// FE2 TODO: Changed the camelizing of file-name and internal-name
 		// const fieldId = ['file-name', 'internal-name'].includes(legacyField.id) ? camelize(legacyField.id) : legacyField.id;
 		const fieldId = legacyField.id;
 
 		sectionFieldIds?.push(fieldId);
 
+		const rawConstraints: LegacyFormDefinitionProperty[] = [];
 		const field: ContentTypeField = {
 			id: fieldId,
 			name: legacyField.title,
@@ -343,7 +394,8 @@ function parseLegacyFormDefinitionFields(
 			sortable: legacyField.type === 'node-selector' || legacyField.type === 'repeat',
 			validations: {},
 			properties: {},
-			defaultValue: legacyField.defaultValue
+			defaultValue: legacyField.defaultValue,
+			rawConstraints
 		};
 
 		if (legacyField.plugin) {
@@ -369,7 +421,10 @@ function parseLegacyFormDefinitionFields(
 		});
 
 		asArray<LegacyFormDefinitionProperty>(legacyField.constraints?.constraint).forEach((legacyProp) => {
-			const value = legacyProp.value?.trim();
+			if (!legacyProp || typeof legacyProp !== 'object' || !legacyProp.name) return;
+			// Kept as parsed and written back after the constraints Type Builder models.
+			rawConstraints.push(snapshotFormProperty(legacyProp));
+			const value = trimmedText(legacyProp.value);
 			switch (legacyProp.name) {
 				case 'required':
 					if (value) {
@@ -400,9 +455,7 @@ function parseLegacyFormDefinitionFields(
 					break;
 				default:
 					// Item-count constraints (checkbox minSize) are applied from countLimitStorage, not as runtime validations.
-					if (!isCountLimitConstraint(legacyProp.name)) {
-						console.log(`[parseLegacyFormDef] Unhandled constraint "${legacyProp.name}"`, legacyProp);
-					}
+					break;
 			}
 		});
 
@@ -410,9 +463,10 @@ function parseLegacyFormDefinitionFields(
 		switch (legacyField.type) {
 			case 'repeat': {
 				// Nested fields only. Count limits come from countLimitStorage below.
+				// A repeat with no nested fields (or a definition with no sections) must not throw.
 				field.fields = {};
 				parseLegacyFormDefinitionFields(
-					legacyField.fields.field,
+					legacyField.fields?.field,
 					field.fields,
 					dropTargetsLookup,
 					null,
@@ -457,8 +511,9 @@ function parseLegacyFormDefinitionFields(
 
 /** Maps a form-definition document into the Forms Engine content-type model. */
 export function parseLegacyFormDefinition(definition: LegacyFormDefinition): ContentType {
-	if (nou(definition)) {
-		return {} as ContentType;
+	// A missing document, or a non-form such as the config/dependency fixture (`<form>` is a path string), has no sections.
+	if (nou(definition) || typeof definition !== 'object') {
+		return emptyContentType();
 	}
 
 	const fields: LookupTable<ContentTypeField> = {};
@@ -470,6 +525,7 @@ export function parseLegacyFormDefinition(definition: LegacyFormDefinition): Con
 
 	// get receptacles dataSources
 	legacyDataSourceArray.forEach((datasource: LegacyDataSource) => {
+		if (!datasource || typeof datasource !== 'object') return;
 		// Keep only the typed DataSource shape. Legacy XML may carry extra keys; plugin coords are preserved explicitly.
 		dataSources[datasource.id] = {
 			id: datasource.id,
@@ -480,10 +536,11 @@ export function parseLegacyFormDefinition(definition: LegacyFormDefinition): Con
 			...(datasource.plugin ? { plugin: datasource.plugin } : {})
 		};
 		asArray(datasource.properties?.property).forEach((property) => {
+			if (!property || typeof property !== 'object') return;
 			let value: unknown = property.value;
 			switch (property.type) {
 				case 'boolean':
-					value = property.value.trim().toLowerCase() === 'true';
+					value = trimmedText(property.value).toLowerCase() === 'true';
 					break;
 				case 'int':
 					value = Number(property.value);
@@ -500,8 +557,9 @@ export function parseLegacyFormDefinition(definition: LegacyFormDefinition): Con
 		}
 	});
 
-	// Parse Sections & Fields
+	// Parse Sections & Fields. A definition with no `<sections>` (or an empty one) is valid.
 	asArray<LegacyFormDefinitionSection>(definition.sections?.section).forEach((legacySection, index) => {
+		if (!legacySection || typeof legacySection !== 'object') return;
 		const fieldIds = [];
 		parseLegacyFormDefinitionFields(
 			legacySection.fields?.field,
@@ -512,38 +570,44 @@ export function parseLegacyFormDefinition(definition: LegacyFormDefinition): Con
 			definition['content-type']
 		);
 
+		const sectionTitle = typeof legacySection.title === 'string' ? legacySection.title : '';
 		sections.push({
 			id: `section-${index}`,
-			title: legacySection.title,
-			color: legacySection.color ?? toColor(legacySection.title, 0.7),
+			title: sectionTitle,
+			color: legacySection.color ?? (sectionTitle ? toColor(sectionTitle, 0.7) : undefined),
 			description: legacySection.description,
 			expandByDefault: legacySection.defaultOpen === 'true',
 			fields: fieldIds
 		});
 	});
 
-	const topLevelPropMap: LookupTable<LegacyFormDefinitionProperty> = createLookupTable(
-		asArray(definition.properties?.property) as LegacyFormDefinitionProperty[],
-		'name'
-	);
+	const formProperties = asArray(definition.properties?.property)
+		.filter(
+			(property): property is LegacyFormDefinitionProperty =>
+				Boolean(property) && typeof property === 'object' && typeof property.name === 'string'
+		)
+		.map(snapshotFormProperty);
+	const topLevelPropMap: LookupTable<LegacyFormDefinitionProperty> = createLookupTable(formProperties, 'name');
 
 	return {
 		id: definition['content-type'],
 		name: definition.title,
 		description: definition.description,
-		quickCreate: definition.quickCreate?.trim() === 'true',
+		quickCreate: trimmedText(definition.quickCreate) === 'true',
 		quickCreatePath: definition.quickCreatePath,
 		type: definition.objectType as LegacyContentType['type'],
-		displayTemplate: topLevelPropMap[XmlKeys.displayTemplate]?.value?.trim() || null,
-		mergeStrategy: topLevelPropMap[XmlKeys.mergeStrategy]?.value?.trim() || null,
+		displayTemplate: trimmedText(topLevelPropMap[XmlKeys.displayTemplate]?.value) || null,
+		mergeStrategy: trimmedText(topLevelPropMap[XmlKeys.mergeStrategy]?.value) || null,
 		// ∨∨∨ Added during TypeBuilder 2 ∨∨∨
-		hasJsController: definition.controller?.trim() === 'true',
-		thumbnailFileName: definition.imageThumbnail,
-		isHeadless: topLevelPropMap[XmlKeys.templateNotRequired]?.value?.trim() === 'true',
+		hasJsController: trimmedText(definition.controller) === 'true',
+		thumbnailFileName: normalizeThumbnailFileName(definition.imageThumbnail),
+		isHeadless: trimmedText(topLevelPropMap[XmlKeys.templateNotRequired]?.value) === 'true',
 		paths: parseLegacyFormDefinitionPathsProp(definition),
 		'delete-dependencies': parseFormDefinitionDeleteDependencies(definition),
 		'copy-dependencies': parseFormDefinitionCopyDependencies(definition),
-		previewable: definition.previewable?.trim() === 'true',
+		previewable: trimmedText(definition.previewable) === 'true',
+		allowedRoles: parseAllowedRoles(definition),
+		formProperties,
 		// ^^^ Added during TypeBuilder 2 ^^^
 		dataSources: Object.values(dataSources),
 		sections,
@@ -840,8 +904,9 @@ export function fetchContentTypePreviewImageUrl(
 	contentTypeId: string,
 	thumbnailFileName?: string
 ): Observable<string> {
-	if (thumbnailFileName) {
-		const path = ensureSingleSlash(`/config/studio/content-types/${contentTypeId}/${thumbnailFileName}`);
+	const fileName = normalizeThumbnailFileName(thumbnailFileName);
+	if (fileName) {
+		const path = ensureSingleSlash(`/config/studio/content-types/${contentTypeId}/${fileName}`);
 		return getBinary(
 			`/studio/api/2/content/${site}/get_content_by_commit_id${toQueryString({ path, commitId: 'HEAD' })}`,
 			void 0,

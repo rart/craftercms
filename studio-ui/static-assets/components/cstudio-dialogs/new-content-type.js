@@ -245,37 +245,7 @@ CStudioAuthoring.Dialogs.NewContentType = CStudioAuthoring.Dialogs.NewContentTyp
 		var label = CStudioAuthoring.Dialogs.NewContentType.xmlEscape(params.labelEl.value);
 		var name = CStudioAuthoring.Dialogs.NewContentType.xmlEscape(params.typeNameEl.value);
 		var type = CStudioAuthoring.Dialogs.NewContentType.xmlEscape(params.objectTypeEl.value);
-		var contentAsFolder = type == 'component' ? false : params.asFolderEl.checked;
 		const basePath = `/content-types/${type}/${name}/`;
-
-		var typeConfig =
-			'<content-type name="/' +
-			type +
-			'/' +
-			name +
-			'" is-wcm-type="true">\r\n' +
-			'<label>' +
-			label +
-			'</label>\r\n' +
-			'<form>/' +
-			type +
-			'/' +
-			name +
-			'</form>\r\n' +
-			'<form-path>simple</form-path>\r\n' +
-			'<model-instance-path>NOT-USED-BY-SIMPLE-FORM-ENGINE</model-instance-path>\r\n' +
-			'<file-extension>xml</file-extension>\r\n' +
-			'<content-as-folder>' +
-			contentAsFolder +
-			'</content-as-folder>\r\n' +
-			'<previewable>' +
-			(type == 'page') +
-			'</previewable>\r\n' +
-			'<quickCreate>false</quickCreate>\r\n' +
-			'<quickCreatePath></quickCreatePath>\r\n' +
-			'<noThumbnail>true</noThumbnail>\r\n' +
-			'<image-thumbnail></image-thumbnail>\r\n' +
-			'</content-type>';
 
 		const controllerContent =
 			'import scripts.libs.CommonLifecycleApi;\r\n\r\n' +
@@ -494,12 +464,6 @@ CStudioAuthoring.Dialogs.NewContentType = CStudioAuthoring.Dialogs.NewContentTyp
 
 		CrafterCMSNext.rxjs
 			.forkJoin({
-				config: CrafterCMSNext.services.configuration.writeConfiguration(
-					CStudioAuthoringContext.site,
-					`${basePath}config.xml`,
-					'studio',
-					typeConfig
-				),
 				controller: CrafterCMSNext.services.configuration.writeConfiguration(
 					CStudioAuthoringContext.site,
 					`${basePath}controller.groovy`,

@@ -529,7 +529,7 @@ describe('count-limit storage table', () => {
 		assert.equal(createTypeFieldValuesObject(again).maxSize, 8);
 	});
 
-	// Given topics_o with a minSize constraint of 2 and no maximum, the checkbox-group entry loads minCount 2 and a blank-able editor. Editing the editor to 6 writes the minSize constraint (type number) and not minCount. Parsing that XML again shows 6, and a cleared editor writes no constraint.
+	// Given topics_o with a minSize constraint of 2 and no maximum, the checkbox-group entry loads minCount 2 and a blank-able editor. Editing the editor to 6 writes the minSize constraint (type int) and not minCount. Parsing that XML again shows 6, and a cleared editor writes no constraint.
 	it('round-trips the checkbox-group entry through parse, the editor and XML', () => {
 		assert.deepEqual(getCountLimitStorage('checkbox-group'), {
 			type: 'checkbox-group',
@@ -541,7 +541,7 @@ describe('count-limit storage table', () => {
 				editorFromVirtual: true,
 				editorUnset: '',
 				writeConstraintWhenPositive: true,
-				constraintType: 'number'
+				constraintType: 'int'
 			}
 		});
 
@@ -559,7 +559,7 @@ describe('count-limit storage table', () => {
 		const saved = savedField(editedType, 'topics_o');
 		const written = namedList(saved.constraints?.constraint).find((item) => item.name === 'minSize');
 		assert.equal(written?.value, 6);
-		assert.equal(written?.type, 'number');
+		assert.equal(written?.type, 'int');
 		assert.equal(
 			namedList(saved.constraints?.constraint).some((item) => item.name === 'minCount' || item.name === 'maxCount'),
 			false

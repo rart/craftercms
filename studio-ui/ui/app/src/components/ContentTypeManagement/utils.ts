@@ -21,6 +21,7 @@ import type {
 	DataSource,
 	LegacyDataSource,
 	LegacyFormDefinitionField,
+	LegacyFormDefinitionProperty,
 	NewContentTypeField,
 	NewDataSource,
 	ValidationKeys
@@ -58,7 +59,11 @@ import { editController, editTemplate } from '../../state/actions/misc';
 import { popDialog, pushDialog } from '../../state/actions/dialogStack';
 import type { BuiltInControlType } from '../FormsEngine/lib/controlMap';
 import { asArray } from '../../utils/array';
-import { componentsDataSourceContentTypesPropertyNames, systemValidationsKeysMap } from '../../utils/contentType';
+import {
+	componentsDataSourceContentTypesPropertyNames,
+	normalizeThumbnailFileName,
+	systemValidationsKeysMap
+} from '../../utils/contentType';
 import {
 	countLimitEditorOverrides,
 	countLimitValidationKeys,
@@ -89,7 +94,12 @@ export const CONTENT_TYPES_BASE_PATH = '/config/studio/content-types';
 const contentTypeFieldToXmlNameMap = { name: 'title', helpText: 'help' };
 
 type ContentTypeFieldProperties = keyof ContentTypeField;
-const ignoredContentTypeFieldProps: Array<ContentTypeFieldProperties> = ['sortable', 'values', 'type'];
+const ignoredContentTypeFieldProps: Array<ContentTypeFieldProperties> = [
+	'sortable',
+	'values',
+	'type',
+	'rawConstraints'
+];
 
 export type TypePropsToEdit = Pick<
 	ContentType,
@@ -105,6 +115,7 @@ export type TypePropsToEdit = Pick<
 	| 'displayTemplate'
 	| 'isHeadless'
 	| 'paths'
+	| 'allowedRoles'
 	| 'sections'
 	| 'delete-dependencies'
 	| 'copy-dependencies'
@@ -126,6 +137,7 @@ export const typePropsToEdit: Array<keyof TypePropsToEdit> = [
 	'displayTemplate',
 	'isHeadless',
 	'paths',
+	'allowedRoles',
 	'sections',
 	'delete-dependencies',
 	'copy-dependencies',
@@ -405,6 +417,7 @@ export function createEmptyTypeStructure(mixin?: Partial<ContentType>): ContentT
 		'delete-dependencies': null,
 		'copy-dependencies': null,
 		previewable: false,
+		allowedRoles: [],
 		fields: {},
 		sections: [],
 		...mixin
@@ -624,6 +637,89 @@ export function makeIntoTypeFieldStructPath(fieldPath: string): string {
 		.replace(/.fields$/, '');
 }
 
+/** Form properties Type Builder edits. Everything else in `formProperties` is written back after these. */
+const modeledFormPropertySpecs: Array<{
+	name: string;
+	label: string;
+	type: string;
+	value: (type: ContentType) => string;
+	unchanged: (original: string, type: ContentType) => boolean;
+	empty: (type: ContentType) => boolean;
+}> = [
+	{
+		name: XmlKeys.displayTemplate,
+		label: 'Display Template',
+		type: 'template',
+		value: (type) => type.displayTemplate ?? '',
+		unchanged: (original, type) => (original.trim() || null) === (type.displayTemplate || null),
+		empty: (type) => !type.displayTemplate
+	},
+	{
+		name: XmlKeys.templateNotRequired,
+		label: 'No Template Required',
+		type: 'boolean',
+		value: (type) => toBooleanString(type.isHeadless),
+		unchanged: (original, type) => (original.trim() === 'true') === Boolean(type.isHeadless),
+		empty: (type) => !type.isHeadless
+	},
+	{
+		name: XmlKeys.mergeStrategy,
+		label: 'Merge Strategy',
+		type: 'string',
+		value: (type) => type.mergeStrategy ?? '',
+		unchanged: (original, type) => (original.trim() || null) === (type.mergeStrategy || null),
+		empty: (type) => !type.mergeStrategy
+	}
+];
+
+function formPropertyText(property: LegacyFormDefinitionProperty): string {
+	return typeof property.value === 'string' ? property.value : property.value == null ? '' : String(property.value);
+}
+
+/**
+ * Writes the form properties Type Builder models, then any property it does not model, unchanged.
+ * A parsed type keeps an empty modeled property that was already in the file. A new type (no
+ * `formProperties` snapshot) still writes the three properties Type Builder has always written.
+ */
+function buildFormProperties(type: ContentType): LegacyFormDefinitionProperty[] {
+	const canonical = modeledFormPropertySpecs.map((spec) => ({
+		label: spec.label,
+		name: spec.name,
+		type: spec.type,
+		value: spec.value(type)
+	}));
+	if (!type.formProperties) return canonical;
+
+	const modeledNames = new Set(modeledFormPropertySpecs.map((spec) => spec.name));
+	const originals = new Map<string, LegacyFormDefinitionProperty>();
+	for (const property of type.formProperties) {
+		if (modeledNames.has(property.name) && !originals.has(property.name)) originals.set(property.name, property);
+	}
+	const written: LegacyFormDefinitionProperty[] = [];
+	for (const spec of modeledFormPropertySpecs) {
+		const original = originals.get(spec.name);
+		if (original && spec.unchanged(formPropertyText(original), type)) {
+			written.push(original);
+		} else if (original || !spec.empty(type)) {
+			written.push({
+				label: spec.label,
+				name: spec.name,
+				type: spec.type,
+				value: spec.value(type)
+			});
+		}
+	}
+	for (const property of type.formProperties) {
+		if (!modeledNames.has(property.name)) written.push(property);
+	}
+	return written;
+}
+
+function allowedRolesXml(roles: string[] | null | undefined): { role: string[] } | undefined {
+	const role = (roles ?? []).filter((entry) => typeof entry === 'string' && entry.trim() !== '');
+	return role.length > 0 ? { role } : undefined;
+}
+
 export function prepareSerializeToXmlTypeObject(
 	type: ContentType,
 	configDescriptors?: {
@@ -631,6 +727,8 @@ export function prepareSerializeToXmlTypeObject(
 		dataSourceDescriptors: LookupTable<DescriptorContentType>;
 	}
 ): SerializeToXmlContentTypeStructure {
+	const imageThumbnail = normalizeThumbnailFileName(type.thumbnailFileName);
+	const allowedRoles = allowedRolesXml(type.allowedRoles);
 	return {
 		'content-type': type.id,
 		title: type.name,
@@ -639,32 +737,14 @@ export function prepareSerializeToXmlTypeObject(
 		objectType: type.type,
 		quickCreate: toBooleanString(type.quickCreate),
 		quickCreatePath: type.quickCreatePath,
-		imageThumbnail: type.thumbnailFileName,
+		...(imageThumbnail ? { imageThumbnail } : {}),
 		paths: type.paths,
 		'delete-dependencies': type['delete-dependencies'],
 		'copy-dependencies': type['copy-dependencies'],
 		previewable: type.previewable,
+		...(allowedRoles ? { 'allowed-roles': allowedRoles } : {}),
 		properties: {
-			property: [
-				{
-					label: 'Display Template',
-					name: 'display-template',
-					type: 'template',
-					value: type.displayTemplate
-				},
-				{
-					label: 'No Template Required',
-					name: 'no-template-required',
-					type: 'boolean',
-					value: toBooleanString(type.isHeadless)
-				},
-				{
-					label: 'Merge Strategy',
-					name: 'merge-strategy',
-					type: 'string',
-					value: type.mergeStrategy
-				}
-			]
+			property: buildFormProperties(type)
 		},
 		sections: {
 			section: type.sections.map((section) => ({
@@ -755,6 +835,24 @@ function convertFieldStructToXmlStruct(field: ContentTypeField): Required<Legacy
 			});
 		}
 	}
+	// Constraints Type Builder does not model are written after the ones it does, unchanged.
+	// Count-limit constraints, and constraints that contract strips (a repeat's required), stay with countLimits.
+	const writtenConstraintNames = new Set<string>(constraintList.map((item) => item.name));
+	const countStorage = getCountLimitStorage(field.type);
+	const suppressedConstraintNames = new Set([
+		...countLimitValidationKeys(countStorage),
+		...(countStorage?.stripConstraints ?? [])
+	]);
+	for (const raw of field.rawConstraints ?? []) {
+		if (!raw?.name || writtenConstraintNames.has(raw.name) || suppressedConstraintNames.has(raw.name)) continue;
+		constraintList.push({
+			name: raw.name as (typeof constraintList)[number]['name'],
+			value: raw.value as (typeof constraintList)[number]['value'],
+			type: (raw.type ?? '') as (typeof constraintList)[number]['type'],
+			...(typeof raw.label === 'string' ? { label: raw.label } : {})
+		});
+		writtenConstraintNames.add(raw.name as (typeof constraintList)[number]['name']);
+	}
 	const constraints = constraintList.length > 0 ? { constraint: constraintList } : undefined;
 
 	// Note: `undefined` suppresses nodes in the XML, empty strings doesn't.
@@ -765,7 +863,6 @@ function convertFieldStructToXmlStruct(field: ContentTypeField): Required<Legacy
 		defaultValue: field.defaultValue,
 		type: field.type,
 		help: field.helpText,
-		iceId: undefined, // TODO: drop?
 		// region Repeat Groups
 		maxOccurs,
 		minOccurs,
