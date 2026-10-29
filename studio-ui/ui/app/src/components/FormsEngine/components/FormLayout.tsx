@@ -134,8 +134,8 @@ export const FormLayout = forwardRef<HTMLDivElement, FormLayoutProps>(function (
 			// Restore the scroll position
 			scrollContainer.scrollTop = scrollTop;
 			scrollContainer.scrollLeft = scrollLeft;
-			// Drawer is a sibling of formMainContent — CSS var must live on the shared ancestor.
-			root.style.setProperty('--scroll-top', `${scrollTop}px`);
+			// The drawer is absolutely positioned in formContainer, so it must be offset by formContainer's own scroll.
+			root.style.setProperty('--scroll-top', `${root.scrollTop}px`);
 			return () => {
 				scrollContainer.style.overflow = '';
 				root.style.overflow = '';
