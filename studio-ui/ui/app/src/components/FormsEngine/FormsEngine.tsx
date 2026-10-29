@@ -1025,14 +1025,22 @@ function FormOrchestrator(props: FormsEngineProps) {
 	}, [effectRefs, item, setLockStatus, siteId]);
 
 	const handleOpenDrawerSidebar = () => {
-		const scroller = getScrollContainer(containerRef.current);
-		scroller.style.setProperty('--scroll-top', `${scroller.scrollTop}px`);
+		const root = containerRef.current;
+		const scroller = getScrollContainer(root);
+		// Freeze formMainContent (content scroller) and formContainer (hosts the absolute drawer).
+		// --scroll-top must live on formContainer so both drawers can inherit it.
+		const scrollTop = scroller.scrollTop;
 		scroller.style.overflowY = 'hidden';
+		root.style.overflowY = 'hidden';
+		scroller.scrollTop = scrollTop;
+		root.style.setProperty('--scroll-top', `${root.scrollTop}px`);
 		setOpenDrawerSidebar(true);
 	};
 	const handleCloseDrawerSidebar: DrawerProps['onClose'] = () => {
-		const scroller = getScrollContainer(containerRef.current);
-		scroller.style.overflowY = '';
+		const root = containerRef.current;
+		getScrollContainer(root).style.overflowY = '';
+		root.style.overflowY = '';
+		root.style.removeProperty('--scroll-top');
 		setOpenDrawerSidebar(false);
 	};
 	const handleCloseDrawerForm: DrawerProps['onClose'] = () => {

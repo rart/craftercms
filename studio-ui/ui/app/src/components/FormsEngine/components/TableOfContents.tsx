@@ -58,7 +58,10 @@ export function TableOfContents({ containerRef, fieldsToRender, sections }: Tabl
 		// Wait for the drawer to hide so the transition focus doesn't impede the scrollIntoView.
 		// When the sidebar is a drawer, the hide transition is set to 0 for this to work with minimal timeout.
 		setTimeout(() => {
-			getScrollContainer(containerRef.current).style.overflowY = '';
+			const root = containerRef.current;
+			getScrollContainer(root).style.overflowY = '';
+			root.style.overflowY = '';
+			root.style.removeProperty('--scroll-top');
 			target?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
 		});
 	};
