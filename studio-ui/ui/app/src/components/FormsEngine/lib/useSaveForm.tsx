@@ -17,7 +17,6 @@
 import { useDispatch, useStore as useReduxStore } from 'react-redux';
 import GlobalState from '../../../models/GlobalState';
 import { FormattedMessage, useIntl } from 'react-intl';
-import { itemSuccessMessages } from '../../../env/i18n-legacy';
 import useActiveSiteId from '../../../hooks/useActiveSiteId';
 import React, { useContext } from 'react';
 import {
@@ -209,7 +208,10 @@ export function useSaveForm(props: UseSaveFormProps) {
 						dispatch(
 							showSystemNotification({
 								options: { variant: 'warning' },
-								message: formatMessage(itemSuccessMessages.itemSavedAsDraft)
+								message: formatMessage({
+									id: 'item.savedAsDraft',
+									defaultMessage: 'Draft saved. Required fields left blank may cause errors when previewed or deployed.'
+								})
 							})
 						);
 					}
