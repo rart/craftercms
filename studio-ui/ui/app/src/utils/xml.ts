@@ -201,7 +201,9 @@ export function deserialize(xml: string | Node, options?: Partial<X2jOptions>): 
 }
 
 export function cdataWrap(value: string): string {
-	return `<![CDATA[${value}]]>`;
+	// ']]>' would end the section early. Split it the same way fast-xml-builder's safeCdata does.
+	const safe = `${value}`.replace(/\]\]>/g, ']]]]><![CDATA[>');
+	return `<![CDATA[${safe}]]>`;
 }
 
 export function parseValidateDocument(content: string): XMLDocument | string {

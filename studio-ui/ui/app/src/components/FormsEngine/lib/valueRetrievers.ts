@@ -26,7 +26,6 @@ import type { DescriptorControlType } from '../../ContentTypeManagement/controlM
 import type { DescriptorContentType } from '../../ContentTypeManagement/utils';
 import { nnou } from '../../../utils/object';
 import { v4 as uuid } from 'uuid';
-import { Matcher } from 'path-expression-matcher';
 import { getAdditionalFieldsIdsFromDescriptor, resolveControlDescriptors } from './formUtils';
 import type { ValueRetriever } from './controlValueTypes';
 
@@ -208,7 +207,7 @@ export function deserializeContentDoc(contentDom: XMLDocument | Element): Lookup
 		// Ideally, we would extract all collection types (item selector, repeat) that have
 		// this sort of syntax to avoid false positives.
 		// e.g.collectionFieldIds.map((fieldId) => `${rootTagName}.${fieldId}.item`).includes(jPath);
-		isArray: (tagName: string, jPathOrMatcher: string | Matcher) => {
+		isArray: (tagName, jPathOrMatcher) => {
 			return typeof jPathOrMatcher === 'string' && jPathOrMatcher.endsWith('.item');
 		}
 	})[(contentDom as XMLDocument).documentElement?.tagName ?? (contentDom as Element).tagName];
