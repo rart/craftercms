@@ -40,7 +40,7 @@ import type { NodeSelectorItem } from '../controls/NodeSelector';
 import type { CheckboxGroupProps } from '../controls/CheckboxGroup';
 import { macroCreatorLookupTable } from '../../ContentTypeManagement/controls/PathWithMacroCreator';
 import { getPluginControlValidator } from '../controls/registry';
-import { isFieldPathIrrelevant } from '../formControllers/runtime';
+import { isFieldPathIrrelevant } from './formVisibility';
 import {
 	countLimitValue,
 	getRepeatOccurrenceViolations,
