@@ -23,7 +23,7 @@ import Paper from '@mui/material/Paper';
 import Tooltip from '@mui/material/Tooltip';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
-import FormControlLabel, { formControlLabelClasses } from '@mui/material/FormControlLabel';
+import FormControlLabel from '@mui/material/FormControlLabel';
 import Switch, { switchClasses } from '@mui/material/Switch';
 import ToggleButton, { toggleButtonClasses } from '@mui/material/ToggleButton';
 import ToggleButtonGroup, { toggleButtonGroupClasses } from '@mui/material/ToggleButtonGroup';
@@ -34,7 +34,7 @@ import Grow from '@mui/material/Grow';
 import PushPinOutlined from '@mui/icons-material/PushPinOutlined';
 import MinimizeRounded from '@mui/icons-material/MinimizeRounded';
 import CloseIcon from '@mui/icons-material/Close';
-import { alpha, useTheme } from '@mui/material/styles';
+import { useIsDarkModeTheme } from '../../../hooks/useIsDarkModeTheme';
 import { SplitButton } from '../../SplitButton';
 import { useDispatch } from 'react-redux';
 import { pushConfirmDialog, pushErrorDialog } from '../../../utils/system';
@@ -73,9 +73,21 @@ const afterSavingIcons = {
  * The copy stays in the button, so switching to an icon does not remove the measurement.
  */
 function labelOverflowsButton(probe: HTMLElement, button: HTMLElement): boolean {
-	const style = getComputedStyle(button);
-	const available = button.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
-	return probe.scrollWidth > available;
+	const buttonStyle = getComputedStyle(button);
+	// The probe must use the button's used font. Measuring before that face
+	// loads misses a clip that shows up once it swaps in.
+	probe.style.fontFamily = buttonStyle.fontFamily;
+	probe.style.fontSize = buttonStyle.fontSize;
+	probe.style.fontWeight = buttonStyle.fontWeight;
+	probe.style.fontStyle = buttonStyle.fontStyle;
+	probe.style.letterSpacing = buttonStyle.letterSpacing;
+	probe.style.textTransform = 'none';
+	const available =
+		button.clientWidth - (parseFloat(buttonStyle.paddingLeft) || 0) - (parseFloat(buttonStyle.paddingRight) || 0);
+	const visible = button.querySelector('[data-after-saving-label]');
+	if (visible instanceof HTMLElement && visible.scrollWidth > visible.clientWidth) return true;
+	// A subpixel tie still clips. Treat that as overflow.
+	return probe.scrollWidth > available - 0.5;
 }
 
 /** All three pills switch together, so one overflowing translation does not leave a mixed row. */
@@ -96,10 +108,23 @@ function useAfterSavingIcons(labels: Record<AfterSaving, string>) {
 	}, []);
 	useLayoutEffect(() => {
 		measure();
-		if (!group || typeof ResizeObserver === 'undefined') return;
-		const observer = new ResizeObserver(() => measure());
-		observer.observe(group);
-		return () => observer.disconnect();
+		let cancelled = false;
+		const fonts = document.fonts;
+		const onFonts = () => {
+			if (!cancelled) measure();
+		};
+		fonts.addEventListener('loadingdone', onFonts);
+		void fonts.ready.then(onFonts);
+		let observer: ResizeObserver | undefined;
+		if (group && typeof ResizeObserver !== 'undefined') {
+			observer = new ResizeObserver(() => measure());
+			observer.observe(group);
+		}
+		return () => {
+			cancelled = true;
+			fonts.removeEventListener('loadingdone', onFonts);
+			observer?.disconnect();
+		};
 	}, [group, labels.close, labels.minimize, labels.stay, measure]);
 	return { probes, setGroup, icons, measure };
 }
@@ -143,7 +168,8 @@ export function SaveCard(props: SaveCardProps) {
 	const showVersionComment = (!isEmbedded || !isStackedForm) && !isRepeatMode;
 	const showSaveOptions = !isEmbedded && !isRepeatMode;
 	const { formatMessage } = useIntl();
-	const darkCard = useTheme().palette.mode === 'dark';
+	// Same surface as a form section: default paper in light, elevation 2 in dark.
+	const sectionElevation = useIsDarkModeTheme() ? 2 : undefined;
 	const afterSavingLabels: Record<AfterSaving, string> = {
 		stay: formatMessage(messages.stay),
 		minimize: formatMessage(messages.minimize),
@@ -214,247 +240,248 @@ export function SaveCard(props: SaveCardProps) {
 	};
 
 	return (
-		<Paper
-			elevation={darkCard ? 6 : 1}
-			sx={(theme) => ({
-				p: 1,
-				// This theme's divider is a dark wash, so the edge uses a white alpha instead.
-				...(theme.palette.mode === 'dark' && {
-					border: 1,
-					borderColor: alpha(theme.palette.common.white, 0.12)
-				})
-			})}
-		>
-			{/* One gap between whichever blocks are actually shown, so the button is not flush with the comment. */}
-			<Stack spacing={1}>
-				{showVersionComment && (
-					// TODO: Should embedded components and repeats get a version comment? How would that work?
-					<TextField
-						size="small"
-						multiline
+		<>
+			<Paper elevation={sectionElevation} sx={{ p: 1 }}>
+				{/* One gap between whichever blocks are actually shown, so the button is not flush with the comment. */}
+				<Stack spacing={1}>
+					{showVersionComment && (
+						// TODO: Should embedded components and repeats get a version comment? How would that work?
+						<TextField
+							size="small"
+							multiline
+							fullWidth
+							label={<FormattedMessage defaultMessage="Version Comment" />}
+							value={versionComment}
+							onChange={(e) => setVersionComment(e.target.value)}
+							onFocus={(e) => e.target.select()}
+						/>
+					)}
+					<SplitButton
 						fullWidth
-						label={<FormattedMessage defaultMessage="Version Comment" />}
-						value={versionComment}
-						onChange={(e) => setVersionComment(e.target.value)}
-						onFocus={(e) => e.target.select()}
+						loading={isSubmitting}
+						disabled={disableSave}
+						options={[
+							{
+								id: 'save',
+								label:
+									isRepeatMode || (isEmbedded && isStackedForm)
+										? formatMessage({ defaultMessage: 'Done' })
+										: formatMessage({ defaultMessage: 'Save' }),
+								callback: (e) => {
+									handleSave(e);
+								}
+							},
+							{
+								id: 'saveDraft',
+								label:
+									isRepeatMode || (isEmbedded && isStackedForm)
+										? formatMessage({ defaultMessage: 'Done (Draft)' })
+										: formatMessage({ defaultMessage: 'Save Draft' }),
+								callback: (e) => {
+									handleSave(e, true);
+								}
+							}
+						]}
 					/>
-				)}
-				{(showSaveOptions || showReleaseLockOnClose) && (
-					// One options block. The outer stack's gap then sits once above Save, same as between the other blocks.
-					<Stack spacing={1}>
-						{showSaveOptions && (
-							<Box
-								role="group"
-								aria-labelledby={afterSavingLabelId}
-								sx={(theme) => ({
-									border: 1,
-									borderColor: 'divider',
-									borderRadius: theme.shape.borderRadius,
-									// Paper's own color, so the band stays a step below the dark elevated card.
-									bgcolor: 'background.paper',
-									px: 1,
-									py: 1
-								})}
-							>
-								<Stack spacing={0.5}>
-									<Typography
-										id={afterSavingLabelId}
-										variant="caption"
-										color="text.secondary"
-										component="span"
-										sx={{ textAlign: 'left' }}
-									>
-										<FormattedMessage {...messages.afterSaving} />
-									</Typography>
-									<ToggleButtonGroup
-										ref={setGroup}
-										exclusive
-										fullWidth
-										size="small"
-										color="primary"
-										value={afterSaving}
-										aria-labelledby={afterSavingLabelId}
-										onChange={handleAfterSaving}
-										sx={(theme) => ({
-											borderRadius: theme.shape.borderRadius,
-											[`& .${toggleButtonGroupClasses.firstButton}`]: {
-												borderTopLeftRadius: theme.shape.borderRadius,
-												borderBottomLeftRadius: theme.shape.borderRadius
-											},
-											[`& .${toggleButtonGroupClasses.lastButton}`]: {
-												borderTopRightRadius: theme.shape.borderRadius,
-												borderBottomRightRadius: theme.shape.borderRadius
-											},
-											[`& .${toggleButtonClasses.root}`]: {
-												flex: '1 1 0',
-												minWidth: 0,
-												overflow: 'hidden',
-												textTransform: 'none',
-												px: 1,
-												py: 0.5
-											}
-										})}
-									>
-										{afterSavingOrder.map((value) => {
-											const label = afterSavingLabels[value];
-											const Icon = afterSavingIcons[value];
-											const showTip = afterSavingIconsMode && afterSavingTip === value;
-											return (
-												<ToggleButton
-													key={value}
-													value={value}
-													aria-label={afterSavingIconsMode ? label : undefined}
-													sx={{ position: 'relative' }}
-													onMouseEnter={() => setAfterSavingTip(measureAfterSaving() ? value : null)}
-													onMouseLeave={() => setAfterSavingTip((current) => (current === value ? null : current))}
-													onFocus={() => setAfterSavingTip(measureAfterSaving() ? value : null)}
-													onBlur={() => setAfterSavingTip((current) => (current === value ? null : current))}
-												>
-													{afterSavingIconsMode ? (
-														<Tooltip
-															title={label}
-															open={showTip}
-															disableHoverListener
-															disableFocusListener
-															disableTouchListener
-														>
-															<Box component="span" sx={{ display: 'inline-flex', lineHeight: 0 }}>
-																<Icon fontSize="small" aria-hidden />
-															</Box>
-														</Tooltip>
-													) : (
-														<Box
-															component="span"
-															sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}
-														>
-															{label}
+					{isStackedForm && isEmbedded && (
+						<FormHelperText sx={{ m: 0, textAlign: 'center' }}>
+							<FormattedMessage defaultMessage="Changes are saved with the main item." />
+						</FormHelperText>
+					)}
+					<Grow in={!hasPendingChanges} appear unmountOnExit>
+						<Alert severity="info" variant="outlined" sx={{ p: 0, border: 'none', placeContent: 'center' }}>
+							<FormattedMessage defaultMessage="No changes detected" />
+						</Alert>
+					</Grow>
+				</Stack>
+			</Paper>
+			{(showSaveOptions || showReleaseLockOnClose) && (
+				// Sibling of the card, so the sidebar's space-y gap sits above Release Lock and Close.
+				<Stack spacing={1}>
+					{showSaveOptions && (
+						<Box role="group" aria-labelledby={afterSavingLabelId}>
+							<Stack spacing={0.5}>
+								<Typography
+									id={afterSavingLabelId}
+									variant="caption"
+									color="text.secondary"
+									component="span"
+									sx={{ textAlign: 'left' }}
+								>
+									<FormattedMessage {...messages.afterSaving} />
+								</Typography>
+								<ToggleButtonGroup
+									ref={setGroup}
+									exclusive
+									fullWidth
+									size="small"
+									color="primary"
+									value={afterSaving}
+									aria-labelledby={afterSavingLabelId}
+									onChange={handleAfterSaving}
+									sx={(theme) => ({
+										borderRadius: theme.shape.borderRadius,
+										[`& .${toggleButtonGroupClasses.firstButton}`]: {
+											borderTopLeftRadius: theme.shape.borderRadius,
+											borderBottomLeftRadius: theme.shape.borderRadius
+										},
+										[`& .${toggleButtonGroupClasses.lastButton}`]: {
+											borderTopRightRadius: theme.shape.borderRadius,
+											borderBottomRightRadius: theme.shape.borderRadius
+										},
+										[`& .${toggleButtonClasses.root}`]: {
+											flex: '1 1 0',
+											minWidth: 0,
+											overflow: 'hidden',
+											textTransform: 'none',
+											px: 1,
+											py: 0.5
+										}
+									})}
+								>
+									{afterSavingOrder.map((value) => {
+										const label = afterSavingLabels[value];
+										const Icon = afterSavingIcons[value];
+										const showTip = afterSavingIconsMode && afterSavingTip === value;
+										return (
+											<ToggleButton
+												key={value}
+												value={value}
+												aria-label={afterSavingIconsMode ? label : undefined}
+												sx={{ position: 'relative' }}
+												onMouseEnter={() => setAfterSavingTip(measureAfterSaving() ? value : null)}
+												onMouseLeave={() => setAfterSavingTip((current) => (current === value ? null : current))}
+												onFocus={() => setAfterSavingTip(measureAfterSaving() ? value : null)}
+												onBlur={() => setAfterSavingTip((current) => (current === value ? null : current))}
+											>
+												{afterSavingIconsMode ? (
+													<Tooltip
+														title={label}
+														open={showTip}
+														disableHoverListener
+														disableFocusListener
+														disableTouchListener
+													>
+														<Box component="span" sx={{ display: 'inline-flex', lineHeight: 0 }}>
+															<Icon fontSize="small" aria-hidden />
 														</Box>
-													)}
+													</Tooltip>
+												) : (
 													<Box
 														component="span"
-														aria-hidden
-														ref={(node: HTMLSpanElement | null) => {
-															probes.current[value] = node;
-														}}
+														data-after-saving-label=""
 														sx={{
-															position: 'absolute',
-															left: 0,
-															top: 0,
-															visibility: 'hidden',
+															display: 'block',
+															width: '100%',
+															overflow: 'hidden',
+															textOverflow: 'ellipsis',
 															whiteSpace: 'nowrap',
-															width: 'max-content',
-															pointerEvents: 'none'
+															minWidth: 0
 														}}
 													>
 														{label}
 													</Box>
-												</ToggleButton>
-											);
-										})}
-									</ToggleButtonGroup>
-								</Stack>
-							</Box>
-						)}
-						{showReleaseLockOnClose && (
-							<Stack spacing={1}>
-								<FormControlLabel
-									sx={(theme) => ({
-										m: 0,
-										alignItems: 'center',
-										// Small Switch pads its track by 7px. Pull that padding back so the track meets the caption.
-										[`& .${switchClasses.root}`]: {
-											marginLeft: '-7px',
-											marginRight: 0
-										},
-										[`& .${formControlLabelClasses.label}`]: {
-											marginLeft: theme.spacing(1)
-										}
+												)}
+												<Box
+													component="span"
+													aria-hidden
+													ref={(node: HTMLSpanElement | null) => {
+														probes.current[value] = node;
+													}}
+													sx={{
+														position: 'absolute',
+														left: 0,
+														top: 0,
+														visibility: 'hidden',
+														whiteSpace: 'nowrap',
+														width: 'max-content',
+														pointerEvents: 'none'
+													}}
+												>
+													{label}
+												</Box>
+											</ToggleButton>
+										);
 									})}
-									label={
-										<Typography variant="body2" component="span">
-											<FormattedMessage {...messages.releaseLockOnClose} />
-										</Typography>
-									}
-									control={
-										<Switch
-											size="small"
-											color={releaseLockOnClose ? 'primary' : 'warning'}
-											checked={releaseLockOnClose}
-											onChange={(_event, checked) => setReleaseLockOnClose(checked)}
-											// `color` only paints the checked switch. Keep-lock is the off state.
-											sx={
-												releaseLockOnClose
-													? undefined
-													: (theme) => ({
-															[`& .${switchClasses.switchBase}`]: {
-																color: theme.palette.warning.main
-															},
-															[`& .${switchClasses.switchBase} + .${switchClasses.track}`]: {
-																backgroundColor: theme.palette.warning.main,
-																opacity: 0.5
-															}
-														})
-											}
-										/>
-									}
-								/>
-								{!releaseLockOnClose && (
-									<Alert
-										severity="warning"
-										variant="outlined"
-										sx={{
-											py: 0,
-											px: 1,
-											[`& .${alertClasses.icon}`]: { py: 0.5 },
-											[`& .${alertClasses.message}`]: { py: 0.5 }
-										}}
-									>
-										<FormattedMessage {...messages.keepLockWarning} />
-									</Alert>
-								)}
+								</ToggleButtonGroup>
 							</Stack>
-						)}
-					</Stack>
-				)}
-				<SplitButton
-					fullWidth
-					loading={isSubmitting}
-					disabled={disableSave}
-					options={[
-						{
-							id: 'save',
-							label:
-								isRepeatMode || (isEmbedded && isStackedForm)
-									? formatMessage({ defaultMessage: 'Done' })
-									: formatMessage({ defaultMessage: 'Save' }),
-							callback: (e) => {
-								handleSave(e);
-							}
-						},
-						{
-							id: 'saveDraft',
-							label:
-								isRepeatMode || (isEmbedded && isStackedForm)
-									? formatMessage({ defaultMessage: 'Done (Draft)' })
-									: formatMessage({ defaultMessage: 'Save Draft' }),
-							callback: (e) => {
-								handleSave(e, true);
-							}
-						}
-					]}
-				/>
-				{isStackedForm && isEmbedded && (
-					<FormHelperText sx={{ m: 0, textAlign: 'center' }}>
-						<FormattedMessage defaultMessage="Changes are saved with the main item." />
-					</FormHelperText>
-				)}
-				<Grow in={!hasPendingChanges} appear unmountOnExit>
-					<Alert severity="info" variant="outlined" sx={{ p: 0, border: 'none', placeContent: 'center' }}>
-						<FormattedMessage defaultMessage="No changes detected" />
-					</Alert>
-				</Grow>
-			</Stack>
-		</Paper>
+						</Box>
+					)}
+					{showReleaseLockOnClose && (
+						<Stack spacing={1}>
+							<FormControlLabel
+								labelPlacement="start"
+								sx={{
+									m: 0,
+									ml: 0,
+									mr: 0,
+									width: '100%',
+									display: 'flex',
+									justifyContent: 'space-between',
+									alignItems: 'center',
+									gap: 1,
+									// labelPlacement start indents 16px and pulls the control 11px past the edge.
+									// Small switch pads its track by 7px. Drop that padding on the right and
+									// the same amount of width so the track meets the pills.
+									[`& .${switchClasses.root}`]: {
+										ml: 0,
+										mr: 0,
+										pr: 0,
+										width: 33,
+										flexShrink: 0
+									}
+								}}
+								label={
+									<Typography
+										variant="body2"
+										component="span"
+										sx={{ minWidth: 0, flex: '1 1 auto', textAlign: 'left' }}
+									>
+										<FormattedMessage {...messages.releaseLockOnClose} />
+									</Typography>
+								}
+								control={
+									<Switch
+										size="small"
+										color={releaseLockOnClose ? 'primary' : 'warning'}
+										checked={releaseLockOnClose}
+										onChange={(_event, checked) => setReleaseLockOnClose(checked)}
+										// `color` only paints the checked switch. Keep-lock is the off state.
+										sx={
+											releaseLockOnClose
+												? undefined
+												: (theme) => ({
+														[`& .${switchClasses.switchBase}`]: {
+															color: theme.palette.warning.main
+														},
+														[`& .${switchClasses.switchBase} + .${switchClasses.track}`]: {
+															backgroundColor: theme.palette.warning.main,
+															opacity: 0.5
+														}
+													})
+										}
+									/>
+								}
+							/>
+							{!releaseLockOnClose && (
+								<Alert
+									severity="warning"
+									variant="outlined"
+									sx={{
+										py: 0,
+										px: 1,
+										[`& .${alertClasses.icon}`]: { py: 0.5 },
+										[`& .${alertClasses.message}`]: { py: 0.5 }
+									}}
+								>
+									<FormattedMessage {...messages.keepLockWarning} />
+								</Alert>
+							)}
+						</Stack>
+					)}
+				</Stack>
+			)}
+		</>
 	);
 }
 
