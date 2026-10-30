@@ -300,6 +300,38 @@ describe('form property and constraint pass-through', () => {
 			false
 		);
 	});
+
+	// A blank value is cleared for any constraint name, not only pattern.
+	it('does not write a non-pattern constraint back when its value is blank', () => {
+		const parsed = parseLegacyFormDefinition({
+			'content-type': '/page/custom',
+			title: 'Custom',
+			description: '',
+			objectType: 'page',
+			sections: {
+				section: {
+					title: 'Main',
+					description: '',
+					defaultOpen: 'true',
+					fields: {
+						field: {
+							id: 'title_t',
+							title: 'Title',
+							description: '',
+							type: 'input',
+							constraints: { constraint: { name: 'customRule', value: 'keep', type: 'string' } }
+						}
+					}
+				}
+			}
+		} as never);
+		parsed.fields.title_t.validations.customRule = { id: 'customRule', value: '   ', level: 'required' };
+		const constraints = fieldConstraints(parsed, 'title_t');
+		assert.equal(
+			constraints.some((item) => item.name === 'customRule'),
+			false
+		);
+	});
 });
 
 describe('allowed roles', () => {

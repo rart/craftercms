@@ -686,10 +686,9 @@ function buildFormProperties(type: ContentType): LegacyFormDefinitionProperty[] 
 	return written;
 }
 
-/** undefined, or a blank pattern. The pattern editor clears to '' (its string default), not undefined. */
-function isClearedConstraintValue(name: string, value: unknown): boolean {
-	if (value === undefined) return true;
-	return name === 'pattern' && typeof value === 'string' && value.trim() === '';
+/** undefined, or a blank string. A string constraint editor clears to '', not undefined. */
+function isClearedConstraintValue(value: unknown): boolean {
+	return value === undefined || (typeof value === 'string' && value.trim() === '');
 }
 
 function allowedRolesXml(roles: string[] | null | undefined): { role: string[] } | undefined {
@@ -813,8 +812,7 @@ function convertFieldStructToXmlStruct(field: ContentTypeField): Required<Legacy
 		if (existing === -1) handledConstraints.push(written);
 		else if (handledConstraints[existing].value === undefined) handledConstraints[existing] = written;
 	}
-	// Original constraint order. Handled names are updated in place. undefined and a blank pattern are cleared:
-	// the pattern control is a string, so an empty editor value is '' rather than undefined.
+	// Original constraint order. Handled names are updated in place. undefined and a blank string are cleared.
 	const handledByName = new Map<string, (typeof handledConstraints)[number]>(
 		handledConstraints.map((item) => [item.name, item])
 	);
@@ -829,13 +827,13 @@ function convertFieldStructToXmlStruct(field: ContentTypeField): Required<Legacy
 		if (!raw?.name || omittedConstraintNames.has(raw.name)) continue;
 		const update = handledByName.get(raw.name);
 		// A cleared editor value must not bring the stored constraint back, or write type "undefined".
-		if (update && isClearedConstraintValue(update.name, update.value)) continue;
+		if (update && isClearedConstraintValue(update.value)) continue;
 		seenConstraintNames.add(raw.name);
 		constraintList.push(update ? { ...raw, value: update.value, type: update.type } : { ...raw });
 	}
 	for (const constraint of handledConstraints) {
 		if (seenConstraintNames.has(constraint.name) || omittedConstraintNames.has(constraint.name)) continue;
-		if (isClearedConstraintValue(constraint.name, constraint.value)) continue;
+		if (isClearedConstraintValue(constraint.value)) continue;
 		constraintList.push(constraint);
 	}
 	const constraints = constraintList.length > 0 ? { constraint: constraintList } : undefined;
