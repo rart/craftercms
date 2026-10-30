@@ -15,10 +15,9 @@
  */
 
 /**
- * Control contributions declare an optional apiVersion.
- * Omitting it, or setting the current version, registers the control.
- * Any other value is refused the same way as an invalid control entry:
- * registerPlugin throws before writing registries, so nothing from that plugin is registered.
+ * Control and data-source contributions declare an optional apiVersion.
+ * Omitting it, or setting the current version, registers the contribution.
+ * Any other value is refused before registry writes, so nothing from that plugin is registered.
  */
 
 import assert from 'node:assert/strict';
@@ -104,6 +103,62 @@ describe('control contribution apiVersion', () => {
 		assert.equal(getRegisteredControlContribution(typeKey), undefined);
 		assert.equal(getRegisteredControlContribution(siblingKey), undefined);
 		assert.equal(dataSourceModuleRegistry.get(dataSourceType), undefined);
+		assert.equal(plugins.has(id), false);
+	});
+});
+
+function dataSourceModule(type: string, apiVersion?: number) {
+	return {
+		...(apiVersion === undefined ? {} : { apiVersion }),
+		type,
+		interfaces: ['item' as const],
+		capabilities: [],
+		create: () => ({})
+	};
+}
+
+describe('data-source contribution apiVersion', () => {
+	it('registers a data source that omits apiVersion', () => {
+		const id = 'org.example.ds-missing-api-version';
+		const typeKey = 'org-example-ds-missing-api-version';
+		assert.equal(
+			registerPlugin({ id, dataSources: { [typeKey]: dataSourceModule(typeKey) } } as PluginDescriptor, source),
+			true
+		);
+		assert.equal(dataSourceModuleRegistry.get(typeKey)?.type, typeKey);
+	});
+
+	it('refuses an unsupported data-source apiVersion and registers nothing from that plugin', () => {
+		const id = 'org.example.ds-unsupported-api-version';
+		const typeKey = 'org-example-ds-future';
+		const siblingKey = 'org-example-ds-sibling';
+		const controlKey = 'org-example-ds-sibling-control';
+		const plugin = {
+			id,
+			dataSources: {
+				[siblingKey]: dataSourceModule(siblingKey, DATA_SOURCE_API_VERSION),
+				[typeKey]: { ...dataSourceModule(typeKey), apiVersion: 2 }
+			},
+			controls: {
+				[controlKey]: { Component: controlComponent() }
+			}
+		} as PluginDescriptor;
+
+		assert.throws(
+			() => registerPlugin(plugin, source),
+			(error: unknown) => {
+				assert.ok(error instanceof TypeError);
+				const message = (error as TypeError).message;
+				assert.match(message, /org\.example\.ds-unsupported-api-version/);
+				assert.match(message, /org-example-ds-future/);
+				assert.match(message, /unsupported apiVersion "2"/);
+				assert.match(message, /expected 1/);
+				return true;
+			}
+		);
+		assert.equal(dataSourceModuleRegistry.get(typeKey), undefined);
+		assert.equal(dataSourceModuleRegistry.get(siblingKey), undefined);
+		assert.equal(getRegisteredControlContribution(controlKey), undefined);
 		assert.equal(plugins.has(id), false);
 	});
 });

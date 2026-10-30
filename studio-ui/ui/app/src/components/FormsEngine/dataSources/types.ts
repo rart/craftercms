@@ -21,8 +21,8 @@ import type { FormsEngineProps } from '../FormsEngine';
 
 /**
  * FE2 data-source module contract. One positive integer, not semver.
- * Required: a missing or other value is rejected. Bump only for a breaking change.
- * Policy: `docs/type-builder-forms-engine-plugins.md` §10.
+ * A missing `apiVersion` counts as this value. Any other value is rejected.
+ * Bump only for a breaking change. Policy: `docs/type-builder-forms-engine-plugins.md` §10.
  */
 export const DATA_SOURCE_API_VERSION = 1 as const;
 
@@ -348,10 +348,10 @@ export interface DataSourceInstance {
  */
 export interface DataSourceModule {
 	/**
-	 * Contract version this module implements. Must equal {@link DATA_SOURCE_API_VERSION};
-	 * mismatched values are rejected at registration / load time.
+	 * Contract version this module implements. Currently {@link DATA_SOURCE_API_VERSION}.
+	 * A missing value counts as that version. Any other value is refused at registration.
 	 */
-	apiVersion: typeof DATA_SOURCE_API_VERSION;
+	apiVersion?: typeof DATA_SOURCE_API_VERSION;
 	/**
 	 * Stable data-source type id (e.g. `img-desktop-upload`, `shared-content`).
 	 * Must match the form-definition record's `type` and (for plugins) the

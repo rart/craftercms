@@ -18,15 +18,7 @@ import { firstValueFrom } from 'rxjs';
 import { AjaxError } from 'rxjs/ajax';
 import { getText } from '../../../utils/ajax';
 import { getFormControllerUrl } from '../../../services/contentTypes';
-import type { FormController } from './types';
-
-/**
- * FE2 form-controller contract. One positive integer, not semver.
- * A missing `apiVersion` counts as this value. Not published on
- * `craftercms.formsEngine.formControllers`. Bump only for a breaking change.
- * Policy: `docs/type-builder-forms-engine-plugins.md` §10.
- */
-const SUPPORTED_API_VERSION = 1;
+import { FORM_CONTROLLER_API_VERSION, type FormController } from './types';
 
 const commonErrorMsg = 'The form will proceed as though no custom type controller exists.';
 
@@ -63,8 +55,8 @@ function resolveControllerExport(module: Record<string, unknown>): FormControlle
 	if (!candidate || typeof candidate !== 'object') {
 		return null;
 	}
-	const version = (candidate as { apiVersion?: number }).apiVersion ?? SUPPORTED_API_VERSION;
-	if (version !== SUPPORTED_API_VERSION) {
+	const version = (candidate as { apiVersion?: number }).apiVersion ?? FORM_CONTROLLER_API_VERSION;
+	if (version !== FORM_CONTROLLER_API_VERSION) {
 		return null;
 	}
 	return candidate;
@@ -117,9 +109,9 @@ export function loadFormController(siteId: string, contentTypeId: string): Promi
 				const exported = module.default ?? module.formController;
 				const reportedVersion =
 					exported && typeof exported === 'object' ? (exported as { apiVersion?: number }).apiVersion : undefined;
-				if (reportedVersion != null && reportedVersion !== SUPPORTED_API_VERSION) {
+				if (reportedVersion != null && reportedVersion !== FORM_CONTROLLER_API_VERSION) {
 					console.error(
-						`The form controller for "${contentTypeId}" reports unsupported apiVersion ${reportedVersion} (expected ${SUPPORTED_API_VERSION}). ${commonErrorMsg}`
+						`The form controller for "${contentTypeId}" reports unsupported apiVersion ${reportedVersion} (expected ${FORM_CONTROLLER_API_VERSION}). ${commonErrorMsg}`
 					);
 				} else {
 					console.error(

@@ -173,8 +173,8 @@ export function isPluginRegistered(plugin: PluginDescriptor): boolean {
  * `plugin.id` was already registered (e.g. widget host loaded first without FE contributions).
  *
  * FE contributions are fully preflighted before any registry write so a mid-flight failure leaves
- * no partial DS/control state. A control `apiVersion` other than {@link CONTROL_API_VERSION}
- * (a missing value counts as that version) throws here, same as any other invalid control.
+ * no partial DS/control state. A control or data-source `apiVersion` other than the current
+ * contract (a missing value counts as that version) throws here, same as any other invalid contribution.
  * Returns `false` if the id already existed; merges contributions onto
  * the stored descriptor. Prefer this over calling FE registries directly from plugin code.
  */
@@ -187,7 +187,7 @@ export function registerPlugin(plugin: PluginDescriptor, source?: PluginFileBuil
 	const dsToCommit: DataSourceModule[] = [];
 	if (dataSources) {
 		for (const [typeKey, module] of Object.entries(dataSources)) {
-			validateDataSourceModule(module);
+			validateDataSourceModule(module, { pluginId: plugin.id, type: typeKey });
 			if (module.type !== typeKey) {
 				throw new TypeError(
 					`Plugin "${plugin.id}" dataSources key "${typeKey}" does not match module.type "${module.type}".`

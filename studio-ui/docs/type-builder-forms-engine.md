@@ -487,7 +487,7 @@ type FormControllerSaveResult = boolean | { ok: boolean; message?: string };
 
 interface FormController {
 	/** Currently `1`. Missing counts as `1`. */
-	apiVersion: 1;
+	apiVersion?: 1;
 	/**
 	 * Called once per form that owns a controller (root and embedded children), after relevance.
 	 * Not called for repeat stacked forms.
@@ -639,7 +639,7 @@ Helper: `getFormControllerUrl(site, contentTypeId)` in `services/contentTypes.ts
 
 Why Blob instead of pointing `<script>` / `import()` at the API URL: that endpoint requires auth; a raw script/module request does not reliably carry the same credentials FE1 needed — hence authenticated `getText` then Blob module (same constraint as FE1’s current loader).
 
-Host helpers may live under `window.craftercms.formsEngine.formControllers` (load/clear cache) for tests and debugging — optional, not required for authors.
+`window.craftercms.formsEngine.formControllers.apiVersion` is the form-controller contract integer. The same object also has load/cache helpers for tests and debugging; authors do not need those.
 
 #### `FormControllerContext` (host-provided)
 
@@ -810,6 +810,7 @@ Separate **completed design decisions** (`[x]`) from **remaining implementation 
 
 Keep newest first. One short bullet per meaningful session.
 
+- **2026-10-30** — Controls, data sources, and form controllers share one version rule: a missing `apiVersion` counts as `1`, and any other value is rejected at load. A data-source rejection names the plugin id and type and installs nothing from that plugin. `FORM_CONTROLLER_API_VERSION` is published as `craftercms.formsEngine.formControllers.apiVersion`. See plugins companion [§10](type-builder-forms-engine-plugins.md#10-plugin-api-versioning).
 - **2026-10-30** — Plugin API versions are one integer per contract (controls, data sources, form controllers), not semver. Bump only for a breaking change. Policy and the current missing-value rules: plugins companion [§10](type-builder-forms-engine-plugins.md#10-plugin-api-versioning).
 - **2026-10-30** — FE2 control contributions take an optional `apiVersion` (`CONTROL_API_VERSION`, currently `1`). A missing value counts as `1`. `registerPlugin` refuses any other value with an error that names the plugin id and the control type, and installs nothing from that call (same as any other invalid control entry). See plugins companion §6 and §9.3. #9303
 - **2026-10-22** — `EditTypeView`'s `parseConfigPlugins` now normalizes descriptor `metadata.additionalFields` with `asArray` (see §5.4), matching the Redux `uiConfig` reducer for that field; `metadata.suffixes` is still not normalized on this path. This supersedes the `parseConfigPlugins` note in the `additionalFields` entry below.

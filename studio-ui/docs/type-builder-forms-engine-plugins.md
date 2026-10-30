@@ -481,7 +481,7 @@ interface ControlPluginContribution {
 
 `registerPlugin` (current):
 
-1. Validates and installs `dataSources` into `dataSourceModuleRegistry` (before committing the plugin id).
+1. Validates and installs `dataSources` into `dataSourceModuleRegistry` (before committing the plugin id). An `apiVersion` other than `1` throws and installs nothing from that call. The error names the plugin id and the data-source type. Missing `apiVersion` counts as `1`.
 2. Validates and installs `controls` into the control contribution registry + binding registry (including optional `apiVersion`, `valueRetriever` / `valueSerializer` / `validator`). An `apiVersion` other than `1` throws and installs nothing from that call. Missing `apiVersion` counts as `1`.
 3. Stores the descriptor (including `utils`) in the plugins map.
 4. Registers widgets, locales, scripts/stylesheets as before.
@@ -540,8 +540,8 @@ Each FE2 contract has its own version: one positive integer, not semver. The num
 | Contract | Constant | Now | Missing `apiVersion` | Read at runtime |
 | --- | --- | --- | --- | --- |
 | Control contribution | `CONTROL_API_VERSION` in `FormsEngine/types.ts` | `1` | Counts as `1` | `craftercms.formsEngine.controls.apiVersion` |
-| Data-source module | `DATA_SOURCE_API_VERSION` in `dataSources/types.ts` | `1` | Rejected. The field is required and must equal the constant. | `craftercms.formsEngine.dataSources.apiVersion` |
-| Form controller | `SUPPORTED_API_VERSION` in `formControllers/loader.ts` (module-private) | `1` | Counts as `1` | None. `craftercms.formsEngine.formControllers` exposes load and cache helpers only. |
+| Data-source module | `DATA_SOURCE_API_VERSION` in `dataSources/types.ts` | `1` | Counts as `1` | `craftercms.formsEngine.dataSources.apiVersion` |
+| Form controller | `FORM_CONTROLLER_API_VERSION` in `formControllers/types.ts` | `1` | Counts as `1` | `craftercms.formsEngine.formControllers.apiVersion` |
 
 Bump a constant only when that contract breaks: a prop or hook argument is removed, renamed, or retyped, or a return value's shape or meaning changes.
 
@@ -549,10 +549,10 @@ An additive, compatible change does not bump it. A new optional prop, or a new o
 
 There is no minor or patch component. A feature a plugin needs is either detected on the host, or required by the package's `crafterCmsVersions` list in `craftercms-plugin.yaml` (major, minor, and patch). A patch does not change one of these contracts.
 
-The host knows which integers it supports. Today that is `1` for each contract, with the missing-value rule in the table. There is no adapter yet. A later bump may keep an adapter for the previous integer while it is deprecated, or reject at load instead of failing later. That rejection should name the plugin id and the control or data-source type. A form-controller rejection names the content type id.
+The host knows which integers it supports. Today that is `1` for each contract. A missing `apiVersion` counts as `1` on all three. There is no adapter yet. A later bump may keep an adapter for the previous integer while it is deprecated, or reject at load instead of failing later. A control or data-source rejection names the plugin id and the type. A form-controller rejection names the content type id.
 
 What the code does now:
 
 - Controls. `registerPlugin` uses `apiVersion ?? CONTROL_API_VERSION`. Any other value throws before registry writes, so nothing from that plugin is registered. The error names the plugin id and the control type.
-- Data sources. `validateDataSourceModule` requires `apiVersion === DATA_SOURCE_API_VERSION`. A missing or different value throws. The message reports the version; it does not name the plugin id.
-- Form controllers. The loader uses `apiVersion ?? SUPPORTED_API_VERSION`. Any other value is not used. The form continues with no controller. The console error names the content type id.
+- Data sources. `validateDataSourceModule`, called from `registerPlugin` before any registry write, uses `apiVersion ?? DATA_SOURCE_API_VERSION`. Any other value throws and names the plugin id and the data-source type, so nothing from that plugin is registered.
+- Form controllers. The loader uses `apiVersion ?? FORM_CONTROLLER_API_VERSION`. Any other value is not used. The form continues with no controller. The console error names the content type id. The host publishes the constant as `craftercms.formsEngine.formControllers.apiVersion`.
