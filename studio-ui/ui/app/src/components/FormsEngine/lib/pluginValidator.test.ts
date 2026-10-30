@@ -153,15 +153,29 @@ describe('plugin validator that fails', () => {
 		});
 	});
 
-	it('is invalid, and not logged, when the run was aborted', async () => {
+	it('is invalid, and not logged, when it throws AbortError after the host signal aborted', async () => {
 		await quietly(async (error) => {
-			const field = plugin(() => Promise.reject(new DOMException('aborted', 'AbortError')));
-			assert.deepEqual(await validateFieldValue(field, 'x', meta), { isValid: false, messages: [] });
+			const controller = new AbortController();
+			const field = plugin(async (_value, ctx) => {
+				controller.abort();
+				assert.equal(ctx.signal.aborted, true);
+				throw new DOMException('aborted', 'AbortError');
+			});
+			const result = await validateFieldValue(field, 'x', { ...meta, signal: controller.signal });
+			assert.deepEqual(result, { isValid: false, messages: [] });
 			assert.equal(error.mock.callCount(), 0);
 		});
 	});
 
-	it('is logged when it fails after its signal aborted, unless the error is an AbortError', async () => {
+	it('is logged when the plugin aborts its own controller, and the field is still invalid', async () => {
+		await quietly(async (error) => {
+			const field = plugin(() => Promise.reject(new DOMException('aborted', 'AbortError')));
+			assert.deepEqual(await validateFieldValue(field, 'x', meta), { isValid: false, messages: [] });
+			assert.equal(error.mock.callCount(), 1);
+		});
+	});
+
+	it('is logged when it fails with another error after its signal aborted', async () => {
 		await quietly(async (error) => {
 			const controller = new AbortController();
 			controller.abort();

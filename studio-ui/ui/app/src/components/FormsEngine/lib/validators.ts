@@ -205,7 +205,8 @@ const validationValidators: Partial<Record<string, BuiltInValidator>> = {
  * Wraps a plugin validator for the host. The plugin gets a fresh context with only the public members,
  * so host internals cannot leak. A result that is not `{ valid: true }` is invalid, and a malformed one is reported.
  * A validator that throws or rejects is invalid too, so a failed request never rejects the field's validation.
- * It is logged, unless it is an `AbortError`: that run was superseded and its outcome is discarded.
+ * It is logged, unless it is an `AbortError` and the host's own signal aborted: that run was superseded and its
+ * outcome is discarded. A plugin aborting its own controller is still logged.
  */
 function adaptPluginValidator(validator: Validator): BuiltInValidator {
 	return async (value, ctx) => {
@@ -219,7 +220,7 @@ function adaptPluginValidator(validator: Validator): BuiltInValidator {
 		try {
 			result = await validator(value, pluginCtx);
 		} catch (error) {
-			if ((error as Error | undefined)?.name !== 'AbortError') {
+			if (!(pluginCtx.signal.aborted && (error as Error | undefined)?.name === 'AbortError')) {
 				console.error(
 					`The validator for control type "${ctx.field.type}" threw. The field is treated as invalid.`,
 					error
