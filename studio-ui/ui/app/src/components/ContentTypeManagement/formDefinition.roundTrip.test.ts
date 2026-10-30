@@ -265,8 +265,8 @@ describe('form property and constraint pass-through', () => {
 		assert.equal(buildContentTypeXml(savedType(parsed)).includes('<type>undefined</type>'), false);
 	});
 
-	// Given a stored pattern of abc, clearing the validation drops the constraint instead of writing abc back.
-	it('does not write a stored pattern back when its validation value is undefined', () => {
+	// Given a stored pattern of abc, clearing the pattern field (the string control saves '') drops the constraint.
+	it('does not write a stored pattern back when the editor clears it', () => {
 		const parsed = parseLegacyFormDefinition({
 			'content-type': '/page/custom',
 			title: 'Custom',
@@ -289,8 +289,12 @@ describe('form property and constraint pass-through', () => {
 				}
 			}
 		} as never);
-		parsed.fields.title_t.validations.pattern = { id: 'pattern', value: undefined, level: 'required' };
-		const constraints = fieldConstraints(parsed, 'title_t');
+		const values = createTypeFieldValuesObject(parsed.fields.title_t);
+		values.pattern = '';
+		const edited = reverseTypeFieldValuesObject(parsed.fields.title_t, values, inputDescriptor);
+		const type = { ...parsed, fields: { ...parsed.fields, title_t: edited } };
+		const constraints = fieldConstraints(type, 'title_t');
+		assert.equal(edited.validations.pattern?.value, '');
 		assert.equal(
 			constraints.some((item) => item.name === 'pattern'),
 			false
