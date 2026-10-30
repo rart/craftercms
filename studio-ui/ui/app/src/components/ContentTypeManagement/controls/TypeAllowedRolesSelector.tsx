@@ -17,7 +17,6 @@
 import React, { useId } from 'react';
 import FormsEngineField from '../../FormsEngine/components/FormsEngineField';
 import Box from '@mui/material/Box';
-import { FormattedMessage } from 'react-intl';
 import { TypeBuilderControl } from '../utils';
 import { StringListEditor } from './StringListEditor';
 
@@ -34,15 +33,15 @@ export function TypeAllowedRolesSelector(props: TypeAllowedRolesSelectorProps) {
 	const htmlId = useId();
 	const maxLength = field.validations.maxLength?.value;
 	return (
-		<FormsEngineField htmlFor={htmlId} field={field} max={maxLength}>
-			<Box sx={{ display: 'flex', flexDirection: 'column', rowGap: 2, mt: 2 }}>
+		<FormsEngineField labelId={htmlId} field={field} max={maxLength}>
+			<Box role="group" aria-labelledby={htmlId} sx={{ display: 'flex', flexDirection: 'column', rowGap: 2, mt: 2 }}>
 				<StringListEditor
 					values={value}
 					onChange={setValue}
 					maxLength={maxLength}
-					itemLabel={<FormattedMessage defaultMessage="Role" />}
-					addLabel={<FormattedMessage defaultMessage="Add Role" />}
-					removeLabel={<FormattedMessage defaultMessage="Remove Role" />}
+					itemLabel={{ defaultMessage: 'Role {index}' }}
+					addLabel={{ defaultMessage: 'Add Role' }}
+					removeLabel={{ defaultMessage: 'Remove Role {index}' }}
 				/>
 			</Box>
 		</FormsEngineField>

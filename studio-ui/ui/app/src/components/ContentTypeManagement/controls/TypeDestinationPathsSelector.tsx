@@ -45,26 +45,32 @@ export function TypeDestinationPathsSelector(props: TypeDestinationPathsSelector
 	};
 
 	return (
-		<FormsEngineField htmlFor={htmlId} field={field} max={maxLength}>
-			{Object.entries(value).map(([key, entry]) => (
-				<Box key={key} sx={{ display: 'flex', flexDirection: 'column', rowGap: 2, mt: 2 }}>
-					<Typography variant="subtitle2">
-						{key === 'includes' ? (
-							<FormattedMessage defaultMessage="Includes" />
-						) : (
-							<FormattedMessage defaultMessage="Excludes" />
-						)}
-					</Typography>
-					<StringListEditor
-						values={entry?.pattern ?? []}
-						onChange={(pattern) => updatePatterns(key as Destination, pattern)}
-						maxLength={maxLength}
-						itemLabel={<FormattedMessage defaultMessage="Pattern" />}
-						addLabel={<FormattedMessage defaultMessage="Add Path" />}
-						removeLabel={<FormattedMessage defaultMessage="Remove Option" />}
-					/>
-				</Box>
-			))}
+		<FormsEngineField labelId={htmlId} field={field} max={maxLength}>
+			<Box role="group" aria-labelledby={htmlId}>
+				{Object.entries(value).map(([key, entry]) => (
+					<Box key={key} sx={{ display: 'flex', flexDirection: 'column', rowGap: 2, mt: 2 }}>
+						<Typography variant="subtitle2">
+							{key === 'includes' ? (
+								<FormattedMessage defaultMessage="Includes" />
+							) : (
+								<FormattedMessage defaultMessage="Excludes" />
+							)}
+						</Typography>
+						<StringListEditor
+							values={entry?.pattern ?? []}
+							onChange={(pattern) => updatePatterns(key as Destination, pattern)}
+							maxLength={maxLength}
+							itemLabel={
+								key === 'includes'
+									? { defaultMessage: 'Includes pattern {index}' }
+									: { defaultMessage: 'Excludes pattern {index}' }
+							}
+							addLabel={{ defaultMessage: 'Add Path' }}
+							removeLabel={{ defaultMessage: 'Remove pattern {index}' }}
+						/>
+					</Box>
+				))}
+			</Box>
 		</FormsEngineField>
 	);
 }

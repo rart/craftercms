@@ -15,7 +15,7 @@
  */
 
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -212,7 +212,7 @@ describe('form property and constraint pass-through', () => {
 							constraints: {
 								constraint: [
 									{ name: 'pluginConstraint', value: 'alpha', type: 'string' },
-									{ name: 'required', value: 'true', type: 'boolean' },
+									{ name: 'required', value: 'true', type: 'string' },
 									{ name: 'custom', value: 'x', type: 'string' }
 								]
 							}
@@ -230,6 +230,7 @@ describe('form property and constraint pass-through', () => {
 		const required = constraints.filter((item) => item.name === 'required');
 		assert.equal(required.length, 1);
 		assert.equal(required[0].value, false);
+		assert.equal(required[0].type, 'string');
 	});
 
 	// Given a pattern validation with no value, save does not write type "undefined".
@@ -372,6 +373,9 @@ describe('allowed roles', () => {
 
 		const blank = { ...parsed, allowedRoles: ['', '   '] };
 		assert.equal(savedType(blank)['allowed-roles'], undefined);
+
+		const messy = { ...parsed, allowedRoles: [' admin ', 'admin', 'editor', 'editor', '  '] };
+		assert.deepEqual(savedType(messy)['allowed-roles']?.role, ['admin', 'editor']);
 	});
 
 	// Given includes and excludes, a no-edit save writes the same patterns.
@@ -444,8 +448,8 @@ describe('checkbox group minSize type', () => {
 });
 
 describe('form definition without sections', () => {
-	// Given the config/dependency fixture and a form with no sections element, the parser returns an empty section list.
-	it('does not throw when the form has no sections', () => {
+	// The config/dependency fixture's root is <fake>, so `.form` is a path string, not a form.
+	it('does not throw when the definition is missing', () => {
 		const fixture = parseXml(readFileSync(dependencyPath, 'utf8'));
 		assert.deepEqual(fixture.sections, []);
 		assert.doesNotThrow(() => prepareSerializeToXmlTypeObject(fixture));
@@ -453,7 +457,19 @@ describe('form definition without sections', () => {
 		const bare = parseLegacyFormDefinition(undefined as never);
 		assert.deepEqual(bare.sections, []);
 		assert.doesNotThrow(() => prepareSerializeToXmlTypeObject(bare));
+	});
 
+	// Given a real form element with no sections child, the parser returns an empty section list.
+	it('does not throw for a form element with no sections', () => {
+		const parsed = parseXml(
+			'<form><title>Plain</title><content-type>/page/plain</content-type><objectType>page</objectType><description></description></form>'
+		);
+		assert.equal(parsed.id, '/page/plain');
+		assert.deepEqual(parsed.sections, []);
+		assert.doesNotThrow(() => prepareSerializeToXmlTypeObject(parsed));
+	});
+
+	it('does not throw for a repeat with no nested fields', () => {
 		const repeat = parseLegacyFormDefinition({
 			'content-type': '/component/widget',
 			title: 'Widget',
@@ -469,5 +485,78 @@ describe('form definition without sections', () => {
 			}
 		} as never);
 		assert.deepEqual(Object.keys(repeat.fields.items_o.fields ?? {}), []);
+	});
+});
+
+describe('shipped form definitions', () => {
+	function constraintSnap(field: { constraints?: { constraint?: unknown } } | undefined) {
+		return namedList(field?.constraints?.constraint).map((item) => ({
+			name: item?.name,
+			value: item?.value == null ? '' : String(item.value),
+			type: item?.type
+		}));
+	}
+
+	function walkOriginal(fields: unknown, into: Map<string, ReturnType<typeof constraintSnap>>, prefix = '') {
+		for (const field of namedList(
+			fields as { id?: string; constraints?: { constraint?: unknown }; fields?: { field?: unknown } }
+		)) {
+			if (!field?.id) continue;
+			const id = prefix ? `${prefix}.${field.id}` : field.id;
+			into.set(id, constraintSnap(field));
+			if (field.fields?.field) walkOriginal(field.fields.field, into, id);
+		}
+	}
+
+	function walkSaved(fields: unknown, into: Map<string, ReturnType<typeof constraintSnap>>, prefix = '') {
+		for (const field of namedList(
+			fields as { id?: string; constraints?: { constraint?: unknown }; fields?: { field?: unknown } }
+		)) {
+			if (!field?.id) continue;
+			const id = prefix ? `${prefix}.${field.id}` : field.id;
+			into.set(id, constraintSnap(field));
+			if (field.fields?.field) walkSaved(field.fields.field, into, id);
+		}
+	}
+
+	function formFiles(dir: string): string[] {
+		const found: string[] = [];
+		for (const entry of readdirSync(dir, { withFileTypes: true })) {
+			const path = resolve(dir, entry.name);
+			if (entry.isDirectory()) found.push(...formFiles(path));
+			else if (entry.name === 'form-definition.xml') found.push(path);
+		}
+		return found;
+	}
+
+	// Given every shipped form definition, a no-edit save keeps each field's constraints, including a blank minSize.
+	it('does not drop constraints from the shipped blueprints', () => {
+		const root = resolve(here, '../../../../../../studio/src/main/webapp/repo-bootstrap/global/blueprints');
+		const files = formFiles(root);
+		assert.ok(files.length >= 24);
+		const losses: string[] = [];
+		for (const file of files) {
+			const xml = readFileSync(file, 'utf8');
+			const original = deserialize(xml, {
+				parseTagValue: false,
+				tagValueProcessor: entityEncodingTagValueProcessor
+			}).form;
+			const originalConstraints = new Map<string, ReturnType<typeof constraintSnap>>();
+			for (const section of namedList(original?.sections?.section)) {
+				walkOriginal(section?.fields?.field, originalConstraints);
+			}
+			const saved = savedType(parseLegacyFormDefinition(original));
+			const savedConstraints = new Map<string, ReturnType<typeof constraintSnap>>();
+			for (const section of namedList(saved.sections?.section)) {
+				walkSaved(section?.fields?.field, savedConstraints);
+			}
+			for (const [fieldId, constraints] of originalConstraints) {
+				const after = savedConstraints.get(fieldId) ?? [];
+				if (JSON.stringify(constraints) !== JSON.stringify(after)) {
+					losses.push(`${file} ${fieldId}: ${JSON.stringify(constraints)} -> ${JSON.stringify(after)}`);
+				}
+			}
+		}
+		assert.deepEqual(losses, []);
 	});
 });

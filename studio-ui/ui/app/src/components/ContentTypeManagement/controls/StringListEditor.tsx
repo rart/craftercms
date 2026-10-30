@@ -14,79 +14,131 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-import React, { ReactNode } from 'react';
+import React, { useEffect, useRef } from 'react';
 import Box from '@mui/material/Box';
 import TextField from '@mui/material/TextField';
 import IconButton from '@mui/material/IconButton';
 import AddCircleOutlineRoundedIcon from '@mui/icons-material/AddCircleOutlineRounded';
 import Tooltip from '@mui/material/Tooltip';
 import RemoveCircleOutlineRoundedIcon from '@mui/icons-material/RemoveCircleOutlineRounded';
+import { type MessageDescriptor, useIntl } from 'react-intl';
 
 export interface StringListEditorProps {
 	values: string[];
 	onChange: (values: string[]) => void;
-	itemLabel: ReactNode;
-	addLabel: ReactNode;
-	removeLabel: ReactNode;
+	/** Row label. `{index}` is the 1-based row number. */
+	itemLabel: MessageDescriptor;
+	addLabel: MessageDescriptor;
+	/** `{index}` is the 1-based row number. */
+	removeLabel: MessageDescriptor;
 	maxLength?: number;
+}
+
+let rowIdSequence = 0;
+function nextRowId(): string {
+	rowIdSequence += 1;
+	return `string-list-row-${rowIdSequence}`;
 }
 
 /**
  * Free-text list with add and remove. Callers supply the labels.
+ * Row ids stay with the value so removing a middle row does not reuse the next row's DOM.
  */
 export function StringListEditor(props: StringListEditorProps) {
 	const { values, onChange, itemLabel, addLabel, removeLabel, maxLength } = props;
+	const { formatMessage } = useIntl();
+	const rowIds = useRef<string[]>([]);
+	const inputRefs = useRef(new Map<string, HTMLInputElement>());
+	const addButtonRef = useRef<HTMLButtonElement>(null);
+	const pendingFocus = useRef<string | 'add' | null>(null);
+	const list = values ?? [];
+
+	if (rowIds.current.length !== list.length) {
+		const nextIds: string[] = [];
+		for (let i = 0; i < list.length; i++) {
+			nextIds.push(rowIds.current[i] ?? nextRowId());
+		}
+		rowIds.current = nextIds;
+	}
+
+	useEffect(() => {
+		const pending = pendingFocus.current;
+		if (pending == null) return;
+		pendingFocus.current = null;
+		if (pending === 'add') {
+			addButtonRef.current?.focus();
+			return;
+		}
+		inputRefs.current.get(pending)?.focus();
+	});
 
 	const handleChange = (index: number, next: string) => {
-		const nextArr = values.concat();
+		const nextArr = list.concat();
 		nextArr[index] = next;
 		onChange(nextArr);
 	};
 
 	const addValue = () => {
-		onChange([...(values ?? []), '']);
+		rowIds.current = [...rowIds.current, nextRowId()];
+		onChange([...list, '']);
 	};
 
 	const removeValue = (index: number) => {
-		onChange(values.filter((_, i) => i !== index));
+		const nextIds = rowIds.current.filter((_, i) => i !== index);
+		rowIds.current = nextIds;
+		const focusIndex = index < nextIds.length ? index : nextIds.length - 1;
+		pendingFocus.current = focusIndex >= 0 ? nextIds[focusIndex] : 'add';
+		onChange(list.filter((_, i) => i !== index));
 	};
+
+	const addText = formatMessage(addLabel);
 
 	return (
 		<>
-			{values?.map((entry, index) => (
-				<Box key={index} sx={{ display: 'flex', gap: 2 }}>
-					<TextField
-						fullWidth
-						label={itemLabel}
-						value={entry}
-						variant="outlined"
-						slotProps={{
-							htmlInput: { maxLength }
-						}}
-						onChange={(e) => handleChange(index, e.currentTarget.value)}
-					/>
-					<Box
-						sx={{
-							display: 'flex',
-							alignItems: 'center'
-						}}
-					>
-						<Tooltip title={removeLabel}>
-							<IconButton onClick={() => removeValue(index)}>
-								<RemoveCircleOutlineRoundedIcon />
-							</IconButton>
-						</Tooltip>
+			{list.map((entry, index) => {
+				const id = rowIds.current[index];
+				const rowNumber = index + 1;
+				const rowLabel = formatMessage(itemLabel, { index: rowNumber });
+				const removeText = formatMessage(removeLabel, { index: rowNumber });
+				return (
+					<Box key={id} sx={{ display: 'flex', gap: 2 }}>
+						<TextField
+							fullWidth
+							label={rowLabel}
+							value={entry}
+							variant="outlined"
+							slotProps={{
+								htmlInput: { maxLength, 'aria-label': rowLabel }
+							}}
+							inputRef={(node: HTMLInputElement | null) => {
+								if (node) inputRefs.current.set(id, node);
+								else inputRefs.current.delete(id);
+							}}
+							onChange={(e) => handleChange(index, e.currentTarget.value)}
+						/>
+						<Box
+							sx={{
+								display: 'flex',
+								alignItems: 'center'
+							}}
+						>
+							<Tooltip title={removeText}>
+								<IconButton aria-label={removeText} onClick={() => removeValue(index)}>
+									<RemoveCircleOutlineRoundedIcon />
+								</IconButton>
+							</Tooltip>
+						</Box>
 					</Box>
-				</Box>
-			))}
+				);
+			})}
 			<Box
 				sx={{
 					display: 'flex',
 					justifyContent: 'center'
 				}}
 			>
-				<Tooltip title={addLabel}>
-					<IconButton onClick={addValue}>
+				<Tooltip title={addText}>
+					<IconButton ref={addButtonRef} aria-label={addText} onClick={addValue}>
 						<AddCircleOutlineRoundedIcon />
 					</IconButton>
 				</Tooltip>

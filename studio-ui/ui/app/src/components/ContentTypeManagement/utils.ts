@@ -691,8 +691,34 @@ function isClearedConstraintValue(value: unknown): boolean {
 	return value === undefined || (typeof value === 'string' && value.trim() === '');
 }
 
+/** Keep the stored `<type>` when the new value still fits it. A string type fits any value. */
+function updatedConstraintType(raw: { type?: string }, update: { type?: string; value: unknown }): string | undefined {
+	if (raw.type && valueFitsStoredType(raw.type, update.value)) return raw.type;
+	return update.type || raw.type;
+}
+
+function valueFitsStoredType(storedType: string, value: unknown): boolean {
+	if (storedType === 'string') return true;
+	if (storedType === 'boolean') {
+		return value === true || value === false || value === 'true' || value === 'false';
+	}
+	if (storedType === 'int' || storedType === 'number') {
+		if (typeof value === 'number') return Number.isFinite(value);
+		return typeof value === 'string' && value.trim() !== '' && /^-?\d+$/.test(value.trim());
+	}
+	return true;
+}
+
 function allowedRolesXml(roles: string[] | null | undefined): { role: string[] } | undefined {
-	const role = (roles ?? []).filter((entry) => typeof entry === 'string' && entry.trim() !== '');
+	const seen = new Set<string>();
+	const role: string[] = [];
+	for (const entry of roles ?? []) {
+		if (typeof entry !== 'string') continue;
+		const trimmed = entry.trim();
+		if (!trimmed || seen.has(trimmed)) continue;
+		seen.add(trimmed);
+		role.push(trimmed);
+	}
 	return role.length > 0 ? { role } : undefined;
 }
 
@@ -824,12 +850,17 @@ function convertFieldStructToXmlStruct(field: ContentTypeField): Required<Legacy
 	const seenConstraintNames = new Set<string>();
 	const constraintList: Array<(typeof handledConstraints)[number] | LegacyFormDefinitionProperty> = [];
 	for (const raw of field.rawConstraints ?? []) {
-		if (!raw?.name || omittedConstraintNames.has(raw.name)) continue;
+		if (!raw?.name) continue;
+		// Count-limit names are omitted when they are not a positive limit. A blank element is the
+		// TB1 "no minimum" marker (checkbox minSize with an empty value) and is kept.
+		if (omittedConstraintNames.has(raw.name) && !isClearedConstraintValue(raw.value)) continue;
 		const update = handledByName.get(raw.name);
 		// A cleared editor value must not bring the stored constraint back, or write type "undefined".
 		if (update && isClearedConstraintValue(update.value)) continue;
 		seenConstraintNames.add(raw.name);
-		constraintList.push(update ? { ...raw, value: update.value, type: update.type } : { ...raw });
+		constraintList.push(
+			update ? { ...raw, value: update.value, type: updatedConstraintType(raw, update) } : { ...raw }
+		);
 	}
 	for (const constraint of handledConstraints) {
 		if (seenConstraintNames.has(constraint.name) || omittedConstraintNames.has(constraint.name)) continue;
