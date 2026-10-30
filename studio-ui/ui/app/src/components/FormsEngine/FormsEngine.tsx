@@ -131,7 +131,7 @@ import TableOfContents, { FieldScopeNotice } from './components/TableOfContents'
 import CreateModeHeader from './components/CreateModeHeader';
 import RepeatModeHeader from './components/RepeatModeHeader';
 import EditModeHeader from './components/EditModeHeader';
-import SaveCard from './components/SaveCard';
+import SaveCard, { ReleaseLockOnCloseControl } from './components/SaveCard';
 import SectionAccordion from './components/SectionAccordion';
 import useSaveForm from './lib/useSaveForm';
 import { FormPrepError } from './components/FormPrepError';
@@ -1859,7 +1859,6 @@ function FormOrchestrator(props: FormsEngineProps) {
 											isStackedForm={useParentSaveCard ? false : isStackedForm}
 											isRepeatMode={useParentSaveCard ? false : isRepeatMode}
 											atoms={useParentSaveCard ? parentAtoms : undefined}
-											showReleaseLockOnClose={showReleaseLockControl}
 											setSaveAsDraft={useParentSaveCard ? rootFormActions.setSaveAsDraft : setSaveAsDraftAction}
 											onSave={useParentSaveCard ? saveFromSelectedItem : (_event, draft) => saveFn(draft)}
 										/>
@@ -1879,6 +1878,9 @@ function FormOrchestrator(props: FormsEngineProps) {
 									<Button fullWidth variant="outlined" disabled={enablingEditInProgress} onClick={handleClose}>
 										<FormattedMessage defaultMessage="Close" />
 									</Button>
+								)}
+								{!readonly && showReleaseLockControl && (
+									<ReleaseLockOnCloseControl atoms={useParentSaveCard ? parentAtoms : undefined} />
 								)}
 							</StickyBox>
 						</Grid>

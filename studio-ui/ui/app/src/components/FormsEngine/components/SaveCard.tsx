@@ -141,8 +141,6 @@ export interface SaveCardProps {
 	isStackedForm: boolean;
 	isEmbedded: boolean;
 	setSaveAsDraft: (value: boolean) => void;
-	/** Same forms that show Release Lock. The card does not decide this itself. */
-	showReleaseLockOnClose?: boolean;
 	/** Defaults to this form's atoms. A selected-fields item form passes the parent's atoms. */
 	atoms?: FormsEngineAtoms;
 	/**
@@ -153,7 +151,7 @@ export interface SaveCardProps {
 }
 
 export function SaveCard(props: SaveCardProps) {
-	const { isEmbedded, isStackedForm, isRepeatMode, setSaveAsDraft, onSave, showReleaseLockOnClose = false } = props;
+	const { isEmbedded, isStackedForm, isRepeatMode, setSaveAsDraft, onSave } = props;
 	const stableFormContext = useContext(StableFormContext);
 	const formAtoms = props.atoms ?? stableFormContext.atoms;
 	const isSubmitting = useAtomValue(formAtoms.isSubmitting);
@@ -161,7 +159,6 @@ export function SaveCard(props: SaveCardProps) {
 	const hasPendingChanges = useAtomValue(formAtoms.hasPendingChanges);
 	const [closeAfterSave, setCloseAfterSave] = useAtom(formAtoms.closeAfterSave);
 	const [minimizeAfterSave, setMinimizeAfterSave] = useAtom(formAtoms.minimizeAfterSave);
-	const [releaseLockOnClose, setReleaseLockOnClose] = useAtom(formAtoms.releaseLockOnClose);
 	const afterSavingLabelId = useId();
 	const afterSaving = afterSavingChoice(closeAfterSave, minimizeAfterSave);
 	const disableSave = !isEmbedded && !isRepeatMode && (isSubmitting || !versionComment);
@@ -295,200 +292,201 @@ export function SaveCard(props: SaveCardProps) {
 					</Grow>
 				</Stack>
 			</Paper>
-			{(showSaveOptions || showReleaseLockOnClose) && (
+			{showSaveOptions && (
 				// Sibling of the card, so the sidebar's space-y gap sits above Release Lock and Close.
-				<Stack spacing={1}>
-					{showSaveOptions && (
-						<Box
-							role="group"
-							aria-labelledby={afterSavingLabelId}
-							sx={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}
-						>
-							<Typography
-								id={afterSavingLabelId}
-								variant="caption"
-								color="text.secondary"
-								component="span"
-								sx={(theme) => ({
-									alignSelf: 'flex-start',
-									position: 'relative',
-									zIndex: 1,
-									px: 1,
-									py: 0.25,
-									textAlign: 'left',
-									bgcolor: 'background.default',
-									border: 1,
-									borderColor: 'divider',
-									// Covers the pills' top border so the tab opens into the row.
-									borderBottomColor: 'background.default',
-									borderTopLeftRadius: theme.shape.borderRadius,
-									borderTopRightRadius: theme.shape.borderRadius,
-									mb: '-1px'
-								})}
-							>
-								<FormattedMessage {...messages.afterSaving} />
-							</Typography>
-							<ToggleButtonGroup
-								ref={setGroup}
-								exclusive
-								fullWidth
-								size="small"
-								color="primary"
-								value={afterSaving}
-								aria-labelledby={afterSavingLabelId}
-								onChange={handleAfterSaving}
-								sx={(theme) => ({
-									[`& .${toggleButtonGroupClasses.firstButton}`]: {
-										borderTopLeftRadius: 0,
-										borderBottomLeftRadius: theme.shape.borderRadius
-									},
-									[`& .${toggleButtonGroupClasses.lastButton}`]: {
-										borderTopRightRadius: theme.shape.borderRadius,
-										borderBottomRightRadius: theme.shape.borderRadius
-									},
-									[`& .${toggleButtonClasses.root}`]: {
-										flex: '1 1 0',
-										minWidth: 0,
-										overflow: 'hidden',
-										textTransform: 'none',
-										px: 1,
-										py: 0.5
-									}
-								})}
-							>
-								{afterSavingOrder.map((value) => {
-									const label = afterSavingLabels[value];
-									const Icon = afterSavingIcons[value];
-									const showTip = afterSavingIconsMode && afterSavingTip === value;
-									return (
-										<ToggleButton
-											key={value}
-											value={value}
-											aria-label={afterSavingIconsMode ? label : undefined}
-											sx={{ position: 'relative' }}
-											onMouseEnter={() => setAfterSavingTip(measureAfterSaving() ? value : null)}
-											onMouseLeave={() => setAfterSavingTip((current) => (current === value ? null : current))}
-											onFocus={() => setAfterSavingTip(measureAfterSaving() ? value : null)}
-											onBlur={() => setAfterSavingTip((current) => (current === value ? null : current))}
-										>
-											{afterSavingIconsMode ? (
-												<Tooltip
-													title={label}
-													open={showTip}
-													disableHoverListener
-													disableFocusListener
-													disableTouchListener
-												>
-													<Box component="span" sx={{ display: 'inline-flex', lineHeight: 0 }}>
-														<Icon fontSize="small" aria-hidden />
-													</Box>
-												</Tooltip>
-											) : (
-												<Box
-													component="span"
-													data-after-saving-label=""
-													sx={{
-														display: 'block',
-														width: '100%',
-														overflow: 'hidden',
-														textOverflow: 'ellipsis',
-														whiteSpace: 'nowrap',
-														minWidth: 0
-													}}
-												>
-													{label}
-												</Box>
-											)}
-											<Box
-												component="span"
-												aria-hidden
-												ref={(node: HTMLSpanElement | null) => {
-													probes.current[value] = node;
-												}}
-												sx={{
-													position: 'absolute',
-													left: 0,
-													top: 0,
-													visibility: 'hidden',
-													whiteSpace: 'nowrap',
-													width: 'max-content',
-													pointerEvents: 'none'
-												}}
-											>
-												{label}
-											</Box>
-										</ToggleButton>
-									);
-								})}
-							</ToggleButtonGroup>
-						</Box>
-					)}
-					{showReleaseLockOnClose && (
-						<Stack spacing={1}>
-							<FormControlLabel
-								labelPlacement="start"
-								sx={{
-									// labelPlacement "start" indents 16px and pulls the control past the end.
-									m: 0,
-									width: '100%',
-									display: 'flex',
-									justifyContent: 'space-between',
-									alignItems: 'center',
-									gap: 1
-								}}
-								label={
-									<Typography
-										variant="body2"
-										component="span"
-										sx={{ minWidth: 0, flex: '1 1 auto', textAlign: 'left' }}
-									>
-										<FormattedMessage {...messages.releaseLockOnClose} />
-									</Typography>
-								}
-								control={
-									<Switch
-										size="small"
-										// Small-switch padding is not a theme token. edge is the Switch's own end inset.
-										edge="end"
-										color={releaseLockOnClose ? 'primary' : 'warning'}
-										checked={releaseLockOnClose}
-										onChange={(_event, checked) => setReleaseLockOnClose(checked)}
-										// `color` only paints the checked switch. Keep-lock is the off state.
-										sx={
-											releaseLockOnClose
-												? undefined
-												: (theme) => ({
-														[`& .${switchClasses.switchBase}`]: {
-															color: theme.palette.warning.main
-														},
-														[`& .${switchClasses.switchBase} + .${switchClasses.track}`]: {
-															backgroundColor: theme.palette.warning.main,
-															opacity: 0.5
-														}
-													})
-										}
-									/>
-								}
-							/>
-							{!releaseLockOnClose && (
-								<Alert
-									severity="warning"
-									variant="outlined"
-									sx={{
-										py: 0,
-										px: 1,
-										[`& .${alertClasses.icon}`]: { py: 0.5 },
-										[`& .${alertClasses.message}`]: { py: 0.5 }
-									}}
+				<Box
+					role="group"
+					aria-labelledby={afterSavingLabelId}
+					sx={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}
+				>
+					<Typography
+						id={afterSavingLabelId}
+						variant="caption"
+						color="text.secondary"
+						component="span"
+						sx={(theme) => ({
+							alignSelf: 'flex-start',
+							position: 'relative',
+							zIndex: 1,
+							px: 1,
+							py: 0.25,
+							textAlign: 'left',
+							// formMainContent paints background.default behind this sidebar. The pills are
+							// transparent, so the tab uses that same surface and opens into the row.
+							bgcolor: 'background.default',
+							border: 1,
+							borderColor: 'divider',
+							borderBottomColor: 'background.default',
+							borderTopLeftRadius: theme.shape.borderRadius,
+							borderTopRightRadius: theme.shape.borderRadius,
+							mb: '-1px'
+						})}
+					>
+						<FormattedMessage {...messages.afterSaving} />
+					</Typography>
+					<ToggleButtonGroup
+						ref={setGroup}
+						exclusive
+						fullWidth
+						size="small"
+						color="primary"
+						value={afterSaving}
+						aria-labelledby={afterSavingLabelId}
+						onChange={handleAfterSaving}
+						sx={(theme) => ({
+							[`& .${toggleButtonGroupClasses.firstButton}`]: {
+								borderTopLeftRadius: 0,
+								borderBottomLeftRadius: theme.shape.borderRadius
+							},
+							[`& .${toggleButtonGroupClasses.lastButton}`]: {
+								borderTopRightRadius: theme.shape.borderRadius,
+								borderBottomRightRadius: theme.shape.borderRadius
+							},
+							[`& .${toggleButtonClasses.root}`]: {
+								flex: '1 1 0',
+								minWidth: 0,
+								overflow: 'hidden',
+								textTransform: 'none',
+								px: 1,
+								py: 0.5
+							}
+						})}
+					>
+						{afterSavingOrder.map((value) => {
+							const label = afterSavingLabels[value];
+							const Icon = afterSavingIcons[value];
+							const showTip = afterSavingIconsMode && afterSavingTip === value;
+							return (
+								<ToggleButton
+									key={value}
+									value={value}
+									aria-label={afterSavingIconsMode ? label : undefined}
+									sx={{ position: 'relative' }}
+									onMouseEnter={() => setAfterSavingTip(measureAfterSaving() ? value : null)}
+									onMouseLeave={() => setAfterSavingTip((current) => (current === value ? null : current))}
+									onFocus={() => setAfterSavingTip(measureAfterSaving() ? value : null)}
+									onBlur={() => setAfterSavingTip((current) => (current === value ? null : current))}
 								>
-									<FormattedMessage {...messages.keepLockWarning} />
-								</Alert>
-							)}
-						</Stack>
-					)}
-				</Stack>
+									{afterSavingIconsMode ? (
+										<Tooltip
+											title={label}
+											open={showTip}
+											disableHoverListener
+											disableFocusListener
+											disableTouchListener
+										>
+											<Box component="span" sx={{ display: 'inline-flex', lineHeight: 0 }}>
+												<Icon fontSize="small" aria-hidden />
+											</Box>
+										</Tooltip>
+									) : (
+										<Box
+											component="span"
+											data-after-saving-label=""
+											sx={{
+												display: 'block',
+												width: '100%',
+												overflow: 'hidden',
+												textOverflow: 'ellipsis',
+												whiteSpace: 'nowrap',
+												minWidth: 0
+											}}
+										>
+											{label}
+										</Box>
+									)}
+									<Box
+										component="span"
+										aria-hidden
+										ref={(node: HTMLSpanElement | null) => {
+											probes.current[value] = node;
+										}}
+										sx={{
+											position: 'absolute',
+											left: 0,
+											top: 0,
+											visibility: 'hidden',
+											whiteSpace: 'nowrap',
+											width: 'max-content',
+											pointerEvents: 'none'
+										}}
+									>
+										{label}
+									</Box>
+								</ToggleButton>
+							);
+						})}
+					</ToggleButtonGroup>
+				</Box>
 			)}
 		</>
+	);
+}
+
+/** Sits under Close. Same per-user atom the close path reads. */
+export function ReleaseLockOnCloseControl({ atoms }: { atoms?: FormsEngineAtoms }) {
+	const stableFormContext = useContext(StableFormContext);
+	const [releaseLockOnClose, setReleaseLockOnClose] = useAtom((atoms ?? stableFormContext.atoms).releaseLockOnClose);
+	return (
+		<Stack spacing={1} sx={{ maxWidth: '100%' }}>
+			<FormControlLabel
+				labelPlacement="start"
+				sx={{
+					// labelPlacement "start" indents 16px and pulls the control past the end.
+					m: 0,
+					width: '100%',
+					maxWidth: '100%',
+					display: 'flex',
+					justifyContent: 'space-between',
+					alignItems: 'center',
+					gap: 1,
+					// edge="end" is a -8px margin. The sidebar clips overflow, and the small thumb
+					// already sits inside the switch, so the control stays at its own size.
+					[`& .${switchClasses.root}`]: { flexShrink: 0 }
+				}}
+				label={
+					<Typography variant="body2" component="span" sx={{ minWidth: 0, flex: '1 1 auto', textAlign: 'left' }}>
+						<FormattedMessage {...messages.releaseLockOnClose} />
+					</Typography>
+				}
+				control={
+					<Switch
+						size="small"
+						color={releaseLockOnClose ? 'primary' : 'warning'}
+						checked={releaseLockOnClose}
+						onChange={(_event, checked) => setReleaseLockOnClose(checked)}
+						// `color` only paints the checked switch. Keep-lock is the off state.
+						sx={
+							releaseLockOnClose
+								? undefined
+								: (theme) => ({
+										[`& .${switchClasses.switchBase}`]: {
+											color: theme.palette.warning.main
+										},
+										[`& .${switchClasses.switchBase} + .${switchClasses.track}`]: {
+											backgroundColor: theme.palette.warning.main,
+											opacity: 0.5
+										}
+									})
+						}
+					/>
+				}
+			/>
+			{!releaseLockOnClose && (
+				<Alert
+					severity="warning"
+					variant="outlined"
+					sx={{
+						py: 0,
+						px: 1,
+						[`& .${alertClasses.icon}`]: { py: 0.5 },
+						[`& .${alertClasses.message}`]: { py: 0.5 }
+					}}
+				>
+					<FormattedMessage {...messages.keepLockWarning} />
+				</Alert>
+			)}
+		</Stack>
 	);
 }
 
