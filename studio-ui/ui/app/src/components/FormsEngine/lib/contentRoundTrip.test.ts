@@ -217,11 +217,18 @@ describe('XB item datasource', () => {
 		assert.equal(id('/component/x', 'shared'), undefined);
 		assert.equal(id('/component/y', 'embedded'), undefined);
 	});
-	it('is written by XB inserts only when known', async () => {
+	it('is written by XB inserts only when known', async (t) => {
 		const { insertComponent, insertInstance } = await import('../../../services/content.ts');
 		const { getCurrentIntl } = await import('../../../utils/i18n.ts');
 		// Messages get their ids at build time, so the version comment is stubbed.
-		Object.assign(getCurrentIntl(), { formatMessage: () => '' });
+		const intl = getCurrentIntl();
+		const { formatMessage } = intl;
+		const { XMLHttpRequest } = globalThis;
+		t.after(() => {
+			Object.assign(intl, { formatMessage });
+			Object.assign(globalThis, { XMLHttpRequest });
+		});
+		Object.assign(intl, { formatMessage: () => '' });
 		// XB inserts read the parent document and write it back through the API, so XHR is faked here.
 		const written: string[] = [];
 		class FakeXhr extends EventTarget {
