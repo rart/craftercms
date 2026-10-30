@@ -98,9 +98,10 @@ describe('CDATA terminators', () => {
 		assert.equal(parsed.craftercms.label, rteValue);
 	});
 
-	it('builds an empty string for null and undefined, and an empty section for ""', () => {
-		assert.equal(cdataWrap(null as unknown as string), '');
-		assert.equal(cdataWrap(undefined as unknown as string), '');
-		assert.equal(cdataWrap(''), '<![CDATA[]]>');
+	it('wraps null, undefined, and "" in an empty CDATA section', () => {
+		const emptySection = '<![CDATA[]]>';
+		assert.equal(cdataWrap(null as unknown as string), emptySection);
+		assert.equal(cdataWrap(undefined as unknown as string), emptySection);
+		assert.equal(cdataWrap(''), emptySection);
 	});
 });

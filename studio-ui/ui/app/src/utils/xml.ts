@@ -207,11 +207,11 @@ export function deserialize(xml: string | Node, options?: Partial<X2jOptions>): 
 	return parser.parse(xml);
 }
 
-// Uses the library's CDATA handling. null and undefined build to ''.
+// Uses the library's CDATA handling. null and undefined become an empty section.
 const cdataBuilder = new XMLBuilder({ cdataPropName: '#cdata' });
 
 export function cdataWrap(value: string): string {
-	return cdataBuilder.build({ '#cdata': value });
+	return cdataBuilder.build({ '#cdata': value ?? '' });
 }
 
 export function parseValidateDocument(content: string): XMLDocument | string {
