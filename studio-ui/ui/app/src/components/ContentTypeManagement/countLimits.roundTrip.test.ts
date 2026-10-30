@@ -36,7 +36,7 @@ const { countLimitStorage, getCountLimitStorage } = await import('../../utils/co
  * countLimitStorage in utils/countLimits.ts is the contract: one entry per control, read with getCountLimitStorage.
  * Each entry is round-tripped through parse, the editor and XML below.
  * A repeat writes the element and the property (min as int, max as string) and strips required, minCount and maxCount.
- * A checkbox group writes the minSize constraint only for a positive minimum. A stored 0 loads blank and is omitted.
+ * A checkbox group writes the minSize constraint for a positive minimum. A stored 0 loads blank and is written back unchanged. Clearing a positive minimum omits the constraint.
  * A stored maximum of 0 loads as unlimited: blank for a node selector's int field, '*' for a repeat, so the type can be saved unchanged.
  * Descriptor fields declare the editor rule as itemCount { role, partner }. They do not also set minValue.
  * The table does not name the partner. The descriptor's itemCount validation does.
@@ -231,16 +231,19 @@ describe('checkbox group minSize round trip', () => {
 		);
 	});
 
-	// Given a legacy minSize of 0, the editor is blank and save writes neither minSize nor minCount. 0 is the same as no minimum.
-	it('loads a stored minimum of 0 as blank and saves without the constraint', () => {
+	// Given a legacy minSize of 0, the editor is blank and a no-edit save writes that 0 back. 0 is no minimum, but the stored constraint stays.
+	it('loads a stored minimum of 0 as blank and writes the constraint back', () => {
 		const parsed = checkboxField('0');
 		const loaded = parsed.fields.topics_o;
 		assert.equal(loaded.validations.minCount, undefined);
 		assert.equal(createTypeFieldValuesObject(loaded).minSize, '');
 
 		const saved = savedConstraint(parsed);
+		const minSize = saved.constraintList.find((item) => item.name === 'minSize');
+		assert.equal(String(minSize?.value), '0');
+		assert.equal(minSize?.type, 'int');
 		assert.equal(
-			saved.constraintList.some((item) => item.name === 'minSize' || item.name === 'minCount'),
+			saved.constraintList.some((item) => item.name === 'minCount'),
 			false
 		);
 	});

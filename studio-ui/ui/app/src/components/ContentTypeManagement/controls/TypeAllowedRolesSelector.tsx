@@ -17,8 +17,15 @@
 import React, { useId } from 'react';
 import FormsEngineField from '../../FormsEngine/components/FormsEngineField';
 import Box from '@mui/material/Box';
+import { defineMessages } from 'react-intl';
 import { TypeBuilderControl } from '../utils';
 import { StringListEditor } from './StringListEditor';
+
+const messages = defineMessages({
+	role: { id: 'typeAllowedRoles.role', defaultMessage: 'Role {index}' },
+	add: { id: 'typeAllowedRoles.add', defaultMessage: 'Add Role' },
+	remove: { id: 'typeAllowedRoles.remove', defaultMessage: 'Remove Role {index}' }
+});
 
 export interface TypeAllowedRolesSelectorProps extends TypeBuilderControl {
 	value: string[];
@@ -39,9 +46,9 @@ export function TypeAllowedRolesSelector(props: TypeAllowedRolesSelectorProps) {
 					values={value}
 					onChange={setValue}
 					maxLength={maxLength}
-					itemLabel={{ defaultMessage: 'Role {index}' }}
-					addLabel={{ defaultMessage: 'Add Role' }}
-					removeLabel={{ defaultMessage: 'Remove Role {index}' }}
+					itemLabel={messages.role}
+					addLabel={messages.add}
+					removeLabel={messages.remove}
 				/>
 			</Box>
 		</FormsEngineField>

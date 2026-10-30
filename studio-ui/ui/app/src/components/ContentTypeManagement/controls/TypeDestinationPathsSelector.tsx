@@ -17,7 +17,7 @@
 import React, { useId } from 'react';
 import FormsEngineField from '../../FormsEngine/components/FormsEngineField';
 import Box from '@mui/material/Box';
-import { FormattedMessage } from 'react-intl';
+import { defineMessages, useIntl } from 'react-intl';
 import { TypeBuilderControl } from '../utils';
 import Typography from '@mui/material/Typography';
 import { StringListEditor } from './StringListEditor';
@@ -25,6 +25,17 @@ import { StringListEditor } from './StringListEditor';
 export interface TypeDestinationPathsSelectorProps extends TypeBuilderControl {
 	value: DestinationPaths;
 }
+
+const messages = defineMessages({
+	includes: { id: 'typeDestinationPaths.includes', defaultMessage: 'Includes' },
+	excludes: { id: 'typeDestinationPaths.excludes', defaultMessage: 'Excludes' },
+	includesPattern: { id: 'typeDestinationPaths.includesPattern', defaultMessage: 'Includes pattern {index}' },
+	excludesPattern: { id: 'typeDestinationPaths.excludesPattern', defaultMessage: 'Excludes pattern {index}' },
+	addInclude: { id: 'typeDestinationPaths.addInclude', defaultMessage: 'Add include path' },
+	addExclude: { id: 'typeDestinationPaths.addExclude', defaultMessage: 'Add exclude path' },
+	removeInclude: { id: 'typeDestinationPaths.removeInclude', defaultMessage: 'Remove include pattern {index}' },
+	removeExclude: { id: 'typeDestinationPaths.removeExclude', defaultMessage: 'Remove exclude pattern {index}' }
+});
 
 type Destination = 'includes' | 'excludes';
 interface DestinationPaths {
@@ -36,6 +47,7 @@ interface DestinationPaths {
  */
 export function TypeDestinationPathsSelector(props: TypeDestinationPathsSelectorProps) {
 	const { field, setValue } = props;
+	const { formatMessage } = useIntl();
 	const value = props.value ?? { includes: { pattern: [] }, excludes: { pattern: [] } };
 	const htmlId = useId();
 	const maxLength = field.validations.maxLength?.value;
@@ -50,23 +62,15 @@ export function TypeDestinationPathsSelector(props: TypeDestinationPathsSelector
 				{Object.entries(value).map(([key, entry]) => (
 					<Box key={key} sx={{ display: 'flex', flexDirection: 'column', rowGap: 2, mt: 2 }}>
 						<Typography variant="subtitle2">
-							{key === 'includes' ? (
-								<FormattedMessage defaultMessage="Includes" />
-							) : (
-								<FormattedMessage defaultMessage="Excludes" />
-							)}
+							{formatMessage(key === 'includes' ? messages.includes : messages.excludes)}
 						</Typography>
 						<StringListEditor
 							values={entry?.pattern ?? []}
 							onChange={(pattern) => updatePatterns(key as Destination, pattern)}
 							maxLength={maxLength}
-							itemLabel={
-								key === 'includes'
-									? { defaultMessage: 'Includes pattern {index}' }
-									: { defaultMessage: 'Excludes pattern {index}' }
-							}
-							addLabel={{ defaultMessage: 'Add Path' }}
-							removeLabel={{ defaultMessage: 'Remove pattern {index}' }}
+							itemLabel={key === 'includes' ? messages.includesPattern : messages.excludesPattern}
+							addLabel={key === 'includes' ? messages.addInclude : messages.addExclude}
+							removeLabel={key === 'includes' ? messages.removeInclude : messages.removeExclude}
 						/>
 					</Box>
 				))}

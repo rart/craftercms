@@ -691,6 +691,13 @@ function isClearedConstraintValue(value: unknown): boolean {
 	return value === undefined || (typeof value === 'string' && value.trim() === '');
 }
 
+/** A stored count of blank or 0 is already "no limit". Leaving it unchanged must not drop the constraint. */
+function isUnchangedUnlimitedCount(value: unknown): boolean {
+	if (isClearedConstraintValue(value)) return true;
+	if (typeof value === 'number') return value === 0;
+	return typeof value === 'string' && value.trim() === '0';
+}
+
 /** Keep the stored `<type>` when the new value still fits it. A string type fits any value. */
 function updatedConstraintType(raw: { type?: string }, update: { type?: string; value: unknown }): string | undefined {
 	if (raw.type && valueFitsStoredType(raw.type, update.value)) return raw.type;
@@ -851,9 +858,10 @@ function convertFieldStructToXmlStruct(field: ContentTypeField): Required<Legacy
 	const constraintList: Array<(typeof handledConstraints)[number] | LegacyFormDefinitionProperty> = [];
 	for (const raw of field.rawConstraints ?? []) {
 		if (!raw?.name) continue;
-		// Count-limit names are omitted when they are not a positive limit. A blank element is the
-		// TB1 "no minimum" marker (checkbox minSize with an empty value) and is kept.
-		if (omittedConstraintNames.has(raw.name) && !isClearedConstraintValue(raw.value)) continue;
+		// A count-limit the editor is not writing back. Keep the stored constraint when this save
+		// did not change it: a blank value or 0 already means no limit. A positive stored value
+		// with no editor value was cleared, so it is omitted.
+		if (omittedConstraintNames.has(raw.name) && !isUnchangedUnlimitedCount(raw.value)) continue;
 		const update = handledByName.get(raw.name);
 		// A cleared editor value must not bring the stored constraint back, or write type "undefined".
 		if (update && isClearedConstraintValue(update.value)) continue;
