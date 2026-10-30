@@ -104,6 +104,8 @@ export interface FormsEngineAtoms {
 	tableOfContentsDrawerOpen: PrimitiveAtom<boolean>;
 	closeAfterSave: AtomWithStorage;
 	minimizeAfterSave: AtomWithStorage;
+	/** Per-user. When false, closing the form keeps the lock. Defaults to true. */
+	releaseLockOnClose: AtomWithStorage;
 	fileName?: Atom<string>;
 	/**
 	 * Bumped after form-controller relevance is stored. Validation atoms read it so a

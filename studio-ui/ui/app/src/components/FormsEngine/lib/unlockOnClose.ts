@@ -26,6 +26,7 @@ export interface UnlockErrorBody {
  * What is known about the lock when a form is going away.
  * Draft, invalid, and saved-as-draft are not inputs: closing releases the lock anyway.
  * An unsaved file-name edit is not a rename — `lockedPath` stays the path that was locked.
+ * `releaseLockOnClose` is the user's "Release lock when closing" choice, read when the form goes away.
  */
 export interface UnlockOnCloseState {
 	isRepeatMode: boolean;
@@ -35,6 +36,11 @@ export interface UnlockOnCloseState {
 	isStackedForm: boolean;
 	isParentReadonly: boolean;
 	siteId: string;
+	/**
+	 * When false, close and pagehide keep the lock. The Release Lock button does not use this.
+	 * Defaults to releasing when omitted.
+	 */
+	releaseLockOnClose?: boolean;
 	/** Path recorded from the successful lock, updated when a saved rename moves the lock. */
 	lockedPath: string | null;
 	/** Path the lock was taken on before a saved rename. Null when the item was not renamed. */
@@ -55,6 +61,8 @@ export interface HeldLockRecord {
  */
 export function shouldUnlockItem(state: UnlockOnCloseState): boolean {
 	if (!state.lockedPath) return false;
+	// The user asked to keep the lock. Minimize never reaches this: the form stays mounted.
+	if (state.releaseLockOnClose === false) return false;
 	return (
 		!state.isRepeatMode &&
 		!state.isCreateMode &&

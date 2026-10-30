@@ -536,6 +536,8 @@ function FormBootstrap(props: FormsEngineProps) {
 				{
 					lockResult: sharedLock.lockResult,
 					readonly: sharedLock.readonly,
+					// The parent closes the shared lock, so the repeat form edits the parent's choice.
+					releaseLockOnClose: parentAtoms.releaseLockOnClose,
 					expandedStateBySectionId: buildSectionExpandedStateAtoms(contentType.sections),
 					fileName: createFileNameAtom('', stableFormContextRef)
 				},
@@ -1499,6 +1501,15 @@ function FormOrchestrator(props: FormsEngineProps) {
 		return rootFormActions.save(draft);
 	};
 
+	// Same gate as the Release Lock button: this form holds the lock. Create, a new repeat
+	// item, and an embedded form on the parent's lock do not. The explicit button ignores the preference.
+	const showReleaseLockControl =
+		lockStatus.locked &&
+		!readonly &&
+		!isCreateMode &&
+		(!isRepeatMode || Boolean(repeat?.values)) &&
+		!(isEmbedded && isStackedForm);
+
 	// If not on a dialog or the prop is not provided, there's no need to handle the close. The form is running in a standalone mode.
 	const handleClose: ButtonProps['onClick'] = (e) => {
 		if (isSubmitting) {
@@ -1845,21 +1856,20 @@ function FormOrchestrator(props: FormsEngineProps) {
 											isStackedForm={useParentSaveCard ? false : isStackedForm}
 											isRepeatMode={useParentSaveCard ? false : isRepeatMode}
 											atoms={useParentSaveCard ? parentAtoms : undefined}
+											showReleaseLockOnClose={showReleaseLockControl}
 											setSaveAsDraft={useParentSaveCard ? rootFormActions.setSaveAsDraft : setSaveAsDraftAction}
 											onSave={useParentSaveCard ? saveFromSelectedItem : (_event, draft) => saveFn(draft)}
 										/>
-										{!isCreateMode && // There's no locking on create mode
-											(!isRepeatMode || (isRepeatMode && repeat.values)) && // No point in the "unlock" button for new repeat items
-											!(isEmbedded && isStackedForm) && ( // For embedded components, only allow releasing the lock if it's the top form.
-												<SecondaryButton
-													fullWidth
-													variant="outlined"
-													onClick={() => updateEditEnablement(false)}
-													loading={enablingEditInProgress}
-												>
-													<FormattedMessage defaultMessage="Release Lock" />
-												</SecondaryButton>
-											)}
+										{showReleaseLockControl && (
+											<SecondaryButton
+												fullWidth
+												variant="outlined"
+												onClick={() => updateEditEnablement(false)}
+												loading={enablingEditInProgress}
+											>
+												<FormattedMessage defaultMessage="Release Lock" />
+											</SecondaryButton>
+										)}
 									</>
 								)}
 								{handleClose && (

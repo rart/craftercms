@@ -51,6 +51,7 @@ function holding(lockedPath: string | null, overrides: Partial<UnlockOnCloseStat
 		siteId: 'editorial',
 		lockedPath,
 		movedFromPath: null,
+		releaseLockOnClose: true,
 		...overrides
 	};
 }
@@ -111,6 +112,28 @@ describe('lock released on close', () => {
 
 	it('does not record a move when this form is not holding a lock', () => {
 		assert.equal(applySavedRenameToLock({ locked: false, lockedPath: null }, renamed, article), null);
+	});
+});
+
+describe('release lock when closing', () => {
+	const keepLock = holding(article, { releaseLockOnClose: false });
+
+	it('keeps the lock on close when the choice is off', () => {
+		assert.equal(lockPathToRelease(keepLock), null);
+	});
+
+	it('keeps the lock on pagehide when the choice is off', () => {
+		const gate = createLockReleaseGate();
+		assert.equal(shouldUnlockOnPageHide({ persisted: false }), true);
+		assert.equal(planLockRelease(keepLock, gate), null);
+		// The choice did not spend the release. Turning it back on still unlocks.
+		assert.equal(planLockRelease(holding(article), gate), article);
+	});
+
+	it('keeps the lock when close-after-save unmounts and the choice is off', () => {
+		// Close after saving unmounts through the same decision as any other close.
+		assert.equal(lockPathToRelease(keepLock), null);
+		assert.equal(lockPathToRelease(holding(article, { releaseLockOnClose: true })), article);
 	});
 });
 

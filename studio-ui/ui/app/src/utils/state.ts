@@ -465,6 +465,10 @@ export function getFormsEngineMinimizeAfterSave(username: string): string {
 	return `craftercms.${username}.formsEngine.minimizeAfterSave`;
 }
 
+export function getFormsEngineReleaseLockOnClose(username: string): string {
+	return `craftercms.${username}.formsEngine.releaseLockOnClose`;
+}
+
 export function getCompareVersionDialogViewModes(username: string): { entireDiff: boolean; accordionView: boolean } {
 	return JSON.parse(localStorage.getItem(`craftercms.${username}.compareVersionDialog.viewModes`));
 }

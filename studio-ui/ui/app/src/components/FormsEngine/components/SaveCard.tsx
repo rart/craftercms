@@ -16,13 +16,16 @@
 
 import { useAtom, useAtomValue } from 'jotai';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
-import React, { MouseEvent, useContext, useRef } from 'react';
+import React, { MouseEvent, useContext, useId, useRef } from 'react';
 import { StableFormContext } from '../lib/formsEngineContext';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import FormControlLabel from '@mui/material/FormControlLabel';
-import Checkbox from '@mui/material/Checkbox';
+import Switch from '@mui/material/Switch';
+import ToggleButton from '@mui/material/ToggleButton';
+import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
+import Typography from '@mui/material/Typography';
 import FormHelperText from '@mui/material/FormHelperText';
 import Grow from '@mui/material/Grow';
 import Alert from '@mui/material/Alert';
@@ -37,14 +40,30 @@ import type { SaveFormResult } from '../lib/useSaveForm';
 import type { ApiResponse } from '../../../models/ApiResponse';
 
 const messages = defineMessages({
-	saveReadFailed: { defaultMessage: 'The form could not be checked before saving.' }
+	saveReadFailed: { defaultMessage: 'The form could not be checked before saving.' },
+	afterSaving: { defaultMessage: 'After saving' },
+	stay: { defaultMessage: 'Stay' },
+	minimize: { defaultMessage: 'Minimize' },
+	close: { defaultMessage: 'Close' },
+	releaseLockOnClose: { defaultMessage: 'Release lock when closing' }
 });
+
+type AfterSaving = 'stay' | 'minimize' | 'close';
+
+/** Stay is both flags off. Close wins if both were stored, matching the save follow-up. */
+function afterSavingChoice(closeAfterSave: boolean, minimizeAfterSave: boolean): AfterSaving {
+	if (closeAfterSave) return 'close';
+	if (minimizeAfterSave) return 'minimize';
+	return 'stay';
+}
 
 export interface SaveCardProps {
 	isRepeatMode: boolean;
 	isStackedForm: boolean;
 	isEmbedded: boolean;
 	setSaveAsDraft: (value: boolean) => void;
+	/** Same forms that show Release Lock. The card does not decide this itself. */
+	showReleaseLockOnClose?: boolean;
 	/** Defaults to this form's atoms. A selected-fields item form passes the parent's atoms. */
 	atoms?: FormsEngineAtoms;
 	/**
@@ -55,7 +74,7 @@ export interface SaveCardProps {
 }
 
 export function SaveCard(props: SaveCardProps) {
-	const { isEmbedded, isStackedForm, isRepeatMode, setSaveAsDraft, onSave } = props;
+	const { isEmbedded, isStackedForm, isRepeatMode, setSaveAsDraft, onSave, showReleaseLockOnClose = false } = props;
 	const stableFormContext = useContext(StableFormContext);
 	const formAtoms = props.atoms ?? stableFormContext.atoms;
 	const isSubmitting = useAtomValue(formAtoms.isSubmitting);
@@ -63,6 +82,9 @@ export function SaveCard(props: SaveCardProps) {
 	const hasPendingChanges = useAtomValue(formAtoms.hasPendingChanges);
 	const [closeAfterSave, setCloseAfterSave] = useAtom(formAtoms.closeAfterSave);
 	const [minimizeAfterSave, setMinimizeAfterSave] = useAtom(formAtoms.minimizeAfterSave);
+	const [releaseLockOnClose, setReleaseLockOnClose] = useAtom(formAtoms.releaseLockOnClose);
+	const afterSavingLabelId = useId();
+	const afterSaving = afterSavingChoice(closeAfterSave, minimizeAfterSave);
 	const disableSave = !isEmbedded && !isRepeatMode && (isSubmitting || !versionComment);
 	const showVersionComment = (!isEmbedded || !isStackedForm) && !isRepeatMode;
 	const showSaveOptions = !isEmbedded && !isRepeatMode;
@@ -73,17 +95,11 @@ export function SaveCard(props: SaveCardProps) {
 	// after this handler has finished waiting on the validity decision.
 	const saveInFlight = useRef(false);
 
-	const handleSetCloseAfterSave = (checked: boolean) => {
-		if (checked) {
-			setMinimizeAfterSave(false);
-		}
-		setCloseAfterSave(checked);
-	};
-	const handleSetMinimizeAfterSave = (checked: boolean) => {
-		if (checked) {
-			setCloseAfterSave(false);
-		}
-		setMinimizeAfterSave(checked);
+	const handleAfterSaving = (_event: MouseEvent<HTMLElement>, choice: AfterSaving | null) => {
+		// Clicking the active pill reports null. Keep the current choice.
+		if (choice == null) return;
+		setCloseAfterSave(choice === 'close');
+		setMinimizeAfterSave(choice === 'minimize');
 	};
 	const showCannotProceed = () => {
 		const dialogId = nanoid();
@@ -147,28 +163,57 @@ export function SaveCard(props: SaveCardProps) {
 					/>
 				)}
 				{showSaveOptions && (
-					<Stack spacing={0}>
-						<FormControlLabel
-							label={<FormattedMessage defaultMessage="Minimize after saving" />}
-							control={
-								<Checkbox
-									size="small"
-									checked={minimizeAfterSave}
-									onChange={(e, checked) => handleSetMinimizeAfterSave(checked)}
-								/>
-							}
-						/>
-						<FormControlLabel
-							label={<FormattedMessage defaultMessage="Close after saving" />}
-							control={
-								<Checkbox
-									size="small"
-									checked={closeAfterSave}
-									onChange={(e, checked) => handleSetCloseAfterSave(checked)}
-								/>
-							}
-						/>
+					<Stack spacing={0.5}>
+						<Typography id={afterSavingLabelId} variant="caption" color="text.secondary" component="span">
+							<FormattedMessage {...messages.afterSaving} />
+						</Typography>
+						<ToggleButtonGroup
+							exclusive
+							fullWidth
+							size="small"
+							value={afterSaving}
+							aria-labelledby={afterSavingLabelId}
+							onChange={handleAfterSaving}
+							sx={(theme) => ({
+								// Outer corners follow the theme radius so the group reads as one control.
+								borderRadius: theme.spacing(2),
+								'& .MuiToggleButtonGroup-firstButton': {
+									borderTopLeftRadius: theme.spacing(2),
+									borderBottomLeftRadius: theme.spacing(2)
+								},
+								'& .MuiToggleButtonGroup-lastButton': {
+									borderTopRightRadius: theme.spacing(2),
+									borderBottomRightRadius: theme.spacing(2)
+								},
+								'& .MuiToggleButton-root': {
+									textTransform: 'none',
+									px: 1,
+									py: 0.5
+								}
+							})}
+						>
+							<ToggleButton value="stay">{formatMessage(messages.stay)}</ToggleButton>
+							<ToggleButton value="minimize">{formatMessage(messages.minimize)}</ToggleButton>
+							<ToggleButton value="close">{formatMessage(messages.close)}</ToggleButton>
+						</ToggleButtonGroup>
 					</Stack>
+				)}
+				{showReleaseLockOnClose && (
+					<FormControlLabel
+						sx={{ mx: 0 }}
+						label={
+							<Typography variant="body2" component="span">
+								<FormattedMessage {...messages.releaseLockOnClose} />
+							</Typography>
+						}
+						control={
+							<Switch
+								size="small"
+								checked={releaseLockOnClose}
+								onChange={(_event, checked) => setReleaseLockOnClose(checked)}
+							/>
+						}
+					/>
 				)}
 				<SplitButton
 					fullWidth

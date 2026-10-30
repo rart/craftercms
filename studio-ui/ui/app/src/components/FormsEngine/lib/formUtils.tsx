@@ -82,7 +82,8 @@ import ApiResponse from '../../../models/ApiResponse';
 import {
 	getFormsEngineCloseAfterSave,
 	getFormsEngineCollapseToCKey,
-	getFormsEngineMinimizeAfterSave
+	getFormsEngineMinimizeAfterSave,
+	getFormsEngineReleaseLockOnClose
 } from '../../../utils/state';
 import { createComponentId } from '../../../utils/system';
 import { showErrorDialog } from '../../../state/actions/dialogs';
@@ -727,6 +728,9 @@ export function createFormsEngineAtoms(
 		minimizeAfterSave: atomWithStorage(getFormsEngineMinimizeAfterSave(username), false, undefined, {
 			getOnInit: true
 		}) as unknown as AtomWithStorage,
+		releaseLockOnClose: atomWithStorage(getFormsEngineReleaseLockOnClose(username), true, undefined, {
+			getOnInit: true
+		}) as unknown as AtomWithStorage,
 		...mixin,
 		relevanceVersion: atom(0),
 		...createFormVisibilityAtoms(visibility.state, visibility.scrollFieldId)
@@ -934,6 +938,7 @@ export { shouldUnlockItem, type UnlockOnCloseState } from './unlockOnClose';
  * Releases this form's lock when the form session ends, not when a dependency changes.
  * Mount it on the bootstrap that stays up across reload and minimize. A stacked form has its own.
  * Repeat, create, readonly, and an embedded form on an editable parent do not unlock.
+ * A user choice to keep the lock is read from the form's atom at close time, including pagehide.
  */
 export function useUnlockOnClose(props: {
 	create?: { path?: string };
@@ -966,7 +971,9 @@ export function useUnlockOnClose(props: {
 				isParentReadonly: parentAtoms ? store.get(parentAtoms.readonly) : false,
 				siteId,
 				lockedPath: lockResult?.locked ? recorded || fallbackPath || null : null,
-				movedFromPath: lockResult?.movedFromPath ?? null
+				movedFromPath: lockResult?.movedFromPath ?? null,
+				// Live read. A toggle while the form is open must win over the value from when the effect started.
+				releaseLockOnClose: atoms ? store.get(atoms.releaseLockOnClose) !== false : true
 			};
 		}
 	});
