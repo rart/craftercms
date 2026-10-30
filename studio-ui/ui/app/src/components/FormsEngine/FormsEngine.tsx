@@ -76,6 +76,7 @@ import useUpdateRefs from '../../hooks/useUpdateRefs';
 import { Fade } from '@mui/material';
 import AlertTitle from '@mui/material/AlertTitle';
 import { pushDialog } from '../../state/actions/dialogStack';
+import { showErrorDialog } from '../../state/actions/dialogs';
 import useFetchContentItems from '../../hooks/useFetchContentItems';
 import ErrorBoundary from '../ErrorBoundary';
 import { debounceTime } from 'rxjs/operators';
@@ -117,6 +118,7 @@ import {
 	useValidateFormProps
 } from './lib/formUtils';
 import { renderFieldControl } from './lib/controlHelpers';
+import { releaseLockToggleFailed } from './lib/unlockOnClose';
 import {
 	ContentTypeNotFoundError,
 	ItemNotFoundError,
@@ -376,6 +378,15 @@ function FormBootstrap(props: FormsEngineProps) {
 	// deps (via ref) so that a re-render doesn't re-prep the form and discard in-memory edits.
 	const effectRefs = useUpdateRefs({ contentTypesById, username, effectiveProps });
 	const stableFormContextRef = useRef<StableFormContextProps>(formsStackData[stackIndex]);
+	// Lives for the whole form session, including reload and minimize. Unmount is a real close.
+	useUnlockOnClose({
+		create,
+		update,
+		repeat,
+		stackIndex,
+		stableFormContextRef,
+		formsStackData
+	});
 	// The drawer mounts only the top stacked form. When a child is closed, this instance remounts
 	// for the parent slot; skip full prep if that slot already has atoms so in-memory edits survive.
 	const prepStartedRef = useRef(false);
@@ -613,7 +624,12 @@ function FormBootstrap(props: FormsEngineProps) {
 			const readonly = readonlyProp ?? isParentReadonly;
 			const parentLockResult = store.get(parentAtoms.lockResult);
 			const isParentLocked = parentLockResult.locked;
-			const invokePrepareFn = (locked: boolean, lockError: ApiResponse, affectedPackages: PublishPackage[]) => {
+			const invokePrepareFn = (
+				locked: boolean,
+				lockError: ApiResponse,
+				affectedPackages: PublishPackage[],
+				lockedPath: string | null
+			) => {
 				preloadControlPluginsForFields(
 					siteId,
 					contentType.fields,
@@ -627,6 +643,7 @@ function FormBootstrap(props: FormsEngineProps) {
 						locked,
 						lockError,
 						affectedPackages,
+						lockedPath,
 						fieldIds: effectRefs.current.effectiveProps.fieldIds,
 						repeatIndex: effectRefs.current.effectiveProps.repeatIndex,
 						update,
@@ -641,13 +658,14 @@ function FormBootstrap(props: FormsEngineProps) {
 				});
 			};
 			if (readonly === isParentReadonly) {
-				invokePrepareFn(isParentLocked, parentLockResult.lockError, parentLockResult.affectedPackages);
+				// Sharing the parent's lock. Do not record a path this form would release.
+				invokePrepareFn(isParentLocked, parentLockResult.lockError, parentLockResult.affectedPackages, null);
 				return () => {
 					disposed = true;
 				};
 			} else {
 				const sub = internalLockContentService(siteId, update.path).subscribe((result) => {
-					invokePrepareFn(result.locked, result.lockError, result.affectedPackages);
+					invokePrepareFn(result.locked, result.lockError, result.affectedPackages, result.lockedPath ?? null);
 				});
 				return () => {
 					disposed = true;
@@ -665,7 +683,9 @@ function FormBootstrap(props: FormsEngineProps) {
 			const lockResultAtom = atom<FormsEngineEditContextProps>({
 				locked: false,
 				lockError: null,
-				affectedPackages: null
+				affectedPackages: null,
+				lockedPath: null,
+				movedFromPath: null
 			});
 			const atoms: FormsEngineAtoms = createFormsEngineAtoms(
 				effectRefs.current.username,
@@ -771,7 +791,9 @@ function FormBootstrap(props: FormsEngineProps) {
 					const lockResultAtom = atom<FormsEngineEditContextProps>({
 						locked: requirements.locked,
 						lockError: requirements.lockError,
-						affectedPackages: requirements.affectedPackages
+						affectedPackages: requirements.affectedPackages,
+						lockedPath: requirements.locked ? (requirements.lockedPath ?? requirements.item.path) : null,
+						movedFromPath: requirements.movedFromPath ?? null
 					});
 					const atoms = createFormsEngineAtoms(
 						effectRefs.current.username,
@@ -1029,14 +1051,15 @@ function FormOrchestrator(props: FormsEngineProps) {
 		// Comments name every changed field, including ones the launch scope is hiding.
 		commentFields: isRepeatMode ? repeatOwnedFields : Object.values(contentTypeFields),
 		versionCommentAtom: stableFormContext.atoms.versionComment,
-		fileNameAtom: stableFormContext.atoms.fileName,
-		lockStatus
+		fileNameAtom: stableFormContext.atoms.fileName
 	});
 	// Holds the create mode comment generated last, so that a comment written by the user isn't overwritten. Starts off
 	// with the default comment the version comment atom was created with.
 	const lastCreationCommentRef = useRef(generateDefaultCreationComment('', formatMessage));
 	const [collapseHeader, setCollapseHeader] = useState(false);
-	const [saveAsDraftAction, setSaveAsDraftAction] = useState(false);
+	// SaveCard still reports the draft click. Unlock no longer reads that flag, so this does not
+	// re-render the form (that re-render used to run the unlock cleanup while the form was open).
+	const setSaveAsDraftAction = useCallback((_draft?: boolean) => undefined, []);
 
 	useMount(() => {
 		// If 'update.changeTypeId' has content, it means the content type has changed, so we set pending changes to true
@@ -1155,21 +1178,12 @@ function FormOrchestrator(props: FormsEngineProps) {
 		repeat?.fieldId,
 		fieldUpdates$
 	);
-	const invalidForm = localInvalidFieldIds.length > 0;
 	const parentInvalidFieldIds = useInvalidFieldIds(
 		parentAtoms?.validationByFieldId,
 		parentEntry?.formControllerState?.irrelevantFieldPaths,
 		undefined,
 		parentEntry?.fieldUpdates$
 	);
-
-	// Unlock content when the form is closed.
-	useUnlockOnClose({
-		...props,
-		saveAsDraft: saveAsDraftAction,
-		invalidForm,
-		itemSavedAsDraft: Boolean(item?.savedAsDraft)
-	});
 
 	// region Workflow item updates
 	useEffect(() => {
@@ -1186,10 +1200,11 @@ function FormOrchestrator(props: FormsEngineProps) {
 			if (!item || !events.includes(type)) return;
 			fetchAffectedPackages(siteId, item.path).subscribe({
 				next(packages) {
-					setLockStatus({
-						...effectRefs.current.lockStatus,
+					// Merge into the live lock record so a rename's path is not dropped.
+					setLockStatus((current) => ({
+						...current,
 						affectedPackages: packages
-					});
+					}));
 				},
 				error({ response }) {
 					console.error(response);
@@ -1200,7 +1215,7 @@ function FormOrchestrator(props: FormsEngineProps) {
 		return () => {
 			subscription.unsubscribe();
 		};
-	}, [effectRefs, item, setLockStatus, siteId]);
+	}, [item, setLockStatus, siteId]);
 
 	const handleOpenDrawerSidebar = () => {
 		const scroller = getScrollContainer(containerRef.current);
@@ -1216,7 +1231,7 @@ function FormOrchestrator(props: FormsEngineProps) {
 	const popTopStackedForm = (restoreOpenedItem: boolean) => {
 		const childEntry = formsStackData[formsStackData.length - 1];
 		const childMode = childEntry?.itemFormMode ? store.get(childEntry.itemFormMode) : null;
-		// The child form item unlocking should be getting done by the FormOrchestrator of the unmounting form via useUnlockOnClose hook.
+		// The child form releases its own lock from the unmounting form's useUnlockOnClose hook.
 		childEntry?.props.stackIndex === 0 && (containerRef.current.style.overflowY = '');
 		if (restoreOpenedItem && childEntry) {
 			const repeat = childEntry.props.repeat;
@@ -1279,16 +1294,25 @@ function FormOrchestrator(props: FormsEngineProps) {
 		const doEditEnablement = (restoreValues: boolean = false) => {
 			// TODO: Re-fetch content when enabling edit? Or monitor changes and auto-reload?
 			setEnablingEditInProgress(true);
+			const previous = store.get(atoms.lockResult);
+			// Release the path that is actually locked. A saved rename has moved it off item.path.
+			const targetPath = (!enableEdit && previous.lockedPath) || item.path;
 			const service = enableEdit ? internalLockContentService : internalUnlockContentService;
-			service(siteId, item.path).subscribe((lockResult) => {
+			service(siteId, targetPath).subscribe((lockResult) => {
 				setEnablingEditInProgress(false);
 				setHasPendingChanges(false);
 				if (restoreValues) formContextApi.rollback();
 				setLockStatus({
 					locked: lockResult.locked,
 					lockError: lockResult.lockError,
-					affectedPackages: lockResult?.affectedPackages ?? null
+					affectedPackages: lockResult?.affectedPackages ?? null,
+					lockedPath: lockResult.locked ? (lockResult.lockedPath ?? targetPath) : null,
+					// A failed release still holds the lock, including one a rename moved.
+					movedFromPath: lockResult.locked && !enableEdit ? (previous.movedFromPath ?? null) : null
 				});
+				if (!enableEdit && releaseLockToggleFailed(lockResult)) {
+					dispatch(showErrorDialog({ error: lockResult.lockError }));
+				}
 				callback?.(lockResult);
 			});
 		};

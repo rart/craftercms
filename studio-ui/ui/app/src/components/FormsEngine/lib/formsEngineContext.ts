@@ -76,6 +76,16 @@ export interface FormsEngineEditContextProps {
 	locked: boolean;
 	lockError: ApiResponse;
 	affectedPackages?: PublishPackage[];
+	/**
+	 * Path this form successfully locked. A saved rename updates it to the new path,
+	 * because a move carries the lock. Null when this form does not hold a lock.
+	 */
+	lockedPath?: string | null;
+	/**
+	 * Path the lock was taken on before a saved rename moved it.
+	 * A 404 unlocking this path is the rename, not a failure to unlock.
+	 */
+	movedFromPath?: string | null;
 }
 
 // Contains the various state atoms of a form

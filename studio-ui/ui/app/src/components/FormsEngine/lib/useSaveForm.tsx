@@ -72,6 +72,7 @@ import {
 } from './controlPluginLoader';
 import { runFormControllerBeforeSave } from '../formControllers/runtime';
 import { rememberCommittedRelevance } from '../formControllers/relevance';
+import { applySavedRenameToLock } from './unlockOnClose';
 export interface UseSaveFormProps {
 	createPath?: string;
 	isRepeatMode: boolean;
@@ -467,6 +468,13 @@ export function useSaveForm(props: UseSaveFormProps) {
 				const saveActionCallbacks = {
 					async next(ajaxResponse: AjaxResponse<WriteContentResponse>) {
 						try {
+							// The move carries the lock. Record the new path before close so unmount unlocks that path.
+							if (isRename && renamePath) {
+								const lockAtom = stableFormContext.atoms.lockResult;
+								const currentLock = jotai.get(lockAtom);
+								const followed = applySavedRenameToLock(currentLock, renamePath, itemPath);
+								if (followed) jotai.set(lockAtom, { ...currentLock, ...followed });
+							}
 							const isAmended = ajaxResponse.response?.items?.[0]?.amended;
 							const dom = fromString(xml);
 							const result = ((await onSave?.(repositorySaveArgs(path, dom, xml))) ?? {
