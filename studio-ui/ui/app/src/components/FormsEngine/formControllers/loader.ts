@@ -20,6 +20,12 @@ import { getText } from '../../../utils/ajax';
 import { getFormControllerUrl } from '../../../services/contentTypes';
 import type { FormController } from './types';
 
+/**
+ * FE2 form-controller contract. One positive integer, not semver.
+ * A missing `apiVersion` counts as this value. Not published on
+ * `craftercms.formsEngine.formControllers`. Bump only for a breaking change.
+ * Policy: `docs/type-builder-forms-engine-plugins.md` §10.
+ */
 const SUPPORTED_API_VERSION = 1;
 
 const commonErrorMsg = 'The form will proceed as though no custom type controller exists.';

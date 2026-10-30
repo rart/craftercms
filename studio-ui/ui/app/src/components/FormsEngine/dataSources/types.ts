@@ -19,6 +19,11 @@ import type { ContentType, ContentTypeField, DataSource } from '../../../models/
 import type LookupTable from '../../../models/LookupTable';
 import type { FormsEngineProps } from '../FormsEngine';
 
+/**
+ * FE2 data-source module contract. One positive integer, not semver.
+ * Required: a missing or other value is rejected. Bump only for a breaking change.
+ * Policy: `docs/type-builder-forms-engine-plugins.md` §10.
+ */
 export const DATA_SOURCE_API_VERSION = 1 as const;
 
 export type DataSourceInterface = 'item' | 'image' | 'video' | 'transcoded-video' | 'audio' | 'options' | (string & {});

@@ -105,7 +105,7 @@ export interface FormControllerContext extends FormControllerRelevanceContext {
  * Default export (or named `formController`) must satisfy this contract.
  *
  * `apiVersion` is currently `1`. Missing `apiVersion` is treated as `1`.
- * Bump when breaking the host↔controller contract.
+ * Bump only for a breaking change. Policy: `docs/type-builder-forms-engine-plugins.md` §10.
  */
 export interface FormController {
 	apiVersion?: 1;
