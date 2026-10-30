@@ -299,112 +299,128 @@ export function SaveCard(props: SaveCardProps) {
 				// Sibling of the card, so the sidebar's space-y gap sits above Release Lock and Close.
 				<Stack spacing={1}>
 					{showSaveOptions && (
-						<Box role="group" aria-labelledby={afterSavingLabelId}>
-							<Stack spacing={0.5}>
-								<Typography
-									id={afterSavingLabelId}
-									variant="caption"
-									color="text.secondary"
-									component="span"
-									sx={{ textAlign: 'left' }}
-								>
-									<FormattedMessage {...messages.afterSaving} />
-								</Typography>
-								<ToggleButtonGroup
-									ref={setGroup}
-									exclusive
-									fullWidth
-									size="small"
-									color="primary"
-									value={afterSaving}
-									aria-labelledby={afterSavingLabelId}
-									onChange={handleAfterSaving}
-									sx={(theme) => ({
-										borderRadius: theme.shape.borderRadius,
-										[`& .${toggleButtonGroupClasses.firstButton}`]: {
-											borderTopLeftRadius: theme.shape.borderRadius,
-											borderBottomLeftRadius: theme.shape.borderRadius
-										},
-										[`& .${toggleButtonGroupClasses.lastButton}`]: {
-											borderTopRightRadius: theme.shape.borderRadius,
-											borderBottomRightRadius: theme.shape.borderRadius
-										},
-										[`& .${toggleButtonClasses.root}`]: {
-											flex: '1 1 0',
-											minWidth: 0,
-											overflow: 'hidden',
-											textTransform: 'none',
-											px: 1,
-											py: 0.5
-										}
-									})}
-								>
-									{afterSavingOrder.map((value) => {
-										const label = afterSavingLabels[value];
-										const Icon = afterSavingIcons[value];
-										const showTip = afterSavingIconsMode && afterSavingTip === value;
-										return (
-											<ToggleButton
-												key={value}
-												value={value}
-												aria-label={afterSavingIconsMode ? label : undefined}
-												sx={{ position: 'relative' }}
-												onMouseEnter={() => setAfterSavingTip(measureAfterSaving() ? value : null)}
-												onMouseLeave={() => setAfterSavingTip((current) => (current === value ? null : current))}
-												onFocus={() => setAfterSavingTip(measureAfterSaving() ? value : null)}
-												onBlur={() => setAfterSavingTip((current) => (current === value ? null : current))}
-											>
-												{afterSavingIconsMode ? (
-													<Tooltip
-														title={label}
-														open={showTip}
-														disableHoverListener
-														disableFocusListener
-														disableTouchListener
-													>
-														<Box component="span" sx={{ display: 'inline-flex', lineHeight: 0 }}>
-															<Icon fontSize="small" aria-hidden />
-														</Box>
-													</Tooltip>
-												) : (
-													<Box
-														component="span"
-														data-after-saving-label=""
-														sx={{
-															display: 'block',
-															width: '100%',
-															overflow: 'hidden',
-															textOverflow: 'ellipsis',
-															whiteSpace: 'nowrap',
-															minWidth: 0
-														}}
-													>
-														{label}
+						<Box
+							role="group"
+							aria-labelledby={afterSavingLabelId}
+							sx={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}
+						>
+							<Typography
+								id={afterSavingLabelId}
+								variant="caption"
+								color="text.secondary"
+								component="span"
+								sx={(theme) => ({
+									alignSelf: 'flex-start',
+									position: 'relative',
+									zIndex: 1,
+									px: 1,
+									py: 0.25,
+									textAlign: 'left',
+									bgcolor: 'background.default',
+									border: 1,
+									borderColor: 'divider',
+									// Covers the pills' top border so the tab opens into the row.
+									borderBottomColor: 'background.default',
+									borderTopLeftRadius: theme.shape.borderRadius,
+									borderTopRightRadius: theme.shape.borderRadius,
+									mb: '-1px'
+								})}
+							>
+								<FormattedMessage {...messages.afterSaving} />
+							</Typography>
+							<ToggleButtonGroup
+								ref={setGroup}
+								exclusive
+								fullWidth
+								size="small"
+								color="primary"
+								value={afterSaving}
+								aria-labelledby={afterSavingLabelId}
+								onChange={handleAfterSaving}
+								sx={(theme) => ({
+									[`& .${toggleButtonGroupClasses.firstButton}`]: {
+										borderTopLeftRadius: 0,
+										borderBottomLeftRadius: theme.shape.borderRadius
+									},
+									[`& .${toggleButtonGroupClasses.lastButton}`]: {
+										borderTopRightRadius: theme.shape.borderRadius,
+										borderBottomRightRadius: theme.shape.borderRadius
+									},
+									[`& .${toggleButtonClasses.root}`]: {
+										flex: '1 1 0',
+										minWidth: 0,
+										overflow: 'hidden',
+										textTransform: 'none',
+										px: 1,
+										py: 0.5
+									}
+								})}
+							>
+								{afterSavingOrder.map((value) => {
+									const label = afterSavingLabels[value];
+									const Icon = afterSavingIcons[value];
+									const showTip = afterSavingIconsMode && afterSavingTip === value;
+									return (
+										<ToggleButton
+											key={value}
+											value={value}
+											aria-label={afterSavingIconsMode ? label : undefined}
+											sx={{ position: 'relative' }}
+											onMouseEnter={() => setAfterSavingTip(measureAfterSaving() ? value : null)}
+											onMouseLeave={() => setAfterSavingTip((current) => (current === value ? null : current))}
+											onFocus={() => setAfterSavingTip(measureAfterSaving() ? value : null)}
+											onBlur={() => setAfterSavingTip((current) => (current === value ? null : current))}
+										>
+											{afterSavingIconsMode ? (
+												<Tooltip
+													title={label}
+													open={showTip}
+													disableHoverListener
+													disableFocusListener
+													disableTouchListener
+												>
+													<Box component="span" sx={{ display: 'inline-flex', lineHeight: 0 }}>
+														<Icon fontSize="small" aria-hidden />
 													</Box>
-												)}
+												</Tooltip>
+											) : (
 												<Box
 													component="span"
-													aria-hidden
-													ref={(node: HTMLSpanElement | null) => {
-														probes.current[value] = node;
-													}}
+													data-after-saving-label=""
 													sx={{
-														position: 'absolute',
-														left: 0,
-														top: 0,
-														visibility: 'hidden',
+														display: 'block',
+														width: '100%',
+														overflow: 'hidden',
+														textOverflow: 'ellipsis',
 														whiteSpace: 'nowrap',
-														width: 'max-content',
-														pointerEvents: 'none'
+														minWidth: 0
 													}}
 												>
 													{label}
 												</Box>
-											</ToggleButton>
-										);
-									})}
-								</ToggleButtonGroup>
-							</Stack>
+											)}
+											<Box
+												component="span"
+												aria-hidden
+												ref={(node: HTMLSpanElement | null) => {
+													probes.current[value] = node;
+												}}
+												sx={{
+													position: 'absolute',
+													left: 0,
+													top: 0,
+													visibility: 'hidden',
+													whiteSpace: 'nowrap',
+													width: 'max-content',
+													pointerEvents: 'none'
+												}}
+											>
+												{label}
+											</Box>
+										</ToggleButton>
+									);
+								})}
+							</ToggleButtonGroup>
 						</Box>
 					)}
 					{showReleaseLockOnClose && (
@@ -412,24 +428,13 @@ export function SaveCard(props: SaveCardProps) {
 							<FormControlLabel
 								labelPlacement="start"
 								sx={{
+									// labelPlacement "start" indents 16px and pulls the control past the end.
 									m: 0,
-									ml: 0,
-									mr: 0,
 									width: '100%',
 									display: 'flex',
 									justifyContent: 'space-between',
 									alignItems: 'center',
-									gap: 1,
-									// labelPlacement start indents 16px and pulls the control 11px past the edge.
-									// Small switch pads its track by 7px. Drop that padding on the right and
-									// the same amount of width so the track meets the pills.
-									[`& .${switchClasses.root}`]: {
-										ml: 0,
-										mr: 0,
-										pr: 0,
-										width: 33,
-										flexShrink: 0
-									}
+									gap: 1
 								}}
 								label={
 									<Typography
@@ -443,6 +448,8 @@ export function SaveCard(props: SaveCardProps) {
 								control={
 									<Switch
 										size="small"
+										// Small-switch padding is not a theme token. edge is the Switch's own end inset.
+										edge="end"
 										color={releaseLockOnClose ? 'primary' : 'warning'}
 										checked={releaseLockOnClose}
 										onChange={(_event, checked) => setReleaseLockOnClose(checked)}
