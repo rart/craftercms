@@ -2,7 +2,7 @@
 
 > Living backbone for TB/FE modernization work. **Read this first** in any new agent/session before changing related code. Keep it current: update _Open decisions_, _Progress_, and _Known pitfalls_ when you learn something durable.
 
-Last updated: 2026-10-22
+Last updated: 2026-10-30
 
 ---
 
@@ -355,7 +355,7 @@ const [timezone, setTimezone, timezoneExists] = useFieldValue(`${field.id}_tz`);
 
 `StableFormContext` and Jotai's `useAtom` are deliberately **not** host members: an earlier revision exposed them so plugins could reach `atoms.valueByFieldId` directly, but that leaked the atom map and a Jotai dependency to plugins. `useFieldValue` supersedes them — do not import Jotai or reach into the atoms map from plugin code.
 
-This path is functional for plugin metadata already present in a form definition. `customControlMap` exists as an override seam used by Type Builder descriptor forms. Plugin controls may supply optional `valueRetriever` / `valueSerializer` / `validator` on `ControlPluginContribution` (built-in static maps still win when they define the type). Required/empty validation stays host-owned in `validateFieldValue`.
+This path is functional for plugin metadata already present in a form definition. `customControlMap` exists as an override seam used by Type Builder descriptor forms. Plugin controls may supply optional `apiVersion` (`CONTROL_API_VERSION`, currently `1`; omitted means `1`; any other value is refused by `registerPlugin` with an error naming the plugin id and the control type), `valueRetriever` / `valueSerializer` / `validator` on `ControlPluginContribution` (built-in static maps still win when they define the type). Required/empty validation stays host-owned in `validateFieldValue`.
 
 Additional current FE control gaps:
 
@@ -810,6 +810,7 @@ Separate **completed design decisions** (`[x]`) from **remaining implementation 
 
 Keep newest first. One short bullet per meaningful session.
 
+- **2026-10-30** — FE2 control contributions take an optional `apiVersion` (`CONTROL_API_VERSION`, currently `1`). A missing value counts as `1`. `registerPlugin` refuses any other value with an error that names the plugin id and the control type, and installs nothing from that call (same as any other invalid control entry). See plugins companion §6 and §9.3. #9303
 - **2026-10-22** — `EditTypeView`'s `parseConfigPlugins` now normalizes descriptor `metadata.additionalFields` with `asArray` (see §5.4), matching the Redux `uiConfig` reducer for that field; `metadata.suffixes` is still not normalized on this path. This supersedes the `parseConfigPlugins` note in the `additionalFields` entry below.
 - **2026-10-22** — Expose `useFieldValue` on `craftercms.formsEngine.controls` (`formsEngineControlsHost` in `dataSources/host.ts`; implementation in `lib/formsEngineContext.ts`). Plugin controls use this host hook — `const [value, setValue, exists] = useFieldValue(field.id + '_tz')` — to access sibling fields, e.g. descriptor-declared additional fields such as `{id}_tz` / `{id}_bk`, without depending on the atoms map or Jotai. An uninitialized field returns `[undefined, setValue, false]` (the setter is a no-op) instead of throwing. This supersedes exposing `StableFormContext` + Jotai `useAtom` on the same host (added earlier on this branch): neither is a host member anymore. See §5.5.
 - **2026-10-22** — Expected `ui.xml` shape for descriptor `metadata/additionalFields` documented in §5.4: repeated leaf elements under `widget[id="craftercms.components.ContentTypeManagement"] > configuration > controls > control > descriptor > metadata` (one `<additionalFields>{id}_tz</additionalFields>` per template; same for `<suffixes>`), _not_ the `<additionalFields><id>…</id></additionalFields>` shape persisted per field in `form-definition.xml`. A single element deserializes as a bare `string`, multiples as `string[]`; the Redux `uiConfig` reducer now reads the nested `control > descriptor` (previously it looked for a top-level `descriptor`, so XML descriptors were not registered there) and normalizes `suffixes`/`additionalFields` via `asArray` (`string[] | null`), while `variableValidator` now `asArray`s `meta.additionalFields` itself because `EditTypeView`'s `parseConfigPlugins` path does not normalize `metadata`. `{id}` expands to the field id via `processAdditionalFieldMacro`; entries without it are verbatim.

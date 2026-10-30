@@ -2,7 +2,7 @@
 
 > Companion to [`type-builder-forms-engine.md`](type-builder-forms-engine.md). Read this before designing or changing dynamic controls, data sources, FE form controllers, plugin loading, or TB plugin discovery.
 
-Last updated: 2026-08-07
+Last updated: 2026-10-30
 
 ## 1. Why plugins are part of the core design
 
@@ -281,6 +281,8 @@ export default {
 	id: 'org.example.my-controls',
 	controls: {
 		'my-custom-picker': {
+			// Optional. Current contract is 1 (`CONTROL_API_VERSION`). Omit to mean 1.
+			apiVersion: 1,
 			Component: MyPicker,
 			dataSourceBindings: [{ propertyName: 'itemManager', interfaces: ['item'], selection: 'multi' }],
 			valueRetriever: (raw, field) => /* XML → form value */,
@@ -290,6 +292,8 @@ export default {
 	}
 };
 ```
+
+`apiVersion` is optional and currently `1`. Omitting it is treated as `1`, so existing plugins keep registering. Any other value is refused by `registerPlugin` before any registry write (same as a missing `Component` or other invalid control entry). The error names the plugin id and the control type. That control is not registered, and the field shows the same load-error placeholder the form already uses for an invalid control contribution.
 
 Lookup order for IO and validators: built-in `valueRetrieverLookup` / `valueSerializersLookup` / `validatorsMap` first (`Object.hasOwn`), then plugin contribution for `field.type`. Required/empty checks stay in `validateFieldValue` (host). FE preloads all `field.properties.plugin` locators via `preloadControlPluginsForFields` (1) before form value parse at bootstrap and (2) again in `useSaveForm` before `buildContentXml`, walking current values so embeds added after open still register serializers. Bootstrap failures are recorded on `StableFormContext.affectedPluginControlFields`; save-time failures update that list and hard-block save (avoids writing unconverted XML shapes).
 
@@ -464,6 +468,7 @@ interface PluginDescriptor {
 }
 
 interface ControlPluginContribution {
+	apiVersion?: 1; // optional; missing counts as 1 (CONTROL_API_VERSION). Any other value is refused.
 	Component: ComponentType<ControlProps>;
 	dataSourceBindings?: DataSourceBinding | readonly DataSourceBinding[];
 	valueRetriever?: ValueRetriever; // optional XML → form value
@@ -475,7 +480,7 @@ interface ControlPluginContribution {
 `registerPlugin` (current):
 
 1. Validates and installs `dataSources` into `dataSourceModuleRegistry` (before committing the plugin id).
-2. Validates and installs `controls` into the control contribution registry + binding registry (including optional `valueRetriever` / `valueSerializer` / `validator`).
+2. Validates and installs `controls` into the control contribution registry + binding registry (including optional `apiVersion`, `valueRetriever` / `valueSerializer` / `validator`). An `apiVersion` other than `1` throws and installs nothing from that call. Missing `apiVersion` counts as `1`.
 3. Stores the descriptor (including `utils`) in the plugins map.
 4. Registers widgets, locales, scripts/stylesheets as before.
 5. `widgets` may be omitted (lib / FE-only bundles).

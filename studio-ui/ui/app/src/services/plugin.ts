@@ -19,7 +19,7 @@ import type { ComponentType } from 'react';
 import LookupTable from '../models/LookupTable';
 import { augmentTranslations } from '../utils/i18n';
 import { components, plugins } from '../utils/constants';
-import PluginDescriptor from '../models/PluginDescriptor';
+import PluginDescriptor, { CONTROL_API_VERSION } from '../models/PluginDescriptor';
 import PluginFileBuilder from '../models/PluginFileBuilder';
 import { WidgetRecord } from '../models/WidgetRecord';
 import type PluginDescriptorWithSource from '../models/PluginDescriptorWithSource';
@@ -173,7 +173,9 @@ export function isPluginRegistered(plugin: PluginDescriptor): boolean {
  * `plugin.id` was already registered (e.g. widget host loaded first without FE contributions).
  *
  * FE contributions are fully preflighted before any registry write so a mid-flight failure leaves
- * no partial DS/control state. Returns `false` if the id already existed; merges contributions onto
+ * no partial DS/control state. A control `apiVersion` other than {@link CONTROL_API_VERSION}
+ * (a missing value counts as that version) throws here, same as any other invalid control.
+ * Returns `false` if the id already existed; merges contributions onto
  * the stored descriptor. Prefer this over calling FE registries directly from plugin code.
  */
 export function registerPlugin(plugin: PluginDescriptor, source?: PluginFileBuilder): boolean {
@@ -216,6 +218,14 @@ export function registerPlugin(plugin: PluginDescriptor, source?: PluginFileBuil
 			}
 			if (!entry || typeof entry !== 'object') {
 				throw new TypeError(`Plugin "${plugin.id}" control "${typeKey}" must be a ControlPluginContribution object.`);
+			}
+			// Omitted apiVersion is the current contract. Anything else is refused before registry writes,
+			// the same as a missing Component or any other invalid control contribution.
+			const reportedVersion = (entry as { apiVersion?: unknown }).apiVersion;
+			if ((reportedVersion ?? CONTROL_API_VERSION) !== CONTROL_API_VERSION) {
+				throw new TypeError(
+					`Plugin "${plugin.id}" control "${typeKey}" reports unsupported apiVersion "${String(reportedVersion)}" (expected ${CONTROL_API_VERSION}).`
+				);
 			}
 			if (!isValidElementType(entry.Component)) {
 				throw new TypeError(

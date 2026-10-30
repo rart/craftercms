@@ -22,10 +22,22 @@ import type { ValueRetriever, ValueSerializer } from '../components/FormsEngine/
 import type { ValidatorFunctionDef } from '../components/FormsEngine/lib/validators';
 
 /**
+ * Current FE2 control contribution contract.
+ * A missing `apiVersion` counts as this value, the same rule form controllers use.
+ * Bump when breaking the host↔control contract.
+ */
+export const CONTROL_API_VERSION = 1 as const;
+
+/**
  * FE2 control contribution on a PluginDescriptor.
  * Map keys on `controls` must equal the control type id (`field.type`).
  */
 export interface ControlPluginContribution {
+	/**
+	 * Contract version this control implements. Currently {@link CONTROL_API_VERSION}.
+	 * A missing value counts as that version. Any other value is refused at registration.
+	 */
+	apiVersion?: typeof CONTROL_API_VERSION;
 	/** React control component; must accept ControlProps. */
 	Component: ComponentType<ControlProps>;
 	/** Optional; same shapes as built-in `controlDataSourceBindings` entries. */
