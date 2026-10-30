@@ -81,7 +81,8 @@ function labelOverflowsButton(probe: HTMLElement, button: HTMLElement): boolean 
 /** All three pills switch together, so one overflowing translation does not leave a mixed row. */
 function useAfterSavingIcons(labels: Record<AfterSaving, string>) {
 	const probes = useRef<Partial<Record<AfterSaving, HTMLSpanElement | null>>>({});
-	const groupRef = useRef<HTMLDivElement>(null);
+	// State, not a ref object: the group can mount later without SaveCard remounting.
+	const [group, setGroup] = useState<HTMLDivElement | null>(null);
 	const [icons, setIcons] = useState(false);
 	const measure = useCallback(() => {
 		const overflow = afterSavingOrder.some((key) => {
@@ -95,13 +96,12 @@ function useAfterSavingIcons(labels: Record<AfterSaving, string>) {
 	}, []);
 	useLayoutEffect(() => {
 		measure();
-		const group = groupRef.current;
 		if (!group || typeof ResizeObserver === 'undefined') return;
 		const observer = new ResizeObserver(() => measure());
 		observer.observe(group);
 		return () => observer.disconnect();
-	}, [labels.close, labels.minimize, labels.stay, measure]);
-	return { probes, groupRef, icons, measure };
+	}, [group, labels.close, labels.minimize, labels.stay, measure]);
+	return { probes, setGroup, icons, measure };
 }
 
 /** Stay is both flags off. Close wins if both were stored, matching the save follow-up. */
@@ -151,7 +151,7 @@ export function SaveCard(props: SaveCardProps) {
 	};
 	const {
 		probes,
-		groupRef,
+		setGroup,
 		icons: afterSavingIconsMode,
 		measure: measureAfterSaving
 	} = useAfterSavingIcons(afterSavingLabels);
@@ -267,16 +267,15 @@ export function SaveCard(props: SaveCardProps) {
 										<FormattedMessage {...messages.afterSaving} />
 									</Typography>
 									<ToggleButtonGroup
-										ref={groupRef}
+										ref={setGroup}
 										exclusive
 										fullWidth
 										size="small"
+										color="primary"
 										value={afterSaving}
 										aria-labelledby={afterSavingLabelId}
 										onChange={handleAfterSaving}
 										sx={(theme) => ({
-											display: 'flex',
-											width: '100%',
 											borderRadius: theme.shape.borderRadius,
 											[`& .${toggleButtonGroupClasses.firstButton}`]: {
 												borderTopLeftRadius: theme.shape.borderRadius,
@@ -293,20 +292,6 @@ export function SaveCard(props: SaveCardProps) {
 												textTransform: 'none',
 												px: 1,
 												py: 0.5
-											},
-											[`& .${toggleButtonClasses.root}.${toggleButtonClasses.selected}`]: {
-												color: theme.palette.primary.main,
-												backgroundColor: alpha(theme.palette.primary.main, theme.palette.action.selectedOpacity),
-												'&:hover': {
-													color: theme.palette.primary.main,
-													backgroundColor: alpha(
-														theme.palette.primary.main,
-														theme.palette.action.selectedOpacity + theme.palette.action.hoverOpacity
-													),
-													'@media (hover: none)': {
-														backgroundColor: alpha(theme.palette.primary.main, theme.palette.action.selectedOpacity)
-													}
-												}
 											}
 										})}
 									>
