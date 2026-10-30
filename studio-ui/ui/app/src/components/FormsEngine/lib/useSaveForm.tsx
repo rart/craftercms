@@ -97,9 +97,12 @@ export function useSaveForm(props: UseSaveFormProps) {
 	const jotai = useJotaiStore();
 	const store = useReduxStore<GlobalState>();
 	const dispatch = useDispatch();
-	// The sandbox item in the store is not updated by the write. The address bar reads that item.
+	// A connected socket delivers this user's contentEvent (or moveContentEvent). Those epics
+	// refetch an item already in the store, which is the address-bar item. When the socket is
+	// down the event never arrives, so reload once. Skip it while connected to avoid a second fetch.
 	const refreshSavedItem = (savedPath: string) => {
-		if (savedPath) dispatch(reloadContentItem({ path: savedPath }));
+		if (!savedPath || store.getState().env.socketConnected) return;
+		dispatch(reloadContentItem({ path: savedPath }));
 	};
 	const { formatMessage } = useIntl();
 	const siteId = useActiveSiteId();
@@ -478,7 +481,7 @@ export function useSaveForm(props: UseSaveFormProps) {
 							if (isRename && renamePath) {
 								const lockAtom = stableFormContext.atoms.lockResult;
 								const currentLock = jotai.get(lockAtom);
-								const followed = applySavedRenameToLock(currentLock, renamePath, itemPath);
+								const followed = applySavedRenameToLock(currentLock, renamePath);
 								if (followed) jotai.set(lockAtom, { ...currentLock, ...followed });
 							}
 							const isAmended = ajaxResponse.response?.items?.[0]?.amended;

@@ -27,10 +27,11 @@ import { describe, it } from 'node:test';
 import {
 	applySavedRenameToLock,
 	createLockReleaseGate,
+	keepLockOnStackedUnmount,
 	lockPathToRelease,
 	planLockRelease,
 	releaseLockToggleFailed,
-	shouldIgnoreUnlockNotFound,
+	sharedPerUserAtom,
 	shouldUnlockOnPageHide,
 	unlockErrorPayload,
 	unlockKeepaliveInit,
@@ -50,7 +51,6 @@ function holding(lockedPath: string | null, overrides: Partial<UnlockOnCloseStat
 		isParentReadonly: false,
 		siteId: 'editorial',
 		lockedPath,
-		movedFromPath: null,
 		releaseLockOnClose: true,
 		...overrides
 	};
@@ -91,27 +91,92 @@ describe('lock released on close', () => {
 	}
 
 	it('follows a saved rename to the path that is locked', () => {
-		const followed = applySavedRenameToLock({ locked: true, lockedPath: article }, renamed, article);
+		const followed = applySavedRenameToLock({ locked: true, lockedPath: article }, renamed);
 		assert.ok(followed);
 		assert.equal(followed.lockedPath, renamed);
-		assert.equal(followed.movedFromPath, article);
-		const state = holding(followed.lockedPath, { movedFromPath: followed.movedFromPath });
-		assert.equal(lockPathToRelease(state), renamed);
+		assert.equal(lockPathToRelease(holding(followed.lockedPath)), renamed);
 	});
 
-	it('keeps the original path across a second saved rename', () => {
-		const first = applySavedRenameToLock({ locked: true, lockedPath: article }, renamed, article);
+	it('follows a second saved rename to the newest path', () => {
+		const first = applySavedRenameToLock({ locked: true, lockedPath: article }, renamed);
 		const second = applySavedRenameToLock(
-			{ locked: true, lockedPath: first.lockedPath, movedFromPath: first.movedFromPath },
-			'/site/website/articles/final/index.xml',
-			renamed
+			{ locked: true, lockedPath: first.lockedPath },
+			'/site/website/articles/final/index.xml'
 		);
 		assert.equal(second.lockedPath, '/site/website/articles/final/index.xml');
-		assert.equal(second.movedFromPath, article);
 	});
 
 	it('does not record a move when this form is not holding a lock', () => {
-		assert.equal(applySavedRenameToLock({ locked: false, lockedPath: null }, renamed, article), null);
+		assert.equal(applySavedRenameToLock({ locked: false, lockedPath: null }, renamed), null);
+	});
+});
+
+describe('covered stacked form', () => {
+	it('keeps the lock when a deeper form unmounts it but the entry is still on the stack', () => {
+		assert.equal(
+			keepLockOnStackedUnmount({
+				via: 'unmount',
+				isStackedForm: true,
+				entryStillOnStack: true,
+				coveredByDeeperForm: true
+			}),
+			true
+		);
+	});
+
+	it('releases the lock after the entry is popped', () => {
+		assert.equal(
+			keepLockOnStackedUnmount({
+				via: 'unmount',
+				isStackedForm: true,
+				entryStillOnStack: false,
+				coveredByDeeperForm: false
+			}),
+			false
+		);
+	});
+
+	it('releases the top stacked form when it unmounts', () => {
+		assert.equal(
+			keepLockOnStackedUnmount({
+				via: 'unmount',
+				isStackedForm: true,
+				entryStillOnStack: true,
+				coveredByDeeperForm: false
+			}),
+			false
+		);
+	});
+
+	it('still unlocks on pagehide while the entry is covered', () => {
+		assert.equal(
+			keepLockOnStackedUnmount({
+				via: 'pagehide',
+				isStackedForm: true,
+				entryStillOnStack: true,
+				coveredByDeeperForm: true
+			}),
+			false
+		);
+	});
+});
+
+describe('shared release-lock setting', () => {
+	it('reuses one atom per user so a stacked form and the root read the same value', () => {
+		const user = `author-${Date.now()}`;
+		const otherUser = `${user}-other`;
+		const created: string[] = [];
+		const root = sharedPerUserAtom(user, () => {
+			created.push(user);
+			return { id: 'root' };
+		});
+		const stacked = sharedPerUserAtom(user, () => {
+			throw new Error('a second atom must not be created');
+		});
+		const other = sharedPerUserAtom(otherUser, () => ({ id: 'other' }));
+		assert.equal(root, stacked);
+		assert.notEqual(root, other);
+		assert.deepEqual(created, [user]);
 	});
 });
 
@@ -138,24 +203,6 @@ describe('release lock when closing', () => {
 });
 
 describe('unlock errors', () => {
-	const afterRename = holding(renamed, { movedFromPath: article });
-
-	it('ignores a 404 for the path a saved rename left behind', () => {
-		assert.equal(shouldIgnoreUnlockNotFound(404, article, afterRename), true);
-	});
-
-	it('surfaces a 404 for the path the lock moved to', () => {
-		assert.equal(shouldIgnoreUnlockNotFound(404, renamed, afterRename), false);
-	});
-
-	it('surfaces a 404 when the item was not renamed', () => {
-		assert.equal(shouldIgnoreUnlockNotFound(404, article, holding(article)), false);
-	});
-
-	it('surfaces a non-404 after a rename', () => {
-		assert.equal(shouldIgnoreUnlockNotFound(500, article, afterRename), false);
-	});
-
 	it('keeps the API body and falls back to the error message', () => {
 		assert.deepEqual(unlockErrorPayload({ response: { response: { message: 'Locked by someone else' } } }), {
 			message: 'Locked by someone else'

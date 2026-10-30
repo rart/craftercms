@@ -43,14 +43,11 @@ export interface UnlockOnCloseState {
 	releaseLockOnClose?: boolean;
 	/** Path recorded from the successful lock, updated when a saved rename moves the lock. */
 	lockedPath: string | null;
-	/** Path the lock was taken on before a saved rename. Null when the item was not renamed. */
-	movedFromPath: string | null;
 }
 
 export interface HeldLockRecord {
 	locked: boolean;
 	lockedPath?: string | null;
-	movedFromPath?: string | null;
 }
 
 /**
@@ -82,34 +79,40 @@ export function lockPathToRelease(state: UnlockOnCloseState): string | null {
 }
 
 /**
- * A saved move carries the lock to `nextPath`. Remember where it came from so a 404 on that
- * old path is the rename, not a failed unlock. Returns null when this form is not holding a lock.
+ * A saved move updates the same item row to `nextPath`, so the lock goes with it.
+ * Returns null when this form is not holding a lock.
  */
 export function applySavedRenameToLock(
 	current: HeldLockRecord,
-	nextPath: string,
-	fallbackPath?: string | null
-): Pick<HeldLockRecord, 'lockedPath' | 'movedFromPath'> | null {
+	nextPath: string
+): Pick<HeldLockRecord, 'lockedPath'> | null {
 	if (!current.locked && !current.lockedPath) return null;
-	const previous = current.lockedPath || fallbackPath || null;
-	const movedFrom = current.movedFromPath || previous;
-	return {
-		lockedPath: nextPath,
-		movedFromPath: movedFrom && movedFrom !== nextPath ? movedFrom : (current.movedFromPath ?? null)
-	};
+	return { lockedPath: nextPath };
 }
 
 /**
- * A 404 is ignored only when the request was for the path a saved rename left behind.
- * A 404 for the path the lock moved to is a real failure. A 404 with no saved rename is too.
+ * Pushing a deeper stacked form unmounts the covered form while its entry stays in the stack.
+ * That unmount must not release the lock. Popping the entry, or unmounting the top form, still does.
+ * pagehide is a real leave, so it is not skipped.
  */
-export function shouldIgnoreUnlockNotFound(
-	status: number | undefined,
-	requestedPath: string,
-	state: Pick<UnlockOnCloseState, 'lockedPath' | 'movedFromPath'>
-): boolean {
-	if (status !== 404 || !state.movedFromPath) return false;
-	return requestedPath === state.movedFromPath && requestedPath !== state.lockedPath;
+export function keepLockOnStackedUnmount(args: {
+	via: 'pagehide' | 'unmount';
+	isStackedForm: boolean;
+	entryStillOnStack: boolean;
+	coveredByDeeperForm: boolean;
+}): boolean {
+	return args.via === 'unmount' && args.isStackedForm && args.entryStillOnStack && args.coveredByDeeperForm;
+}
+
+const storedAtomsByKey = new Map<string, unknown>();
+
+/** One atom per storage key. Stacked forms and the root then share the per-user value in one store. */
+export function sharedPerUserAtom<T>(key: string, create: () => T): T {
+	const existing = storedAtomsByKey.get(key);
+	if (existing !== undefined) return existing as T;
+	const created = create();
+	storedAtomsByKey.set(key, created);
+	return created;
 }
 
 /** Payload for the error dialog. Keeps the API body when the server sent one. */

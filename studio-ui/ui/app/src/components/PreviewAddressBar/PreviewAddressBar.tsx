@@ -206,7 +206,7 @@ export function PreviewAddressBar(props: AddressBarProps) {
 							item={item}
 							showNavigableAsLinks={false}
 							sxs={{
-								root: { minWidth: 0, flex: '1 1 auto', overflow: 'hidden' },
+								root: { minWidth: 0, flex: '0 1 auto', overflow: 'hidden' },
 								label: { minWidth: 0 }
 							}}
 						/>

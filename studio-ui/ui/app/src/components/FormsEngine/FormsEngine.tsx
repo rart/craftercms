@@ -380,9 +380,6 @@ function FormBootstrap(props: FormsEngineProps) {
 	const stableFormContextRef = useRef<StableFormContextProps>(formsStackData[stackIndex]);
 	// Lives for the whole form session, including reload and minimize. Unmount is a real close.
 	useUnlockOnClose({
-		create,
-		update,
-		repeat,
 		stackIndex,
 		stableFormContextRef,
 		formsStackData
@@ -536,8 +533,6 @@ function FormBootstrap(props: FormsEngineProps) {
 				{
 					lockResult: sharedLock.lockResult,
 					readonly: sharedLock.readonly,
-					// The parent closes the shared lock, so the repeat form edits the parent's choice.
-					releaseLockOnClose: parentAtoms.releaseLockOnClose,
 					expandedStateBySectionId: buildSectionExpandedStateAtoms(contentType.sections),
 					fileName: createFileNameAtom('', stableFormContextRef)
 				},
@@ -686,8 +681,7 @@ function FormBootstrap(props: FormsEngineProps) {
 				locked: false,
 				lockError: null,
 				affectedPackages: null,
-				lockedPath: null,
-				movedFromPath: null
+				lockedPath: null
 			});
 			const atoms: FormsEngineAtoms = createFormsEngineAtoms(
 				effectRefs.current.username,
@@ -794,8 +788,7 @@ function FormBootstrap(props: FormsEngineProps) {
 						locked: requirements.locked,
 						lockError: requirements.lockError,
 						affectedPackages: requirements.affectedPackages,
-						lockedPath: requirements.locked ? (requirements.lockedPath ?? requirements.item.path) : null,
-						movedFromPath: requirements.movedFromPath ?? null
+						lockedPath: requirements.locked ? (requirements.lockedPath ?? requirements.item.path) : null
 					});
 					const atoms = createFormsEngineAtoms(
 						effectRefs.current.username,
@@ -1308,9 +1301,7 @@ function FormOrchestrator(props: FormsEngineProps) {
 					locked: lockResult.locked,
 					lockError: lockResult.lockError,
 					affectedPackages: lockResult?.affectedPackages ?? null,
-					lockedPath: lockResult.locked ? (lockResult.lockedPath ?? targetPath) : null,
-					// A failed release still holds the lock, including one a rename moved.
-					movedFromPath: lockResult.locked && !enableEdit ? (previous.movedFromPath ?? null) : null
+					lockedPath: lockResult.locked ? (lockResult.lockedPath ?? targetPath) : null
 				});
 				if (!enableEdit && releaseLockToggleFailed(lockResult)) {
 					dispatch(showErrorDialog({ error: lockResult.lockError }));
@@ -1501,14 +1492,10 @@ function FormOrchestrator(props: FormsEngineProps) {
 		return rootFormActions.save(draft);
 	};
 
-	// Same gate as the Release Lock button: this form holds the lock. Create, a new repeat
-	// item, and an embedded form on the parent's lock do not. The explicit button ignores the preference.
+	// Same gate as the Release Lock button. Create, a new repeat item, and an embedded form
+	// on the parent's lock do not show it. The button itself ignores the keep-lock preference.
 	const showReleaseLockControl =
-		lockStatus.locked &&
-		!readonly &&
-		!isCreateMode &&
-		(!isRepeatMode || Boolean(repeat?.values)) &&
-		!(isEmbedded && isStackedForm);
+		!isCreateMode && (!isRepeatMode || Boolean(repeat?.values)) && !(isEmbedded && isStackedForm);
 
 	// If not on a dialog or the prop is not provided, there's no need to handle the close. The form is running in a standalone mode.
 	const handleClose: ButtonProps['onClick'] = (e) => {

@@ -23,12 +23,12 @@ import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import Switch, { switchClasses } from '@mui/material/Switch';
-import ToggleButton from '@mui/material/ToggleButton';
-import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
+import ToggleButton, { toggleButtonClasses } from '@mui/material/ToggleButton';
+import ToggleButtonGroup, { toggleButtonGroupClasses } from '@mui/material/ToggleButtonGroup';
 import Typography from '@mui/material/Typography';
+import Alert, { alertClasses } from '@mui/material/Alert';
 import FormHelperText from '@mui/material/FormHelperText';
 import Grow from '@mui/material/Grow';
-import Alert from '@mui/material/Alert';
 import { SplitButton } from '../../SplitButton';
 import { useDispatch } from 'react-redux';
 import { pushConfirmDialog, pushErrorDialog } from '../../../utils/system';
@@ -179,17 +179,16 @@ export function SaveCard(props: SaveCardProps) {
 							aria-labelledby={afterSavingLabelId}
 							onChange={handleAfterSaving}
 							sx={(theme) => ({
-								// Outer corners follow the theme radius so the group reads as one control.
-								borderRadius: theme.spacing(2),
-								'& .MuiToggleButtonGroup-firstButton': {
-									borderTopLeftRadius: theme.spacing(2),
-									borderBottomLeftRadius: theme.spacing(2)
+								borderRadius: theme.shape.borderRadius,
+								[`& .${toggleButtonGroupClasses.firstButton}`]: {
+									borderTopLeftRadius: theme.shape.borderRadius,
+									borderBottomLeftRadius: theme.shape.borderRadius
 								},
-								'& .MuiToggleButtonGroup-lastButton': {
-									borderTopRightRadius: theme.spacing(2),
-									borderBottomRightRadius: theme.spacing(2)
+								[`& .${toggleButtonGroupClasses.lastButton}`]: {
+									borderTopRightRadius: theme.shape.borderRadius,
+									borderBottomRightRadius: theme.shape.borderRadius
 								},
-								'& .MuiToggleButton-root': {
+								[`& .${toggleButtonClasses.root}`]: {
 									textTransform: 'none',
 									px: 1,
 									py: 0.5
@@ -238,7 +237,12 @@ export function SaveCard(props: SaveCardProps) {
 							<Alert
 								severity="warning"
 								variant="outlined"
-								sx={{ py: 0, px: 1, '& .MuiAlert-icon': { py: 0.5 }, '& .MuiAlert-message': { py: 0.5 } }}
+								sx={{
+									py: 0,
+									px: 1,
+									[`& .${alertClasses.icon}`]: { py: 0.5 },
+									[`& .${alertClasses.message}`]: { py: 0.5 }
+								}}
 							>
 								<FormattedMessage {...messages.keepLockWarning} />
 							</Alert>
