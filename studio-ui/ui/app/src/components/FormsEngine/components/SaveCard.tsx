@@ -22,7 +22,7 @@ import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import FormControlLabel from '@mui/material/FormControlLabel';
-import Switch from '@mui/material/Switch';
+import Switch, { switchClasses } from '@mui/material/Switch';
 import ToggleButton from '@mui/material/ToggleButton';
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import Typography from '@mui/material/Typography';
@@ -45,7 +45,11 @@ const messages = defineMessages({
 	stay: { defaultMessage: 'Stay' },
 	minimize: { defaultMessage: 'Minimize' },
 	close: { defaultMessage: 'Close' },
-	releaseLockOnClose: { defaultMessage: 'Release lock when closing' }
+	releaseLockOnClose: { defaultMessage: 'Release lock when closing' },
+	keepLockWarning: {
+		defaultMessage:
+			"This item will stay locked after you close the form. Other users can't edit it until you release the lock."
+	}
 });
 
 type AfterSaving = 'stay' | 'minimize' | 'close';
@@ -199,21 +203,47 @@ export function SaveCard(props: SaveCardProps) {
 					</Stack>
 				)}
 				{showReleaseLockOnClose && (
-					<FormControlLabel
-						sx={{ mx: 0 }}
-						label={
-							<Typography variant="body2" component="span">
-								<FormattedMessage {...messages.releaseLockOnClose} />
-							</Typography>
-						}
-						control={
-							<Switch
-								size="small"
-								checked={releaseLockOnClose}
-								onChange={(_event, checked) => setReleaseLockOnClose(checked)}
-							/>
-						}
-					/>
+					<Stack spacing={0.5}>
+						<FormControlLabel
+							sx={{ mx: 0 }}
+							label={
+								<Typography variant="body2" component="span">
+									<FormattedMessage {...messages.releaseLockOnClose} />
+								</Typography>
+							}
+							control={
+								<Switch
+									size="small"
+									color={releaseLockOnClose ? 'primary' : 'warning'}
+									checked={releaseLockOnClose}
+									onChange={(_event, checked) => setReleaseLockOnClose(checked)}
+									// `color` only paints the checked switch. Keep-lock is the off state.
+									sx={
+										releaseLockOnClose
+											? undefined
+											: (theme) => ({
+													[`& .${switchClasses.switchBase}`]: {
+														color: theme.palette.warning.main
+													},
+													[`& .${switchClasses.switchBase} + .${switchClasses.track}`]: {
+														backgroundColor: theme.palette.warning.main,
+														opacity: 0.5
+													}
+												})
+									}
+								/>
+							}
+						/>
+						{!releaseLockOnClose && (
+							<Alert
+								severity="warning"
+								variant="outlined"
+								sx={{ py: 0, px: 1, '& .MuiAlert-icon': { py: 0.5 }, '& .MuiAlert-message': { py: 0.5 } }}
+							>
+								<FormattedMessage {...messages.keepLockWarning} />
+							</Alert>
+						)}
+					</Stack>
 				)}
 				<SplitButton
 					fullWidth
