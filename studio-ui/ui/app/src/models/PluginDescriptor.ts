@@ -84,6 +84,8 @@ export interface PluginDescriptor {
 	/**
 	 * FE2 control contributions, keyed by control type id (`field.type`).
 	 * `registerPlugin` validates and installs each into the control contribution registry.
+	 * The map holds contributions of different value types, so it does not tie an entry's `V` to its component
+	 * and hooks. Check an entry with `satisfies ControlPluginContribution<V>`.
 	 */
 	controls?: Record<string, ControlPluginContribution<AnyValue>>;
 	// themes: Array<{ id: string; name: string; themeOptions: ThemeOptions[] }>;

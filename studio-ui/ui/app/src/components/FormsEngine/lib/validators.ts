@@ -80,7 +80,11 @@ export interface ValidatorMetaData {
 		component: Record<string, unknown>,
 		path?: string
 	): Promise<Set<string> | null>;
-	/** Current value of a top-level field in the same form. Item-count editors use it for min ≤ max. */
+	/**
+	 * Current value of a field at the level being validated: the form's top-level fields at the root, the item's
+	 * fields inside a repeat item, the component's fields inside an embedded component. See {@link scopeGetValue}.
+	 * Item-count editors use it for min ≤ max.
+	 */
 	getValue?(fieldId: string): unknown;
 	/** Aborted when the value being validated is superseded. Created per run when the caller has none. */
 	signal?: AbortSignal;
@@ -116,11 +120,19 @@ export interface ValidatorResult {
  */
 export interface ValidatorContext {
 	readonly field: Readonly<ContentTypeField>;
-	/** Aborted when the value changes before the validator settles. Pass it to `fetch` and similar. */
+	/**
+	 * Aborted when this validation run is superseded before it settles: any re-run, such as the value changing,
+	 * a field read through `getValue` changing, or the form's relevance changing.
+	 * Pass it to `fetch` and similar.
+	 */
 	readonly signal: AbortSignal;
 	readonly siteId: string;
 	/**
-	 * Current value of a top-level field of the open form, by field id.
+	 * Current value of a field that lives next to the one being validated, by field id.
+	 * For a top-level field that is the open form's own fields. For a field inside a repeat item it is that item's
+	 * fields. For a field inside an embedded component it is that component's fields. It never reaches the page
+	 * from inside a repeat item or an embedded component, so the same data gets the same verdict wherever it is
+	 * validated. Returns `undefined` for an id that level does not have.
 	 * Reading a field makes this field validate again when that field changes.
 	 */
 	getValue(fieldId: string): unknown;
@@ -192,6 +204,8 @@ const validationValidators: Partial<Record<string, BuiltInValidator>> = {
 /**
  * Wraps a plugin validator for the host. The plugin gets a fresh context with only the public members,
  * so host internals cannot leak. A result that is not `{ valid: true }` is invalid, and a malformed one is reported.
+ * A validator that throws or rejects is invalid too, so a failed request never rejects the field's validation.
+ * It is logged, unless it is an `AbortError`: that run was superseded and its outcome is discarded.
  */
 function adaptPluginValidator(validator: Validator): BuiltInValidator {
 	return async (value, ctx) => {
@@ -201,7 +215,18 @@ function adaptPluginValidator(validator: Validator): BuiltInValidator {
 			siteId: ctx.siteId,
 			getValue: ctx.getValue
 		};
-		const result = await validator(value, pluginCtx);
+		let result: ValidatorResult;
+		try {
+			result = await validator(value, pluginCtx);
+		} catch (error) {
+			if ((error as Error | undefined)?.name !== 'AbortError') {
+				console.error(
+					`The validator for control type "${ctx.field.type}" threw. The field is treated as invalid.`,
+					error
+				);
+			}
+			return { valid: false, messages: [] };
+		}
 		if (result == null || typeof result !== 'object' || typeof result.valid !== 'boolean') {
 			console.error(
 				`The validator for control type "${ctx.field.type}" must return { valid: boolean, messages?: [] }. ` +
@@ -210,7 +235,7 @@ function adaptPluginValidator(validator: Validator): BuiltInValidator {
 			);
 			return { valid: false, messages: [] };
 		}
-		return { valid: result.valid === true, messages: Array.isArray(result.messages) ? result.messages : [] };
+		return { valid: result.valid, messages: Array.isArray(result.messages) ? result.messages : [] };
 	};
 }
 
@@ -237,6 +262,17 @@ export function hasValidationKeyValidator(field: ContentTypeField): boolean {
 	const validations = field.validations;
 	if (!validations) return false;
 	return Object.keys(validations).some((key) => Object.hasOwn(validationValidators, key));
+}
+
+/**
+ * `getValue` for a nested run: reads `values`, the item or component being validated, never the root form.
+ * `values` is already part of the enclosing field's own value, so a change to it re-runs that field's validation.
+ */
+function scopeGetValue(values: unknown): (fieldId: string) => unknown {
+	return (fieldId) =>
+		values != null && typeof values === 'object' && Object.hasOwn(values, fieldId)
+			? (values as Record<string, unknown>)[fieldId]
+			: undefined;
 }
 
 function createBuiltInContext(field: ContentTypeField, meta: ValidatorMetaData): BuiltInValidatorContext {
@@ -480,10 +516,11 @@ export async function repeatGroupValidator(
 	if (!fields) return { valid, messages };
 
 	const validationPromises: Promise<FieldValidityState>[] = [];
-	const childMeta: ValidatorMetaData = { ...meta, signal: ctx.signal };
 
 	// Validate fields of each repeat group item. Min/max occurrence checks above still apply.
 	items.forEach((item) => {
+		// Sub-fields see their own item, not the page. See ValidatorContext.getValue.
+		const childMeta: ValidatorMetaData = { ...meta, signal: ctx.signal, getValue: scopeGetValue(item) };
 		Object.values(fields).forEach((subField) => {
 			if (isFieldPathIrrelevant(meta.irrelevantFieldPaths, subField.id, field.id)) return;
 			const id = subField.id;
@@ -633,7 +670,12 @@ export async function nodeSelectorValidator(
 		const denyList =
 			(await meta.resolveEmbeddedRelevance?.(contentType, component as Record<string, unknown>, meta.itemMeta?.path)) ??
 			null;
-		const childMeta: ValidatorMetaData = { ...meta, irrelevantFieldPaths: denyList, signal: ctx.signal };
+		const childMeta: ValidatorMetaData = {
+			...meta,
+			irrelevantFieldPaths: denyList,
+			signal: ctx.signal,
+			getValue: scopeGetValue(component)
+		};
 		Object.values(fields).forEach((embeddedField) => {
 			if (isFieldPathIrrelevant(denyList, embeddedField.id)) return;
 			const value = component[embeddedField.id];

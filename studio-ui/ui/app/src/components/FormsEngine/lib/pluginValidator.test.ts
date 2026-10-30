@@ -134,6 +134,139 @@ describe('plugin validator', () => {
 	});
 });
 
+describe('plugin validator that fails', () => {
+	function quietly<T>(fn: (error: ReturnType<typeof mock.method>) => Promise<T>) {
+		const error = mock.method(console, 'error', () => undefined);
+		return fn(error).finally(() => error.mock.restore());
+	}
+
+	it('is invalid, and logged, when it throws synchronously or rejects', async () => {
+		await quietly(async (error) => {
+			const thrower = plugin(() => {
+				throw new Error('boom');
+			});
+			const rejecter = plugin(() => Promise.reject(new Error('network')));
+			for (const field of [thrower, rejecter]) {
+				assert.deepEqual(await validateFieldValue(field, 'x', meta), { isValid: false, messages: [] });
+			}
+			assert.equal(error.mock.callCount(), 2);
+		});
+	});
+
+	it('is invalid, and not logged, when the run was aborted', async () => {
+		await quietly(async (error) => {
+			const field = plugin(() => Promise.reject(new DOMException('aborted', 'AbortError')));
+			assert.deepEqual(await validateFieldValue(field, 'x', meta), { isValid: false, messages: [] });
+			assert.equal(error.mock.callCount(), 0);
+		});
+	});
+
+	it('is logged when it fails after its signal aborted, unless the error is an AbortError', async () => {
+		await quietly(async (error) => {
+			const controller = new AbortController();
+			controller.abort();
+			const field = plugin(() => Promise.reject(new Error('real failure')));
+			const result = await validateFieldValue(field, 'x', { ...meta, signal: controller.signal });
+			assert.equal(result.isValid, false);
+			assert.equal(error.mock.callCount(), 1);
+		});
+	});
+});
+
+describe('getValue in nested runs', () => {
+	const sameAsSibling: Validator<string> = (value, ctx) => ({
+		valid: value !== ctx.getValue('other_s'),
+		messages: ['same as sibling']
+	});
+
+	it('reads the repeat item, not the page', async () => {
+		const sub = plugin(sameAsSibling);
+		const repeat = {
+			id: 'rows_o',
+			name: 'Rows',
+			type: 'repeat',
+			validations: {},
+			fields: { thing_s: sub, other_s: { id: 'other_s', name: 'Other', type: 'input', validations: {} } }
+		} as unknown as ContentTypeField;
+		const root = { ...meta, getValue: () => 'page value' };
+		// The item has a sibling equal to the value. The page's other_s differs, so a page read would pass.
+		const same = await validateFieldValue(repeat, [{ thing_s: 'a', other_s: 'a' }], root);
+		assert.equal(same.isValid, false);
+		const differs = await validateFieldValue(repeat, [{ thing_s: 'a', other_s: 'b' }], root);
+		assert.equal(differs.isValid, true);
+		// Each item sees its own sibling.
+		const second = await validateFieldValue(
+			repeat,
+			[
+				{ thing_s: 'a', other_s: 'b' },
+				{ thing_s: 'c', other_s: 'c' }
+			],
+			root
+		);
+		assert.equal(second.isValid, false);
+		// A sibling the item does not have is undefined. The page's value is not used.
+		const missing = await validateFieldValue(repeat, [{ thing_s: 'page value' }], root);
+		assert.equal(missing.isValid, true);
+	});
+
+	it('reads the embedded component, not the page', async () => {
+		const sub = plugin(sameAsSibling);
+		const embedded = {
+			id: 'embedded',
+			type: 'component',
+			fields: { thing_s: sub, other_s: { id: 'other_s', name: 'Other', type: 'input', validations: {} } }
+		};
+		const selector = { id: 'items_o', name: 'Items', type: 'node-selector', validations: {} } as ContentTypeField;
+		const run = (component: Record<string, unknown>, pageValue: unknown) =>
+			validateFieldValue(selector, [{ component: { 'content-type': 'embedded', objectId: 'o1', ...component } }], {
+				...meta,
+				contentTypesById: { embedded } as never,
+				getValue: () => pageValue
+			});
+		// The page has the same id with a different value. The component's own value decides.
+		assert.equal((await run({ thing_s: 'a', other_s: 'a' }, 'page')).isValid, false);
+		assert.equal((await run({ thing_s: 'a', other_s: 'b' }, 'a')).isValid, true);
+	});
+
+	it('re-runs when the repeat value changes, and the page still reaches root fields', async () => {
+		const seen: unknown[] = [];
+		const sub = plugin((_value, ctx) => {
+			seen.push(ctx.getValue('other_s'));
+			return { valid: true };
+		});
+		const repeat = {
+			id: 'rows_o',
+			name: 'Rows',
+			type: 'repeat',
+			validations: {},
+			fields: { thing_s: sub }
+		} as unknown as ContentTypeField;
+		const store = createStore();
+		const formContextRef = {
+			current: {
+				itemMeta: meta.itemMeta,
+				atoms: { valueByFieldId: {} },
+				fieldUpdates$: { next: () => undefined },
+				changedFieldIds: new Set<string>(),
+				originalValues: {}
+			}
+		};
+		const [valueAtom, validationAtom] = createFieldAtoms(
+			repeat,
+			[{ thing_s: 'a', other_s: 'one' }],
+			formContextRef as never,
+			{
+				siteId: 'editorial'
+			}
+		);
+		store.sub(validationAtom, () => undefined);
+		await store.get(validationAtom);
+		store.set(valueAtom, [{ thing_s: 'a', other_s: 'two' }]);
+		await store.get(validationAtom);
+		assert.deepEqual(seen, ['one', 'two']);
+	});
+});
+
 describe('validation atom context', () => {
 	function createAtoms(field: ContentTypeField, others: Record<string, unknown>) {
 		const store = createStore();

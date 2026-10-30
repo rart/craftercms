@@ -349,6 +349,20 @@ Everything below is public contract. `ControlProps` and every hook context may g
 
 `ControlProps<V = unknown>`: `value: V`, `setValue(newValue: V)`, `field`, `contentType`, `readonly`, `autoFocus`, `inputId`, `labelId`, and optional `dataSources`. Type a control with its value type, for example `ControlProps<string>`. Built-in props follow the same pattern, such as `NodeSelectorProps` for `ControlProps<NodeSelectorItem[]>`.
 
+The descriptor's `controls` map holds contributions of different value types, so it does not check an entry's `V` on its own. To have the compiler tie an entry's component, hooks and `V` together, check the entry with `satisfies ControlPluginContribution<V>` (TypeScript), or `/** @satisfies {import('@craftercms/studio-ui/models/PluginDescriptor').ControlPluginContribution<string>} */` on the entry (JavaScript with type checking):
+
+```ts
+export default {
+	id: 'org.example.my-controls',
+	controls: {
+		'my-custom-picker': {
+			Component: MyPicker, // ComponentType<ControlProps<string>>
+			validator: (value) => ({ valid: value.length > 2 }) // value is string
+		} satisfies ControlPluginContribution<string>
+	}
+};
+```
+
 | Hook              | Signature                                                          | Context (`ctx`)                                                                                                  |
 | ----------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
 | `valueRetriever`  | `(value, ctx) => V`. Synchronous.                                  | `{ field }`                                                                                                      |
@@ -357,8 +371,9 @@ Everything below is public contract. `ControlProps` and every hook context may g
 
 A validator returns `{ valid: boolean, messages?: FieldValidityMessage[] }` and never mutates an argument. The field is valid only when `valid === true`. A result of any other shape is reported in the console and treated as invalid. Messages show under the field in the order given. A `FieldValidityMessage` is a string, an `react-intl` `MessageDescriptor`, or `[MessageDescriptor, values]`.
 
-- `ctx.signal` is an `AbortSignal` that aborts when the value changes before the validator settles. Pass it to `fetch` or any abortable call.
-- `ctx.getValue(fieldId)` returns the current value of a top-level field of the open form, or `undefined` for an id the form does not have. Reading a field makes this field validate again when that field changes.
+- `ctx.signal` is an `AbortSignal` that aborts when this validation run is superseded before it settles: any re-run, such as the value changing, a field read through `getValue` changing, or the form's relevance changing. So `signal.aborted` can be `true` while your own value is unchanged. Pass it to `fetch` or any abortable call.
+- `ctx.getValue(fieldId)` returns the current value of a field that lives next to the one being validated, or `undefined` for an id that level does not have. For a top-level field that is the open form's fields. For a field inside a repeat item it is that item's fields, and for a field inside an embedded component it is that component's fields. A nested field never sees the page's values, so the same data gets the same verdict whether the item is validated from its parent or in its own form. Reading a field makes this field validate again when that field changes.
+- A validator that throws or rejects is reported in the console and treated as invalid, so a failed request does not break form validation. An `AbortError` is not logged: that run was superseded and its outcome is discarded.
 - Required and empty checks run first and are host-owned. The validator does not run for a required field that is empty.
 - The host passes plugins nothing else. Internals such as the form controller's relevance deny-list are not part of the context.
 
