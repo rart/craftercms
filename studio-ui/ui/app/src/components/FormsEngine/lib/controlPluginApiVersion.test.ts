@@ -18,7 +18,7 @@
  * Control contributions declare an optional apiVersion.
  * Omitting it, or setting the current version, registers the control.
  * Any other value is refused the same way as an invalid control entry:
- * registerPlugin throws before writing registries, so that plugin's controls stay unregistered.
+ * registerPlugin throws before writing registries, so nothing from that plugin is registered.
  */
 
 import assert from 'node:assert/strict';
@@ -28,7 +28,9 @@ import '../../../../test/registerTsLoader.mjs';
 import type PluginDescriptor from '../../../models/PluginDescriptor';
 import type { ControlProps } from '../types';
 
-const { CONTROL_API_VERSION } = await import('../../../models/PluginDescriptor.ts');
+const { CONTROL_API_VERSION } = await import('../types.ts');
+const { DATA_SOURCE_API_VERSION } = await import('../dataSources/types.ts');
+const { dataSourceModuleRegistry } = await import('../dataSources/registry.ts');
 const { registerPlugin } = await import('../../../services/plugin.ts');
 const { getRegisteredControlContribution } = await import('../controls/registry.ts');
 const { plugins } = await import('../../../utils/constants.ts');
@@ -69,11 +71,21 @@ describe('control contribution apiVersion', () => {
 		const id = 'org.example.unsupported-api-version';
 		const typeKey = 'future-picker';
 		const siblingKey = 'sibling-picker';
+		const dataSourceType = 'org-example-unsupported-api-version-ds';
 		const plugin = {
 			id,
 			controls: {
 				[siblingKey]: { apiVersion: CONTROL_API_VERSION, Component: controlComponent() },
 				[typeKey]: { apiVersion: 2, Component: controlComponent() }
+			},
+			dataSources: {
+				[dataSourceType]: {
+					apiVersion: DATA_SOURCE_API_VERSION,
+					type: dataSourceType,
+					interfaces: ['item'],
+					capabilities: [],
+					create: () => ({})
+				}
 			}
 		} as PluginDescriptor;
 
@@ -91,6 +103,7 @@ describe('control contribution apiVersion', () => {
 		);
 		assert.equal(getRegisteredControlContribution(typeKey), undefined);
 		assert.equal(getRegisteredControlContribution(siblingKey), undefined);
+		assert.equal(dataSourceModuleRegistry.get(dataSourceType), undefined);
 		assert.equal(plugins.has(id), false);
 	});
 });

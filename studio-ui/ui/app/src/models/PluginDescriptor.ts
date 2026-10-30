@@ -17,16 +17,9 @@
 import type { ComponentType } from 'react';
 import WidgetRecord from './WidgetRecord';
 import type { DataSourceBinding, DataSourceModule } from '../components/FormsEngine/dataSources/types';
-import type { ControlProps } from '../components/FormsEngine/types';
+import type { CONTROL_API_VERSION, ControlProps } from '../components/FormsEngine/types';
 import type { ValueRetriever, ValueSerializer } from '../components/FormsEngine/lib/controlValueTypes';
 import type { ValidatorFunctionDef } from '../components/FormsEngine/lib/validators';
-
-/**
- * Current FE2 control contribution contract.
- * A missing `apiVersion` counts as this value, the same rule form controllers use.
- * Bump when breaking the host↔control contract.
- */
-export const CONTROL_API_VERSION = 1 as const;
 
 /**
  * FE2 control contribution on a PluginDescriptor.

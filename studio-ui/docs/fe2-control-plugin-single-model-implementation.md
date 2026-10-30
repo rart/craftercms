@@ -82,13 +82,12 @@ dataSources?: Record<string, DataSourceModule>; // key = DS type id
 
 Add to `ui/app/src/models/PluginDescriptor.ts` (or a small `ControlPluginContribution.ts` if you prefer separation):
 
+`CONTROL_API_VERSION` (`export const CONTROL_API_VERSION = 1 as const`) lives in `components/FormsEngine/types.ts` next to `ControlProps`, not under `models/` (`clean:models` deletes published `build_tsc/models/**/*.js`).
+
 ```ts
 import type { ComponentType } from 'react';
-import type { ControlProps } from '../components/FormsEngine/types';
+import type { CONTROL_API_VERSION, ControlProps } from '../components/FormsEngine/types';
 import type { DataSourceBinding } from '../components/FormsEngine/dataSources/types';
-
-/** Current contract. A missing `apiVersion` counts as this value. */
-export const CONTROL_API_VERSION = 1 as const;
 
 export interface ControlPluginContribution {
 	/** Optional. Missing counts as {@link CONTROL_API_VERSION}. Any other value is refused at registration. */

@@ -19,7 +19,7 @@ import type { ComponentType } from 'react';
 import LookupTable from '../models/LookupTable';
 import { augmentTranslations } from '../utils/i18n';
 import { components, plugins } from '../utils/constants';
-import PluginDescriptor, { CONTROL_API_VERSION } from '../models/PluginDescriptor';
+import type PluginDescriptor from '../models/PluginDescriptor';
 import PluginFileBuilder from '../models/PluginFileBuilder';
 import { WidgetRecord } from '../models/WidgetRecord';
 import type PluginDescriptorWithSource from '../models/PluginDescriptorWithSource';
@@ -35,7 +35,7 @@ import {
 } from '../components/FormsEngine/controls/registry';
 import { controlMap } from '../components/FormsEngine/lib/controlMap';
 import type { ValueRetriever, ValueSerializer } from '../components/FormsEngine/lib/controlValueTypes';
-import type { ControlProps } from '../components/FormsEngine/types';
+import { CONTROL_API_VERSION, type ControlProps } from '../components/FormsEngine/types';
 import type { ValidatorFunctionDef } from '../components/FormsEngine/lib/validators';
 
 const DEFAULT_FILE_NAME = 'index.js';

@@ -21,6 +21,13 @@ import type { RESET } from 'jotai/utils';
 import type { WritableAtom } from 'jotai/vanilla';
 import type { ResolvedDataSources } from './dataSources/types';
 
+/**
+ * Current FE2 control contribution contract.
+ * A missing `apiVersion` counts as this value, the same rule form controllers use.
+ * Bump when breaking the host↔control contract.
+ */
+export const CONTROL_API_VERSION = 1 as const;
+
 export interface ControlProps {
 	value: unknown;
 	setValue(newValue: unknown): void;

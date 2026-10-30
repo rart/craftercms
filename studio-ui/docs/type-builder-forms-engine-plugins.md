@@ -293,7 +293,9 @@ export default {
 };
 ```
 
-`apiVersion` is optional and currently `1`. Omitting it is treated as `1`, so existing plugins keep registering. Any other value is refused by `registerPlugin` before any registry write (same as a missing `Component` or other invalid control entry). The error names the plugin id and the control type. That control is not registered, and the field shows the same load-error placeholder the form already uses for an invalid control contribution.
+`apiVersion` is optional and currently `1`. Omitting it is treated as `1`, so existing plugins keep registering. Any other value is refused by `registerPlugin` before any registry write (same as a missing `Component` or other invalid control entry). The error names the plugin id and the control type. The whole `registerPlugin` call fails, so nothing from that plugin registers (its other controls, data sources, widgets and locales included), and every field using one of its controls shows the existing load-error placeholder.
+
+Plugin bundles can read the host contract at runtime from `craftercms.formsEngine.controls.apiVersion` (`CONTROL_API_VERSION` on `formsEngineControlsHost`), the same way data-source bundles read `craftercms.formsEngine.dataSources.apiVersion`.
 
 Lookup order for IO and validators: built-in `valueRetrieverLookup` / `valueSerializersLookup` / `validatorsMap` first (`Object.hasOwn`), then plugin contribution for `field.type`. Required/empty checks stay in `validateFieldValue` (host). FE preloads all `field.properties.plugin` locators via `preloadControlPluginsForFields` (1) before form value parse at bootstrap and (2) again in `useSaveForm` before `buildContentXml`, walking current values so embeds added after open still register serializers. Bootstrap failures are recorded on `StableFormContext.affectedPluginControlFields`; save-time failures update that list and hard-block save (avoids writing unconverted XML shapes).
 
