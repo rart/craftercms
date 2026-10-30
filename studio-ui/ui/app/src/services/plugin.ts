@@ -36,7 +36,7 @@ import {
 import { controlMap } from '../components/FormsEngine/lib/controlMap';
 import type { ValueRetriever, ValueSerializer } from '../components/FormsEngine/lib/controlValueTypes';
 import type { ControlProps } from '../components/FormsEngine/types';
-import type { ValidatorFunctionDef } from '../components/FormsEngine/lib/validators';
+import type { Validator } from '../components/FormsEngine/lib/validators';
 
 const DEFAULT_FILE_NAME = 'index.js';
 
@@ -46,7 +46,7 @@ type ControlContributionCommit = {
 	bindings: readonly DataSourceBinding[];
 	valueRetriever?: ValueRetriever;
 	valueSerializer?: ValueSerializer;
-	validator?: ValidatorFunctionDef;
+	validator?: Validator;
 };
 
 function isPluginFileBuilder(target: any): target is PluginFileBuilder {

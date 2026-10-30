@@ -19,7 +19,7 @@ import WidgetRecord from './WidgetRecord';
 import type { DataSourceBinding, DataSourceModule } from '../components/FormsEngine/dataSources/types';
 import type { ControlProps } from '../components/FormsEngine/types';
 import type { ValueRetriever, ValueSerializer } from '../components/FormsEngine/lib/controlValueTypes';
-import type { ValidatorFunctionDef } from '../components/FormsEngine/lib/validators';
+import type { Validator } from '../components/FormsEngine/lib/validators';
 
 /**
  * FE2 control contribution on a PluginDescriptor.
@@ -46,7 +46,7 @@ export interface ControlPluginContribution {
 	 * Required/empty checks remain host-owned in `validateFieldValue`.
 	 * FE preloads plugin locators before form bootstrap so validators are registered in time.
 	 */
-	validator?: ValidatorFunctionDef;
+	validator?: Validator;
 }
 
 export interface PluginDescriptor {

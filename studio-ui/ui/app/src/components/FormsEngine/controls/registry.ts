@@ -17,7 +17,7 @@
 import type { ComponentType } from 'react';
 import type { DataSourceBinding } from '../dataSources/types';
 import type { ValueRetriever, ValueSerializer } from '../lib/controlValueTypes';
-import type { ValidatorFunctionDef } from '../lib/validators';
+import type { Validator } from '../lib/validators';
 import type { ControlProps } from '../types';
 
 /** Cached plugin control: Component, bindings, optional IO/validator hooks, and owning `PluginDescriptor.id`. */
@@ -28,7 +28,7 @@ export interface RegisteredControlContribution {
 	pluginId: string;
 	valueRetriever?: ValueRetriever;
 	valueSerializer?: ValueSerializer;
-	validator?: ValidatorFunctionDef;
+	validator?: Validator;
 }
 
 const registeredControls = new Map<string, RegisteredControlContribution>();
@@ -83,6 +83,6 @@ export function getPluginControlValueSerializer(controlType: string): ValueSeria
 }
 
 /** Plugin control validator for `field.type`, if contributed. */
-export function getPluginControlValidator(controlType: string): ValidatorFunctionDef | undefined {
+export function getPluginControlValidator(controlType: string): Validator | undefined {
 	return registeredControls.get(controlType)?.validator;
 }
