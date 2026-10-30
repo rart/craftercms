@@ -294,124 +294,112 @@ export function SaveCard(props: SaveCardProps) {
 			</Paper>
 			{showSaveOptions && (
 				// Sibling of the card, so the sidebar's space-y gap sits above Release Lock and Close.
-				<Box
-					role="group"
-					aria-labelledby={afterSavingLabelId}
-					sx={(theme) => ({
-						display: 'flex',
-						flexDirection: 'column',
-						alignItems: 'stretch',
-						width: '100%',
-						minWidth: 0,
-						maxWidth: '100%',
-						bgcolor: 'action.hover',
-						borderRadius: theme.shape.borderRadius
-					})}
-				>
-					<Typography
-						id={afterSavingLabelId}
-						variant="caption"
-						color="text.secondary"
-						component="span"
-						sx={{ px: 1, py: 0.25, textAlign: 'left' }}
-					>
-						<FormattedMessage {...messages.afterSaving} />
-					</Typography>
-					<ToggleButtonGroup
-						ref={setGroup}
-						exclusive
-						fullWidth
-						size="small"
-						color="primary"
-						value={afterSaving}
-						aria-labelledby={afterSavingLabelId}
-						onChange={handleAfterSaving}
-						sx={(theme) => ({
-							minWidth: 0,
-							maxWidth: '100%',
-							[`& .${toggleButtonGroupClasses.firstButton}`]: {
-								borderBottomLeftRadius: theme.shape.borderRadius
-							},
-							[`& .${toggleButtonGroupClasses.lastButton}`]: {
-								borderBottomRightRadius: theme.shape.borderRadius
-							},
-							[`& .${toggleButtonClasses.root}`]: {
-								flex: '1 1 0',
-								minWidth: 0,
-								overflow: 'hidden',
-								textTransform: 'none',
-								px: 1,
-								py: 0.5,
-								borderTopLeftRadius: 0,
-								borderTopRightRadius: 0
-							}
-						})}
-					>
-						{afterSavingOrder.map((value) => {
-							const label = afterSavingLabels[value];
-							const Icon = afterSavingIcons[value];
-							const showTip = afterSavingIconsMode && afterSavingTip === value;
-							return (
-								<ToggleButton
-									key={value}
-									value={value}
-									aria-label={afterSavingIconsMode ? label : undefined}
-									sx={{ position: 'relative' }}
-									onMouseEnter={() => setAfterSavingTip(measureAfterSaving() ? value : null)}
-									onMouseLeave={() => setAfterSavingTip((current) => (current === value ? null : current))}
-									onFocus={() => setAfterSavingTip(measureAfterSaving() ? value : null)}
-									onBlur={() => setAfterSavingTip((current) => (current === value ? null : current))}
-								>
-									{afterSavingIconsMode ? (
-										<Tooltip
-											title={label}
-											open={showTip}
-											disableHoverListener
-											disableFocusListener
-											disableTouchListener
-										>
-											<Box component="span" sx={{ display: 'inline-flex', lineHeight: 0 }}>
-												<Icon fontSize="small" aria-hidden />
+				<Box role="group" aria-labelledby={afterSavingLabelId}>
+					<Stack spacing={0.5}>
+						<Typography
+							id={afterSavingLabelId}
+							variant="caption"
+							color="text.secondary"
+							component="span"
+							sx={{ textAlign: 'left' }}
+						>
+							<FormattedMessage {...messages.afterSaving} />
+						</Typography>
+						<ToggleButtonGroup
+							ref={setGroup}
+							exclusive
+							fullWidth
+							size="small"
+							color="primary"
+							value={afterSaving}
+							aria-labelledby={afterSavingLabelId}
+							onChange={handleAfterSaving}
+							sx={(theme) => ({
+								borderRadius: theme.shape.borderRadius,
+								[`& .${toggleButtonGroupClasses.firstButton}`]: {
+									borderTopLeftRadius: theme.shape.borderRadius,
+									borderBottomLeftRadius: theme.shape.borderRadius
+								},
+								[`& .${toggleButtonGroupClasses.lastButton}`]: {
+									borderTopRightRadius: theme.shape.borderRadius,
+									borderBottomRightRadius: theme.shape.borderRadius
+								},
+								[`& .${toggleButtonClasses.root}`]: {
+									flex: '1 1 0',
+									minWidth: 0,
+									overflow: 'hidden',
+									textTransform: 'none',
+									px: 1,
+									py: 0.5
+								}
+							})}
+						>
+							{afterSavingOrder.map((value) => {
+								const label = afterSavingLabels[value];
+								const Icon = afterSavingIcons[value];
+								const showTip = afterSavingIconsMode && afterSavingTip === value;
+								return (
+									<ToggleButton
+										key={value}
+										value={value}
+										aria-label={afterSavingIconsMode ? label : undefined}
+										sx={{ position: 'relative' }}
+										onMouseEnter={() => setAfterSavingTip(measureAfterSaving() ? value : null)}
+										onMouseLeave={() => setAfterSavingTip((current) => (current === value ? null : current))}
+										onFocus={() => setAfterSavingTip(measureAfterSaving() ? value : null)}
+										onBlur={() => setAfterSavingTip((current) => (current === value ? null : current))}
+									>
+										{afterSavingIconsMode ? (
+											<Tooltip
+												title={label}
+												open={showTip}
+												disableHoverListener
+												disableFocusListener
+												disableTouchListener
+											>
+												<Box component="span" sx={{ display: 'inline-flex', lineHeight: 0 }}>
+													<Icon fontSize="small" aria-hidden />
+												</Box>
+											</Tooltip>
+										) : (
+											<Box
+												component="span"
+												data-after-saving-label=""
+												sx={{
+													display: 'block',
+													width: '100%',
+													overflow: 'hidden',
+													textOverflow: 'ellipsis',
+													whiteSpace: 'nowrap',
+													minWidth: 0
+												}}
+											>
+												{label}
 											</Box>
-										</Tooltip>
-									) : (
+										)}
 										<Box
 											component="span"
-											data-after-saving-label=""
+											aria-hidden
+											ref={(node: HTMLSpanElement | null) => {
+												probes.current[value] = node;
+											}}
 											sx={{
-												display: 'block',
-												width: '100%',
-												overflow: 'hidden',
-												textOverflow: 'ellipsis',
+												position: 'absolute',
+												left: 0,
+												top: 0,
+												visibility: 'hidden',
 												whiteSpace: 'nowrap',
-												minWidth: 0
+												width: 'max-content',
+												pointerEvents: 'none'
 											}}
 										>
 											{label}
 										</Box>
-									)}
-									<Box
-										component="span"
-										aria-hidden
-										ref={(node: HTMLSpanElement | null) => {
-											probes.current[value] = node;
-										}}
-										sx={{
-											position: 'absolute',
-											left: 0,
-											top: 0,
-											visibility: 'hidden',
-											whiteSpace: 'nowrap',
-											width: 'max-content',
-											pointerEvents: 'none'
-										}}
-									>
-										{label}
-									</Box>
-								</ToggleButton>
-							);
-						})}
-					</ToggleButtonGroup>
+									</ToggleButton>
+								);
+							})}
+						</ToggleButtonGroup>
+					</Stack>
 				</Box>
 			)}
 		</>
