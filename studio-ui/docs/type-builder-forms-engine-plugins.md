@@ -291,6 +291,8 @@ export default {
 };
 ```
 
+`raw` is the element text as a string, never auto-typed (`<count>5</count>` gives `'5'`, not `5`), or the deserialized object for elements with children. Convert typed values in `valueRetriever`; without one, the control receives the string as-is.
+
 Lookup order for IO and validators: built-in `valueRetrieverLookup` / `valueSerializersLookup` / `validatorsMap` first (`Object.hasOwn`), then plugin contribution for `field.type`. Required/empty checks stay in `validateFieldValue` (host). FE preloads all `field.properties.plugin` locators via `preloadControlPluginsForFields` (1) before form value parse at bootstrap and (2) again in `useSaveForm` before `buildContentXml`, walking current values so embeds added after open still register serializers. Bootstrap failures are recorded on `StableFormContext.affectedPluginControlFields`; save-time failures update that list and hard-block save (avoids writing unconverted XML shapes).
 
 Eager alternative for UMD loaders: `craftercms.formsEngine.controls.registerDataSourceBindings(type, bindings)` (bindings only; prefer `descriptor.controls` for the component). Host also exposes `getValueRetriever` / `getValueSerializer` / `getValidator` for inspection.
@@ -466,7 +468,7 @@ interface PluginDescriptor {
 interface ControlPluginContribution {
 	Component: ComponentType<ControlProps>;
 	dataSourceBindings?: DataSourceBinding | readonly DataSourceBinding[];
-	valueRetriever?: ValueRetriever; // optional XML → form value
+	valueRetriever?: ValueRetriever; // optional XML → form value; `raw` is a string (never auto-typed) or an object for elements with children
 	valueSerializer?: ValueSerializer; // optional form value → XML shape
 	validator?: ValidatorFunctionDef; // optional type-specific; required/empty is host-owned
 }

@@ -929,7 +929,7 @@ function updateItemId(item: Element, skipShared: boolean = false): { modelId: st
 }
 
 // Updates the ids of a component (shared/embedded)
-function updateComponentId(component: Element, id: string): void {
+export function updateComponentId(component: Element, id: string): void {
 	const objectId = component.querySelector(':scope > objectId');
 	const fileName = component.querySelector(':scope > file-name');
 
@@ -940,8 +940,12 @@ function updateComponentId(component: Element, id: string): void {
 	// Components created or edited in-session by FE2 may have no file-name.
 	if (fileName) fileName.innerHTML = `${id}.xml`;
 	objectId.innerHTML = id;
-	const groupId = component.querySelector(':scope > objectGroupId');
-	if (groupId) groupId.innerHTML = createObjectGroupId(id);
+	let groupId = component.querySelector(':scope > objectGroupId');
+	if (!groupId) {
+		groupId = createElement('objectGroupId');
+		component.insertBefore(groupId, objectId);
+	}
+	groupId.innerHTML = createObjectGroupId(id);
 
 	updateElementComponentsId(component);
 }

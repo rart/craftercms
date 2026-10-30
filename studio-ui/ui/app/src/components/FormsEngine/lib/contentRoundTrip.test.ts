@@ -23,7 +23,11 @@ import { JSDOM } from 'jsdom';
 import '../../../../test/registerTsLoader.mjs';
 
 const { window } = new JSDOM('');
-Object.assign(globalThis, { DOMParser: window.DOMParser, XMLSerializer: window.XMLSerializer });
+Object.assign(globalThis, {
+	DOMParser: window.DOMParser,
+	XMLSerializer: window.XMLSerializer,
+	Element: window.Element
+});
 
 const { createStore } = await import('jotai');
 const { getItemDataSourceId, parseLegacyFormDefinition } = await import('../../../services/contentTypes.ts');
@@ -212,5 +216,81 @@ describe('XB item datasource', () => {
 	it('is unknown when none or several data sources allow the item', () => {
 		assert.equal(id('/component/x', 'shared'), undefined);
 		assert.equal(id('/component/y', 'embedded'), undefined);
+	});
+	it('is written by XB inserts only when known', async () => {
+		const { insertComponent, insertInstance } = await import('../../../services/content.ts');
+		const { getCurrentIntl } = await import('../../../utils/i18n.ts');
+		// Messages get their ids at build time, so the version comment is stubbed.
+		Object.assign(getCurrentIntl(), { formatMessage: () => '' });
+		// XB inserts read the parent document and write it back through the API, so XHR is faked here.
+		const written: string[] = [];
+		class FakeXhr extends EventTarget {
+			status = 0;
+			response: unknown = null;
+			responseType = '';
+			upload = new EventTarget();
+			#method = '';
+			open(method: string) {
+				this.#method = method;
+			}
+			setRequestHeader() {}
+			abort() {}
+			getResponseHeader() {
+				return 'application/xml';
+			}
+			getAllResponseHeaders() {
+				return 'content-type: application/xml';
+			}
+			send(body: string) {
+				const isGet = this.#method === 'GET';
+				if (!isGet && body.includes('"content"')) written.push(JSON.parse(body).content);
+				this.status = 200;
+				this.response = isGet
+					? new Blob(['<page><objectId>p</objectId><items_o item-list="true"></items_o></page>'])
+					: {};
+				queueMicrotask(() => this.dispatchEvent(new Event('load')));
+			}
+		}
+		Object.assign(globalThis, { XMLHttpRequest: FakeXhr });
+		const item = (contentTypeId: string) => ({
+			craftercms: { id: 'abcd1234', label: 'L', path: '/site/c.xml', contentTypeId }
+		});
+		const lastItem = () => fromString(written.at(-1)).querySelector('items_o > item');
+		const run = (observable) =>
+			new Promise((resolve, reject) => observable.subscribe({ complete: resolve, error: reject }));
+		await run(insertInstance('s', '/site/p.xml', 'p', 'items_o', 0, type, item('/component/y') as any));
+		assert.equal(lastItem().getAttribute('datasource'), 'b');
+		await run(insertInstance('s', '/site/p.xml', 'p', 'items_o', 0, type, item('/component/x') as any));
+		assert.equal(lastItem().hasAttribute('datasource'), false);
+		await run(
+			insertComponent(
+				's',
+				'/site/p.xml',
+				'p',
+				'items_o',
+				0,
+				type,
+				item('/component/y') as any,
+				{ id: '/component/y' } as any
+			)
+		);
+		assert.equal(lastItem().hasAttribute('datasource'), false);
+		assert.equal(lastItem().querySelector('component > objectGroupId').textContent, 'abcd');
+	});
+});
+
+describe('XB duplicate', () => {
+	it('gives a component new ids, even without file-name or objectGroupId', async () => {
+		const { updateComponentId } = await import('../../../services/content.ts');
+		const component = fromString(
+			'<component><internal-name>A</internal-name><objectId>old</objectId></component>'
+		).documentElement;
+		updateComponentId(component, 'ef01aaaa-0000');
+		assert.equal(component.querySelector(':scope > objectId').textContent, 'ef01aaaa-0000');
+		assert.equal(component.querySelector(':scope > objectId').previousElementSibling.tagName, 'objectGroupId');
+		assert.equal(component.querySelector(':scope > objectGroupId').textContent, 'ef01');
+		updateComponentId(component, '2345bbbb-0000');
+		assert.equal(component.querySelectorAll(':scope > objectGroupId').length, 1);
+		assert.equal(component.querySelector(':scope > objectGroupId').textContent, '2345');
 	});
 });

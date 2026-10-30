@@ -29,7 +29,6 @@ import { escapeXml } from '../../../utils/xml';
 import { AwsFile } from '../controls/AWSFileUpload';
 import type { ValueSerializer } from './controlValueTypes';
 
-const attributeNamePrefix = xmlAttributePrefix;
 const cdataPropName = '__cdata__';
 const textNodeName = '#text';
 
@@ -106,7 +105,7 @@ function prepareValuesForXmlSerialising(
 	values: LookupTable<unknown>,
 	contentTypesLookup: LookupTable<ContentType>
 ): LookupTable<unknown> {
-	// System elements go first, as the backend reads the first `objectId`, `objectGroupId`, etc. in the document.
+	// System elements go first, as document-wide readers (e.g. querySelector('objectId')) take the first match.
 	const jObj: LookupTable<unknown> = {};
 	[...systemFieldsNotInType, ...preservedElements].forEach((key) => {
 		if (key in values) jObj[key] = values[key];
@@ -142,7 +141,7 @@ function prepareValuesForXmlSerialising(
 }
 
 type XmlNuancedArrayFormat<T = unknown> = {
-	[P in `${typeof attributeNamePrefix}item-list`]: true;
+	[P in `${typeof xmlAttributePrefix}item-list`]: true;
 } & {
 	item: T[];
 };
@@ -226,7 +225,7 @@ function prepareAwsFile(field: ContentTypeField, value: AwsFile) {
 }
 
 function createAttrHint(attributeName: string): string {
-	return `${attributeNamePrefix}${attributeName}`;
+	return `${xmlAttributePrefix}${attributeName}`;
 }
 
 // TODO: Move to utils/xml.ts?
@@ -236,7 +235,7 @@ export function getXmlBuilder(options?: Partial<XmlBuilderOptions>): XMLBuilder 
 		indentBy: '\t',
 		ignoreAttributes: false,
 		suppressBooleanAttributes: false,
-		attributeNamePrefix,
+		attributeNamePrefix: xmlAttributePrefix,
 		cdataPropName,
 		textNodeName,
 		...options

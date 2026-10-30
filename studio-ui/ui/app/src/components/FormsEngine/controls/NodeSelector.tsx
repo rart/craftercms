@@ -83,7 +83,7 @@ import FieldBox from '../components/FieldBox';
 import { isTouchDevice, KeyDownEvent, sortableListKeyDownHandler } from '../lib/sortableListUtil';
 import SortableListSkeleton from '../components/SortableListSkeleton';
 import { EmptyState } from '../../EmptyState';
-import { XmlKeys } from '../lib/formConsts';
+import { xmlDataSourceAttribute, XmlKeys } from '../lib/formConsts';
 import { showBrowseFilesDialog, showSearchDialog } from '../lib/controlHelpers';
 import { Dispatch as ReduxDispatch } from 'redux';
 import UploadFileOutlinedIcon from '@mui/icons-material/UploadFileOutlined';
@@ -129,7 +129,7 @@ export interface NodeSelectorItem {
 	key: string;
 	value: string;
 	/** The `datasource` attribute: the id of the data source the item was added with. */
-	'@:datasource'?: string;
+	[xmlDataSourceAttribute]?: string;
 	include?: string;
 	disableFlattening?: boolean;
 	component?: Record<string, Primitive>;
@@ -1426,7 +1426,7 @@ function isItemComponent(item: NodeSelectorItem): boolean {
 
 /** Sets the `datasource` attribute of new items to the id of the data source they were added with, when known. */
 function withDataSourceId(newItems: NodeSelectorItem[], dataSourceId: string | undefined): NodeSelectorItem[] {
-	return dataSourceId ? newItems.map((item) => ({ ...item, '@:datasource': dataSourceId })) : newItems;
+	return dataSourceId ? newItems.map((item) => ({ ...item, [xmlDataSourceAttribute]: dataSourceId })) : newItems;
 }
 
 /**

@@ -65,9 +65,13 @@ export const systemFieldsNotInType = [
 
 /**
  * Elements a content object may hold without a field for them in its type. They are kept on save
- * when the form doesn't produce them. Unknown elements are still dropped, as they are fields removed from the type.
+ * when the form doesn't produce them. Unknown elements are still dropped (at the content root; repeat items keep theirs),
+ * as they are fields removed from the type.
  */
 export const preservedElements: string[] = [XmlKeys.groupId, XmlKeys.orderDefault, XmlKeys.placeInNav];
 
 /** Prefix of item attributes in the values object, as read by `deserializeContentDoc` and written by `buildContentXml`. */
 export const xmlAttributePrefix = '@:';
+
+/** The node-selector item `datasource` attribute key in the values object. */
+export const xmlDataSourceAttribute = `${xmlAttributePrefix}datasource` as const;

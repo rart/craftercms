@@ -148,7 +148,7 @@ export function getItemDataSourceId(
 	itemContentTypeId: string,
 	mode: keyof AllowedContentTypesData
 ): string | undefined {
-	const itemManagerIds = (field?.properties?.itemManager?.value as string)?.split(',') ?? [];
+	const itemManagerIds = (field?.properties?.itemManager?.value as string)?.split(',').map((id) => id.trim()) ?? [];
 	const matches = (contentType.dataSources ?? []).filter(
 		(dataSource) =>
 			dataSource.type === 'components' &&
