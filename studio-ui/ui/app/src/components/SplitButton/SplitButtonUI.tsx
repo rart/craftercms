@@ -58,18 +58,24 @@ export function SplitButtonUI(props: SplitButtonUIProps) {
 			<ButtonGroup
 				disabled={disabled}
 				variant="contained"
-				color="primary"
+				color={options[selectedIndex]?.color ?? 'primary'}
 				ref={anchorRef}
 				aria-label="split button"
 				fullWidth={fullWidth}
 			>
-				<Button color="primary" variant="contained" loading={loading} onClick={handleClick}>
+				<Button
+					color={options[selectedIndex]?.color ?? 'primary'}
+					variant="contained"
+					loading={loading}
+					startIcon={options[selectedIndex]?.icon}
+					onClick={handleClick}
+				>
 					{options[selectedIndex].label}
 				</Button>
 				{options.length > 1 && (
 					<Button
 						disabled={loading}
-						color="primary"
+						color={options[selectedIndex]?.color ?? 'primary'}
 						size="small"
 						aria-controls={open ? 'split-button-menu' : undefined}
 						aria-expanded={open ? 'true' : undefined}

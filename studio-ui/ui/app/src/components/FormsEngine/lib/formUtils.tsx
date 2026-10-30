@@ -93,7 +93,9 @@ import {
 	getFormsEngineCloseAfterSave,
 	getFormsEngineCollapseToCKey,
 	getFormsEngineMinimizeAfterSave,
-	getFormsEngineReleaseLockOnClose
+	getFormsEngineReleaseLockOnClose,
+	getFormsEngineSaveAsDraft,
+	getStoredFormsEngineReleaseLockOnClose
 } from '../../../utils/state';
 import { createComponentId } from '../../../utils/system';
 import { showErrorDialog } from '../../../state/actions/dialogs';
@@ -105,9 +107,7 @@ import {
 	keepLockOnStackedUnmount,
 	lockPathToRelease,
 	planLockRelease,
-	browserLocalStorage,
 	postUnlockKeepalive,
-	readPersistedBoolean,
 	sharedPerUserAtom,
 	shouldUnlockOnPageHide,
 	unlockErrorPayload,
@@ -748,6 +748,14 @@ export function createFormsEngineAtoms(
 					getOnInit: true
 				}) as unknown as AtomWithStorage
 		),
+		// False or absent is Save. One atom per user, same as the release-lock switch.
+		saveAsDraft: sharedPerUserAtom(
+			getFormsEngineSaveAsDraft(username),
+			() =>
+				atomWithStorage(getFormsEngineSaveAsDraft(username), false, undefined, {
+					getOnInit: true
+				}) as unknown as AtomWithStorage
+		),
 		...mixin,
 		relevanceVersion: atom(0),
 		...createFormVisibilityAtoms(visibility.state, visibility.scrollFieldId)
@@ -968,7 +976,6 @@ export function useUnlockOnClose(props: {
 	const dispatch = useDispatch();
 	const siteId = useActiveSiteId();
 	const username = useActiveUser()?.username ?? '';
-	const releaseLockKey = getFormsEngineReleaseLockOnClose(username);
 	const readEntryState = (entry: StableFormContextProps | undefined, index: number): UnlockOnCloseState => {
 		const atoms = entry?.atoms ?? null;
 		const lockResult = atoms ? store.get(atoms.lockResult) : null;
@@ -977,6 +984,7 @@ export function useUnlockOnClose(props: {
 		const props = entry?.props;
 		const recorded = lockResult?.lockedPath;
 		const atomChoice = atoms ? store.get(atoms.releaseLockOnClose) : undefined;
+		const storedChoice = getStoredFormsEngineReleaseLockOnClose(username);
 		return {
 			isRepeatMode: Boolean(props?.repeat?.fieldId),
 			isCreateMode: Boolean(props?.create?.path),
@@ -987,7 +995,7 @@ export function useUnlockOnClose(props: {
 			siteId,
 			lockedPath: lockResult?.locked ? recorded || entry?.itemMeta?.path || null : null,
 			// Storage is shared across dialog stores. The atom covers a missing or unreadable value.
-			releaseLockOnClose: readPersistedBoolean(releaseLockKey, atomChoice, browserLocalStorage())
+			releaseLockOnClose: storedChoice ?? atomChoice !== false
 		};
 	};
 	const unlockEffectRefs = useUpdateRefs({

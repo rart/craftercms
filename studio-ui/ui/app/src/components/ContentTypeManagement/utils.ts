@@ -603,6 +603,7 @@ export const createStableFormContextProps = (
 			closeAfterSave: undefined,
 			minimizeAfterSave: undefined,
 			releaseLockOnClose: undefined,
+			saveAsDraft: undefined,
 			// Field validation atoms always read this, even where no form controller attaches.
 			relevanceVersion: atom(0),
 			...createFormVisibilityAtoms()

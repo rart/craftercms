@@ -179,6 +179,7 @@ import {
 	repeatFormLock,
 	revealField,
 	showValidationError,
+	resolveSaveDraft,
 	selectedItemSavePlan,
 	stackEntryFlagsAtom,
 	stackedFormCloseAction,
@@ -1183,18 +1184,20 @@ function FormOrchestrator(props: FormsEngineProps) {
 
 	// Live invalid ids. The first read is immediate; later edits wait out the pause in the hook,
 	// so the alert's count is not rewritten on every keystroke.
-	const localInvalidFieldIds = useInvalidFieldIds(
+	const localInvalid = useInvalidFieldIds(
 		atoms.validationByFieldId,
 		irrelevantFieldPaths,
 		repeat?.fieldId,
 		fieldUpdates$
 	);
-	const parentInvalidFieldIds = useInvalidFieldIds(
+	const parentInvalid = useInvalidFieldIds(
 		parentAtoms?.validationByFieldId,
 		parentEntry?.formControllerState?.irrelevantFieldPaths,
 		undefined,
 		parentEntry?.fieldUpdates$
 	);
+	// Until the first read finishes, the save button shows the remembered choice and does not flip to draft.
+	const validityReady = localInvalid.ready && (itemMode === 'selected' ? parentInvalid.ready : true);
 
 	// region Workflow item updates
 	useEffect(() => {
@@ -1434,7 +1437,7 @@ function FormOrchestrator(props: FormsEngineProps) {
 		[parentEntry]
 	);
 	const validationErrors = validationErrorsAlert({
-		localInvalidFieldIds,
+		localInvalidFieldIds: localInvalid.ids,
 		localSectionOrder: isRepeatMode ? repeatFieldIdList : countFieldIds,
 		localIrrelevant: irrelevantFieldPaths,
 		localParentPath: repeat?.fieldId,
@@ -1442,7 +1445,7 @@ function FormOrchestrator(props: FormsEngineProps) {
 		openRepeatFieldId: repeat?.fieldId,
 		parent: parentEntry
 			? {
-					invalidFieldIds: parentInvalidFieldIds,
+					invalidFieldIds: parentInvalid.ids,
 					sectionOrder: parentFieldOrder,
 					irrelevantFieldPaths: parentEntry.formControllerState?.irrelevantFieldPaths
 				}
@@ -1476,14 +1479,17 @@ function FormOrchestrator(props: FormsEngineProps) {
 		commitFormVisibility(store.set, parentAtoms, reveal.state, reveal.fieldId);
 		contextApi.popForm();
 	};
-	const saveFromSelectedItem = async (_event: unknown, draft?: boolean) => {
+	const saveFromSelectedItem = async (_event: unknown, draft?: boolean | 'auto') => {
 		if (!parentAtoms || !parentEntry) return;
+		const choice = draft ?? false;
+		const rememberedDraft = store.get(parentAtoms.saveAsDraft) === true;
 		const [itemInvalidFieldIds, parentInvalidNow] = await Promise.all([
 			readInvalidFieldIds(store, atoms.validationByFieldId, irrelevantFieldPaths, repeat?.fieldId),
 			readInvalidFieldIds(store, parentAtoms.validationByFieldId, parentEntry.formControllerState?.irrelevantFieldPaths)
 		]);
 		const plan = selectedItemSavePlan({
-			draft: draft === true,
+			draft: choice,
+			saveAsDraft: rememberedDraft,
 			itemVisibility: store.get(atoms.formVisibility),
 			itemInvalidFieldIds,
 			itemFieldOrder: repeatFieldIdList,
@@ -1504,8 +1510,10 @@ function FormOrchestrator(props: FormsEngineProps) {
 			contextApi.popForm();
 			return 'revealed' as const;
 		}
-		// SaveCard already set the root draft flag. Read save at click time.
-		return rootFormActions.save(draft);
+		// The plan already folded `auto` into a boolean from this fresh read. Pass that, not the label.
+		return rootFormActions.save(
+			resolveSaveDraft(choice, itemInvalidFieldIds.length > 0 || parentInvalidNow.length > 0, rememberedDraft)
+		);
 	};
 
 	// Same gate as the Release Lock button. Create, a new repeat item, and an embedded form
@@ -1851,6 +1859,7 @@ function FormOrchestrator(props: FormsEngineProps) {
 											<ValidationErrorsAlert
 												count={validationErrors.count}
 												fieldName={validationFieldName}
+												willSaveAsDraft={validityReady}
 												onShow={showValidationField}
 											/>
 										)}
@@ -1860,6 +1869,8 @@ function FormOrchestrator(props: FormsEngineProps) {
 											isRepeatMode={useParentSaveCard ? false : isRepeatMode}
 											atoms={useParentSaveCard ? parentAtoms : undefined}
 											setSaveAsDraft={useParentSaveCard ? rootFormActions.setSaveAsDraft : setSaveAsDraftAction}
+											validationErrorCount={validationErrors?.count ?? 0}
+											validityReady={validityReady}
 											onSave={useParentSaveCard ? saveFromSelectedItem : (_event, draft) => saveFn(draft)}
 										/>
 										{showReleaseLockControl && (

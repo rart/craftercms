@@ -28,12 +28,14 @@ import Switch, { switchClasses } from '@mui/material/Switch';
 import ToggleButton, { toggleButtonClasses } from '@mui/material/ToggleButton';
 import ToggleButtonGroup, { toggleButtonGroupClasses } from '@mui/material/ToggleButtonGroup';
 import Typography from '@mui/material/Typography';
-import Alert, { alertClasses } from '@mui/material/Alert';
+import Alert from '@mui/material/Alert';
 import FormHelperText from '@mui/material/FormHelperText';
 import Grow from '@mui/material/Grow';
 import PushPinOutlined from '@mui/icons-material/PushPinOutlined';
 import MinimizeRounded from '@mui/icons-material/MinimizeRounded';
 import CloseIcon from '@mui/icons-material/Close';
+import SaveOutlined from '@mui/icons-material/SaveOutlined';
+import EditNoteOutlined from '@mui/icons-material/EditNoteOutlined';
 import { useIsDarkModeTheme } from '../../../hooks/useIsDarkModeTheme';
 import { SplitButton } from '../../SplitButton';
 import { useDispatch } from 'react-redux';
@@ -53,8 +55,7 @@ const messages = defineMessages({
 	close: { defaultMessage: 'Close' },
 	releaseLockOnClose: { defaultMessage: 'Release lock when closing' },
 	keepLockWarning: {
-		defaultMessage:
-			"This item will stay locked after you close the form. Other users can't edit it until you release the lock."
+		defaultMessage: "Other users can't edit it until you release the lock."
 	}
 });
 
@@ -143,15 +144,28 @@ export interface SaveCardProps {
 	setSaveAsDraft: (value: boolean) => void;
 	/** Defaults to this form's atoms. A selected-fields item form passes the parent's atoms. */
 	atoms?: FormsEngineAtoms;
+	/** From the form's existing validation alert. Not a second validity subscription. */
+	validationErrorCount?: number;
+	/** False until that alert's first validity read has finished. */
+	validityReady?: boolean;
 	/**
 	 * Runs the save. `revealed` opened a hidden field and wrote nothing.
 	 * `invalid` is the cannot-proceed dialog. `saved` started a write.
+	 * `auto` is the main button: draft when the fresh read is invalid, else the remembered choice.
 	 */
-	onSave: (e: MouseEvent, draft?: boolean) => Promise<SaveFormResult | void>;
+	onSave: (e: MouseEvent, draft?: boolean | 'auto') => Promise<SaveFormResult | void>;
 }
 
 export function SaveCard(props: SaveCardProps) {
-	const { isEmbedded, isStackedForm, isRepeatMode, setSaveAsDraft, onSave } = props;
+	const {
+		isEmbedded,
+		isStackedForm,
+		isRepeatMode,
+		setSaveAsDraft,
+		onSave,
+		validationErrorCount = 0,
+		validityReady = false
+	} = props;
 	const stableFormContext = useContext(StableFormContext);
 	const formAtoms = props.atoms ?? stableFormContext.atoms;
 	const isSubmitting = useAtomValue(formAtoms.isSubmitting);
@@ -159,6 +173,9 @@ export function SaveCard(props: SaveCardProps) {
 	const hasPendingChanges = useAtomValue(formAtoms.hasPendingChanges);
 	const [closeAfterSave, setCloseAfterSave] = useAtom(formAtoms.closeAfterSave);
 	const [minimizeAfterSave, setMinimizeAfterSave] = useAtom(formAtoms.minimizeAfterSave);
+	const [saveAsDraft, setSaveAsDraftChoice] = useAtom(formAtoms.saveAsDraft);
+	// Invalid forms always show Save Draft. Before the first read, keep the remembered choice.
+	const showDraft = (validityReady && validationErrorCount > 0) || saveAsDraft === true;
 	const afterSavingLabelId = useId();
 	const afterSaving = afterSavingChoice(closeAfterSave, minimizeAfterSave);
 	const disableSave = !isEmbedded && !isRepeatMode && (isSubmitting || !versionComment);
@@ -208,10 +225,10 @@ export function SaveCard(props: SaveCardProps) {
 			})
 		);
 	};
-	const handleSave = async (e: MouseEvent, draft?: boolean) => {
+	const handleSave = async (e: MouseEvent, draft?: boolean | 'auto') => {
 		if (saveInFlight.current) return;
 		saveInFlight.current = true;
-		setSaveAsDraft(Boolean(draft));
+		setSaveAsDraft(draft === true);
 		try {
 			const status = await onSave(e, draft);
 			if (status === 'invalid') showCannotProceed();
@@ -257,19 +274,26 @@ export function SaveCard(props: SaveCardProps) {
 						fullWidth
 						loading={isSubmitting}
 						disabled={disableSave}
+						selectedId={showDraft ? 'saveDraft' : 'save'}
+						onClick={(e) => handleSave(e, 'auto')}
+						onSelect={(id) => setSaveAsDraftChoice(id === 'saveDraft')}
 						options={[
 							{
 								id: 'save',
+								color: 'primary',
+								icon: <SaveOutlined fontSize="small" />,
 								label:
 									isRepeatMode || (isEmbedded && isStackedForm)
 										? formatMessage({ defaultMessage: 'Done' })
 										: formatMessage({ defaultMessage: 'Save' }),
 								callback: (e) => {
-									handleSave(e);
+									handleSave(e, false);
 								}
 							},
 							{
 								id: 'saveDraft',
+								color: 'warning',
+								icon: <EditNoteOutlined fontSize="small" />,
 								label:
 									isRepeatMode || (isEmbedded && isStackedForm)
 										? formatMessage({ defaultMessage: 'Done (Draft)' })
@@ -457,16 +481,7 @@ export function ReleaseLockOnCloseControl({ atoms }: { atoms?: FormsEngineAtoms 
 				}
 			/>
 			{!releaseLockOnClose && (
-				<Alert
-					severity="warning"
-					variant="outlined"
-					sx={{
-						py: 0,
-						px: 1,
-						[`& .${alertClasses.icon}`]: { py: 0.5 },
-						[`& .${alertClasses.message}`]: { py: 0.5 }
-					}}
-				>
+				<Alert role="status" severity="warning">
 					<FormattedMessage {...messages.keepLockWarning} />
 				</Alert>
 			)}

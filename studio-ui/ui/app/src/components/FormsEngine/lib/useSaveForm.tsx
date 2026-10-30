@@ -39,7 +39,7 @@ import {
 } from './formUtils';
 import { FormSavePromiseResult, FormsEngineProps } from '../FormsEngine';
 import { contentFormSaveAction } from '../../../utils/contentFormLaunch';
-import { applySaveGate, childFields, repositorySaveFollowUp, saveAsDraftFlag } from './formVisibility';
+import { applySaveGate, childFields, draftFlagAfterBeforeSave, repositorySaveFollowUp } from './formVisibility';
 import { clearStackPendingFlags, repeatItemInValues } from './repeatItemForm';
 import { XmlKeys } from './formConsts';
 import { fromString } from '../../../utils/xml';
@@ -131,7 +131,7 @@ export function useSaveForm(props: UseSaveFormProps) {
 		);
 		return { isFormInvalid: invalidFieldIds.length > 0, invalidFieldIds };
 	};
-	const save = async (draft?: boolean): Promise<SaveFormResult | void> => {
+	const save = async (draft?: boolean | 'auto'): Promise<SaveFormResult | void> => {
 		// Two guards. SaveCard's ref returns before setSaveAsDraft, so an ignored click
 		// cannot flip the draft flag while this read is in flight. isSubmitting is the
 		// write lock: it stays set through preload, onBeforeSave, and the repository write.
@@ -335,7 +335,11 @@ export function useSaveForm(props: UseSaveFormProps) {
 					}
 					// Re-read only to refresh the draft flag. Do not reveal or block again.
 					const afterHook = await readCurrentValidity();
-					saveAsDraft = saveAsDraftFlag(draft === true, afterHook.isFormInvalid);
+					saveAsDraft = draftFlagAfterBeforeSave(
+						draft ?? false,
+						afterHook.isFormInvalid,
+						jotai.get(stableFormContext.atoms.saveAsDraft) === true
+					);
 				}
 
 				// `onBeforeSave` may have changed `file-name`; the render-time snapshot is stale from here on.
@@ -637,7 +641,8 @@ export function useSaveForm(props: UseSaveFormProps) {
 		};
 		try {
 			const outcome = await applySaveGate({
-				draft: draft === true,
+				draft: draft ?? false,
+				saveAsDraft: jotai.get(stableFormContext.atoms.saveAsDraft) === true,
 				visibility: jotai.get(stableFormContext.atoms.formVisibility),
 				sectionOrder: isRepeatMode
 					? childFields(contentType.fields[repeatFieldId]).map((field) => field.id)

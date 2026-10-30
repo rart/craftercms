@@ -36,17 +36,20 @@ export function watchInvalidFieldUpdates(
 	return fieldUpdates$?.pipe(debounceTime(dueTime, scheduler)).subscribe(() => read());
 }
 
-/** Live ids of fields that fail validation, excluding controller-irrelevant fields. */
+/** Live ids of fields that fail validation, excluding controller-irrelevant fields. `ready` flips after the first read. */
 export function useInvalidFieldIds(
 	validationByFieldId: LookupTable<Atom<Promise<FieldValidityState>>> | undefined,
 	irrelevantFieldPaths: ReadonlySet<string> | null | undefined,
 	parentPath: string | undefined,
 	fieldUpdates$: Observable<string> | null | undefined
-): string[] {
+): { ids: string[]; ready: boolean } {
 	const jotai = useJotaiStore();
-	const [ids, setIds] = useState<string[]>([]);
+	const [state, setState] = useState<{ ids: string[]; ready: boolean }>({ ids: [], ready: false });
 	useEffect(() => {
-		if (!validationByFieldId) return;
+		if (!validationByFieldId) {
+			setState({ ids: [], ready: true });
+			return;
+		}
 		let disposed = false;
 		let latest = 0;
 		const read = async () => {
@@ -54,7 +57,7 @@ export function useInvalidFieldIds(
 			try {
 				const next = await readInvalidFieldIds(jotai, validationByFieldId, irrelevantFieldPaths, parentPath);
 				if (settleInvalidFieldRead({ disposed, seq, latest, rejected: false }) !== 'apply') return;
-				setIds(next);
+				setState({ ids: next, ready: true });
 			} catch (error) {
 				// A plugin validator can reject. Keep the last ids. A stale rejection must not replace a newer read.
 				if (settleInvalidFieldRead({ disposed, seq, latest, rejected: true }) !== 'report') return;
@@ -68,5 +71,5 @@ export function useInvalidFieldIds(
 			subscription?.unsubscribe();
 		};
 	}, [fieldUpdates$, irrelevantFieldPaths, jotai, parentPath, validationByFieldId]);
-	return ids;
+	return state;
 }

@@ -101,6 +101,8 @@ export interface FormsEngineAtoms {
 	minimizeAfterSave: AtomWithStorage;
 	/** Per-user. When false, closing the form keeps the lock. Defaults to true. */
 	releaseLockOnClose: AtomWithStorage;
+	/** Per-user. False or absent means Save. True means the user last chose Save Draft. */
+	saveAsDraft: AtomWithStorage;
 	fileName?: Atom<string>;
 	/**
 	 * Bumped after form-controller relevance is stored. Validation atoms read it so a
@@ -136,7 +138,7 @@ export interface StableGlobalContextProps {
 	 * update every render, so a selected-fields Save runs the current root save.
 	 */
 	rootFormActions: {
-		save: (draft?: boolean) => Promise<'revealed' | 'invalid' | 'saved' | void>;
+		save: (draft?: boolean | 'auto') => Promise<'revealed' | 'invalid' | 'saved' | void>;
 		setSaveAsDraft: (value: boolean) => void;
 	};
 	/** Stacked bootstrap that is mounted. It releases its own lock on unmount. */
