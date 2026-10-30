@@ -297,30 +297,23 @@ export function SaveCard(props: SaveCardProps) {
 				<Box
 					role="group"
 					aria-labelledby={afterSavingLabelId}
-					sx={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}
+					sx={(theme) => ({
+						display: 'flex',
+						flexDirection: 'column',
+						alignItems: 'stretch',
+						width: '100%',
+						minWidth: 0,
+						maxWidth: '100%',
+						bgcolor: 'action.hover',
+						borderRadius: theme.shape.borderRadius
+					})}
 				>
 					<Typography
 						id={afterSavingLabelId}
 						variant="caption"
 						color="text.secondary"
 						component="span"
-						sx={(theme) => ({
-							alignSelf: 'flex-start',
-							position: 'relative',
-							zIndex: 1,
-							px: 1,
-							py: 0.25,
-							textAlign: 'left',
-							// formMainContent paints background.default behind this sidebar. The pills are
-							// transparent, so the tab uses that same surface and opens into the row.
-							bgcolor: 'background.default',
-							border: 1,
-							borderColor: 'divider',
-							borderBottomColor: 'background.default',
-							borderTopLeftRadius: theme.shape.borderRadius,
-							borderTopRightRadius: theme.shape.borderRadius,
-							mb: '-1px'
-						})}
+						sx={{ px: 1, py: 0.25, textAlign: 'left' }}
 					>
 						<FormattedMessage {...messages.afterSaving} />
 					</Typography>
@@ -334,12 +327,12 @@ export function SaveCard(props: SaveCardProps) {
 						aria-labelledby={afterSavingLabelId}
 						onChange={handleAfterSaving}
 						sx={(theme) => ({
+							minWidth: 0,
+							maxWidth: '100%',
 							[`& .${toggleButtonGroupClasses.firstButton}`]: {
-								borderTopLeftRadius: 0,
 								borderBottomLeftRadius: theme.shape.borderRadius
 							},
 							[`& .${toggleButtonGroupClasses.lastButton}`]: {
-								borderTopRightRadius: theme.shape.borderRadius,
 								borderBottomRightRadius: theme.shape.borderRadius
 							},
 							[`& .${toggleButtonClasses.root}`]: {
@@ -348,7 +341,9 @@ export function SaveCard(props: SaveCardProps) {
 								overflow: 'hidden',
 								textTransform: 'none',
 								px: 1,
-								py: 0.5
+								py: 0.5,
+								borderTopLeftRadius: 0,
+								borderTopRightRadius: 0
 							}
 						})}
 					>
@@ -432,16 +427,17 @@ export function ReleaseLockOnCloseControl({ atoms }: { atoms?: FormsEngineAtoms 
 			<FormControlLabel
 				labelPlacement="start"
 				sx={{
-					// labelPlacement "start" indents 16px and pulls the control past the end.
-					m: 0,
+					// "start" sets marginRight: -11. That, like Switch edge="end" (-8),
+					// makes the sidebar scroll sideways. Keep the control inside the column.
+					ml: 0,
+					mr: 0,
 					width: '100%',
 					maxWidth: '100%',
+					minWidth: 0,
 					display: 'flex',
 					justifyContent: 'space-between',
 					alignItems: 'center',
 					gap: 1,
-					// edge="end" is a -8px margin. The sidebar clips overflow, and the small thumb
-					// already sits inside the switch, so the control stays at its own size.
 					[`& .${switchClasses.root}`]: { flexShrink: 0 }
 				}}
 				label={
