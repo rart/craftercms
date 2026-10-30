@@ -16,12 +16,14 @@
 
 import { useAtom, useAtomValue } from 'jotai';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
-import React, { MouseEvent, useContext, useId, useRef } from 'react';
+import React, { MouseEvent, useCallback, useContext, useId, useLayoutEffect, useRef, useState } from 'react';
 import { StableFormContext } from '../lib/formsEngineContext';
+import Box from '@mui/material/Box';
 import Paper from '@mui/material/Paper';
+import Tooltip from '@mui/material/Tooltip';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
-import FormControlLabel from '@mui/material/FormControlLabel';
+import FormControlLabel, { formControlLabelClasses } from '@mui/material/FormControlLabel';
 import Switch, { switchClasses } from '@mui/material/Switch';
 import ToggleButton, { toggleButtonClasses } from '@mui/material/ToggleButton';
 import ToggleButtonGroup, { toggleButtonGroupClasses } from '@mui/material/ToggleButtonGroup';
@@ -29,6 +31,10 @@ import Typography from '@mui/material/Typography';
 import Alert, { alertClasses } from '@mui/material/Alert';
 import FormHelperText from '@mui/material/FormHelperText';
 import Grow from '@mui/material/Grow';
+import PushPinOutlined from '@mui/icons-material/PushPinOutlined';
+import MinimizeRounded from '@mui/icons-material/MinimizeRounded';
+import CloseIcon from '@mui/icons-material/Close';
+import { alpha, useTheme } from '@mui/material/styles';
 import { SplitButton } from '../../SplitButton';
 import { useDispatch } from 'react-redux';
 import { pushConfirmDialog, pushErrorDialog } from '../../../utils/system';
@@ -53,6 +59,50 @@ const messages = defineMessages({
 });
 
 type AfterSaving = 'stay' | 'minimize' | 'close';
+
+const afterSavingOrder: AfterSaving[] = ['stay', 'minimize', 'close'];
+
+const afterSavingIcons = {
+	stay: PushPinOutlined,
+	minimize: MinimizeRounded,
+	close: CloseIcon
+} as const;
+
+/**
+ * The hidden label's intrinsic width against the button's content box.
+ * The copy stays in the button, so switching to an icon does not remove the measurement.
+ */
+function labelOverflowsButton(probe: HTMLElement, button: HTMLElement): boolean {
+	const style = getComputedStyle(button);
+	const available = button.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+	return probe.scrollWidth > available;
+}
+
+/** All three pills switch together, so one overflowing translation does not leave a mixed row. */
+function useAfterSavingIcons(labels: Record<AfterSaving, string>) {
+	const probes = useRef<Partial<Record<AfterSaving, HTMLSpanElement | null>>>({});
+	const groupRef = useRef<HTMLDivElement>(null);
+	const [icons, setIcons] = useState(false);
+	const measure = useCallback(() => {
+		const overflow = afterSavingOrder.some((key) => {
+			const probe = probes.current[key];
+			const button = probe?.closest('button');
+			if (!probe || !(button instanceof HTMLElement)) return false;
+			return labelOverflowsButton(probe, button);
+		});
+		setIcons(overflow);
+		return overflow;
+	}, []);
+	useLayoutEffect(() => {
+		measure();
+		const group = groupRef.current;
+		if (!group || typeof ResizeObserver === 'undefined') return;
+		const observer = new ResizeObserver(() => measure());
+		observer.observe(group);
+		return () => observer.disconnect();
+	}, [labels.close, labels.minimize, labels.stay, measure]);
+	return { probes, groupRef, icons, measure };
+}
 
 /** Stay is both flags off. Close wins if both were stored, matching the save follow-up. */
 function afterSavingChoice(closeAfterSave: boolean, minimizeAfterSave: boolean): AfterSaving {
@@ -93,6 +143,19 @@ export function SaveCard(props: SaveCardProps) {
 	const showVersionComment = (!isEmbedded || !isStackedForm) && !isRepeatMode;
 	const showSaveOptions = !isEmbedded && !isRepeatMode;
 	const { formatMessage } = useIntl();
+	const darkCard = useTheme().palette.mode === 'dark';
+	const afterSavingLabels: Record<AfterSaving, string> = {
+		stay: formatMessage(messages.stay),
+		minimize: formatMessage(messages.minimize),
+		close: formatMessage(messages.close)
+	};
+	const {
+		probes,
+		groupRef,
+		icons: afterSavingIconsMode,
+		measure: measureAfterSaving
+	} = useAfterSavingIcons(afterSavingLabels);
+	const [afterSavingTip, setAfterSavingTip] = useState<AfterSaving | null>(null);
 	const dispatch = useDispatch();
 	// Click guard. It returns before setSaveAsDraft, so a second click cannot flip the draft
 	// flag. save() also checks isSubmitting, which stays set through preload and the write
@@ -151,7 +214,17 @@ export function SaveCard(props: SaveCardProps) {
 	};
 
 	return (
-		<Paper sx={{ p: 1 }}>
+		<Paper
+			elevation={darkCard ? 6 : 1}
+			sx={(theme) => ({
+				p: 1,
+				// This theme's divider is a dark wash, so the edge uses a white alpha instead.
+				...(theme.palette.mode === 'dark' && {
+					border: 1,
+					borderColor: alpha(theme.palette.common.white, 0.12)
+				})
+			})}
+		>
 			{/* One gap between whichever blocks are actually shown, so the button is not flush with the comment. */}
 			<Stack spacing={1}>
 				{showVersionComment && (
@@ -166,86 +239,195 @@ export function SaveCard(props: SaveCardProps) {
 						onFocus={(e) => e.target.select()}
 					/>
 				)}
-				{showSaveOptions && (
-					<Stack spacing={0.5}>
-						<Typography id={afterSavingLabelId} variant="caption" color="text.secondary" component="span">
-							<FormattedMessage {...messages.afterSaving} />
-						</Typography>
-						<ToggleButtonGroup
-							exclusive
-							fullWidth
-							size="small"
-							value={afterSaving}
-							aria-labelledby={afterSavingLabelId}
-							onChange={handleAfterSaving}
-							sx={(theme) => ({
-								borderRadius: theme.shape.borderRadius,
-								[`& .${toggleButtonGroupClasses.firstButton}`]: {
-									borderTopLeftRadius: theme.shape.borderRadius,
-									borderBottomLeftRadius: theme.shape.borderRadius
-								},
-								[`& .${toggleButtonGroupClasses.lastButton}`]: {
-									borderTopRightRadius: theme.shape.borderRadius,
-									borderBottomRightRadius: theme.shape.borderRadius
-								},
-								[`& .${toggleButtonClasses.root}`]: {
-									textTransform: 'none',
+				{(showSaveOptions || showReleaseLockOnClose) && (
+					// One options block. The outer stack's gap then sits once above Save, same as between the other blocks.
+					<Stack spacing={1}>
+						{showSaveOptions && (
+							<Box
+								role="group"
+								aria-labelledby={afterSavingLabelId}
+								sx={(theme) => ({
+									border: 1,
+									borderColor: 'divider',
+									borderRadius: theme.shape.borderRadius,
+									// Paper's own color, so the band stays a step below the dark elevated card.
+									bgcolor: 'background.paper',
 									px: 1,
-									py: 0.5
-								}
-							})}
-						>
-							<ToggleButton value="stay">{formatMessage(messages.stay)}</ToggleButton>
-							<ToggleButton value="minimize">{formatMessage(messages.minimize)}</ToggleButton>
-							<ToggleButton value="close">{formatMessage(messages.close)}</ToggleButton>
-						</ToggleButtonGroup>
-					</Stack>
-				)}
-				{showReleaseLockOnClose && (
-					<Stack spacing={0.5}>
-						<FormControlLabel
-							sx={{ mx: 0 }}
-							label={
-								<Typography variant="body2" component="span">
-									<FormattedMessage {...messages.releaseLockOnClose} />
-								</Typography>
-							}
-							control={
-								<Switch
-									size="small"
-									color={releaseLockOnClose ? 'primary' : 'warning'}
-									checked={releaseLockOnClose}
-									onChange={(_event, checked) => setReleaseLockOnClose(checked)}
-									// `color` only paints the checked switch. Keep-lock is the off state.
-									sx={
-										releaseLockOnClose
-											? undefined
-											: (theme) => ({
-													[`& .${switchClasses.switchBase}`]: {
-														color: theme.palette.warning.main
-													},
-													[`& .${switchClasses.switchBase} + .${switchClasses.track}`]: {
-														backgroundColor: theme.palette.warning.main,
-														opacity: 0.5
+									py: 1
+								})}
+							>
+								<Stack spacing={0.5}>
+									<Typography
+										id={afterSavingLabelId}
+										variant="caption"
+										color="text.secondary"
+										component="span"
+										sx={{ textAlign: 'left' }}
+									>
+										<FormattedMessage {...messages.afterSaving} />
+									</Typography>
+									<ToggleButtonGroup
+										ref={groupRef}
+										exclusive
+										fullWidth
+										size="small"
+										value={afterSaving}
+										aria-labelledby={afterSavingLabelId}
+										onChange={handleAfterSaving}
+										sx={(theme) => ({
+											display: 'flex',
+											width: '100%',
+											borderRadius: theme.shape.borderRadius,
+											[`& .${toggleButtonGroupClasses.firstButton}`]: {
+												borderTopLeftRadius: theme.shape.borderRadius,
+												borderBottomLeftRadius: theme.shape.borderRadius
+											},
+											[`& .${toggleButtonGroupClasses.lastButton}`]: {
+												borderTopRightRadius: theme.shape.borderRadius,
+												borderBottomRightRadius: theme.shape.borderRadius
+											},
+											[`& .${toggleButtonClasses.root}`]: {
+												flex: '1 1 0',
+												minWidth: 0,
+												overflow: 'hidden',
+												textTransform: 'none',
+												px: 1,
+												py: 0.5
+											},
+											[`& .${toggleButtonClasses.root}.${toggleButtonClasses.selected}`]: {
+												color: theme.palette.primary.main,
+												backgroundColor: alpha(theme.palette.primary.main, theme.palette.action.selectedOpacity),
+												'&:hover': {
+													color: theme.palette.primary.main,
+													backgroundColor: alpha(
+														theme.palette.primary.main,
+														theme.palette.action.selectedOpacity + theme.palette.action.hoverOpacity
+													),
+													'@media (hover: none)': {
+														backgroundColor: alpha(theme.palette.primary.main, theme.palette.action.selectedOpacity)
 													}
-												})
+												}
+											}
+										})}
+									>
+										{afterSavingOrder.map((value) => {
+											const label = afterSavingLabels[value];
+											const Icon = afterSavingIcons[value];
+											const showTip = afterSavingIconsMode && afterSavingTip === value;
+											return (
+												<ToggleButton
+													key={value}
+													value={value}
+													aria-label={afterSavingIconsMode ? label : undefined}
+													sx={{ position: 'relative' }}
+													onMouseEnter={() => setAfterSavingTip(measureAfterSaving() ? value : null)}
+													onMouseLeave={() => setAfterSavingTip((current) => (current === value ? null : current))}
+													onFocus={() => setAfterSavingTip(measureAfterSaving() ? value : null)}
+													onBlur={() => setAfterSavingTip((current) => (current === value ? null : current))}
+												>
+													{afterSavingIconsMode ? (
+														<Tooltip
+															title={label}
+															open={showTip}
+															disableHoverListener
+															disableFocusListener
+															disableTouchListener
+														>
+															<Box component="span" sx={{ display: 'inline-flex', lineHeight: 0 }}>
+																<Icon fontSize="small" aria-hidden />
+															</Box>
+														</Tooltip>
+													) : (
+														<Box
+															component="span"
+															sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}
+														>
+															{label}
+														</Box>
+													)}
+													<Box
+														component="span"
+														aria-hidden
+														ref={(node: HTMLSpanElement | null) => {
+															probes.current[value] = node;
+														}}
+														sx={{
+															position: 'absolute',
+															left: 0,
+															top: 0,
+															visibility: 'hidden',
+															whiteSpace: 'nowrap',
+															width: 'max-content',
+															pointerEvents: 'none'
+														}}
+													>
+														{label}
+													</Box>
+												</ToggleButton>
+											);
+										})}
+									</ToggleButtonGroup>
+								</Stack>
+							</Box>
+						)}
+						{showReleaseLockOnClose && (
+							<Stack spacing={1}>
+								<FormControlLabel
+									sx={(theme) => ({
+										m: 0,
+										alignItems: 'center',
+										// Small Switch pads its track by 7px. Pull that padding back so the track meets the caption.
+										[`& .${switchClasses.root}`]: {
+											marginLeft: '-7px',
+											marginRight: 0
+										},
+										[`& .${formControlLabelClasses.label}`]: {
+											marginLeft: theme.spacing(1)
+										}
+									})}
+									label={
+										<Typography variant="body2" component="span">
+											<FormattedMessage {...messages.releaseLockOnClose} />
+										</Typography>
+									}
+									control={
+										<Switch
+											size="small"
+											color={releaseLockOnClose ? 'primary' : 'warning'}
+											checked={releaseLockOnClose}
+											onChange={(_event, checked) => setReleaseLockOnClose(checked)}
+											// `color` only paints the checked switch. Keep-lock is the off state.
+											sx={
+												releaseLockOnClose
+													? undefined
+													: (theme) => ({
+															[`& .${switchClasses.switchBase}`]: {
+																color: theme.palette.warning.main
+															},
+															[`& .${switchClasses.switchBase} + .${switchClasses.track}`]: {
+																backgroundColor: theme.palette.warning.main,
+																opacity: 0.5
+															}
+														})
+											}
+										/>
 									}
 								/>
-							}
-						/>
-						{!releaseLockOnClose && (
-							<Alert
-								severity="warning"
-								variant="outlined"
-								sx={{
-									py: 0,
-									px: 1,
-									[`& .${alertClasses.icon}`]: { py: 0.5 },
-									[`& .${alertClasses.message}`]: { py: 0.5 }
-								}}
-							>
-								<FormattedMessage {...messages.keepLockWarning} />
-							</Alert>
+								{!releaseLockOnClose && (
+									<Alert
+										severity="warning"
+										variant="outlined"
+										sx={{
+											py: 0,
+											px: 1,
+											[`& .${alertClasses.icon}`]: { py: 0.5 },
+											[`& .${alertClasses.message}`]: { py: 0.5 }
+										}}
+									>
+										<FormattedMessage {...messages.keepLockWarning} />
+									</Alert>
+								)}
+							</Stack>
 						)}
 					</Stack>
 				)}
