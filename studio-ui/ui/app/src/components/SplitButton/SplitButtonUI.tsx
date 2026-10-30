@@ -14,7 +14,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-import React, { cloneElement, isValidElement, useState, useLayoutEffect } from 'react';
+import { useState, useLayoutEffect } from 'react';
 import ButtonGroup from '@mui/material/ButtonGroup';
 import Button from '@mui/material/Button';
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
@@ -117,7 +117,7 @@ export function SplitButtonUI(props: SplitButtonUIProps) {
 												<ListItemIcon
 													sx={option.color ? (theme) => ({ color: theme.palette[option.color].main }) : undefined}
 												>
-													{isValidElement(option.icon) ? cloneElement(option.icon) : option.icon}
+													{option.icon}
 												</ListItemIcon>
 											) : null}
 											{option.label}
