@@ -297,7 +297,9 @@ function GlobalFormsState(props: FormsEngineProps) {
 			rootFormActions: {
 				save: () => Promise.resolve(),
 				setSaveAsDraft: () => undefined
-			}
+			},
+			mountedStackEntry: null,
+			releaseUnmountedEntry: null
 		};
 	}
 	stableGlobalContextRef.current.api = useMemo<FormsEngineGlobalApiContextProps>(() => {
@@ -316,8 +318,17 @@ function GlobalFormsState(props: FormsEngineProps) {
 				setCount(1);
 			},
 			popForm() {
-				const stack = stableGlobalContextRef.current.formsStackData;
-				runFormControllerCleanup(stack[stack.length - 1]);
+				const ctx = stableGlobalContextRef.current;
+				const stack = ctx.formsStackData;
+				const removed = stack[stack.length - 1];
+				if (!removed) return;
+				// The mounted top releases itself on unmount. A covered entry has no bootstrap.
+				if (removed !== ctx.mountedStackEntry) {
+					ctx.releaseUnmountedEntry?.(removed);
+				} else {
+					ctx.mountedStackEntry = null;
+				}
+				runFormControllerCleanup(removed);
 				stack.pop();
 				setCount(-1);
 			},

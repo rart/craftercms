@@ -27,9 +27,11 @@ import { describe, it } from 'node:test';
 import {
 	applySavedRenameToLock,
 	createLockReleaseGate,
+	entriesReleasedOnStackRemoval,
 	keepLockOnStackedUnmount,
 	lockPathToRelease,
 	planLockRelease,
+	readPersistedBoolean,
 	releaseLockToggleFailed,
 	sharedPerUserAtom,
 	shouldUnlockOnPageHide,
@@ -158,6 +160,46 @@ describe('covered stacked form', () => {
 			}),
 			false
 		);
+	});
+});
+
+describe('root reload of stacked forms', () => {
+	it('releases covered locks and leaves the mounted top to its own unmount', () => {
+		const covered = holding('/site/components/covered.xml');
+		const top = holding('/site/components/top.xml');
+		const stack = [{ id: 'root' }, { id: 'covered', state: covered }, { id: 'top', state: top }];
+		const mounted = stack[2];
+		// A root reload closes every stacked form: stack length minus the root.
+		const released = entriesReleasedOnStackRemoval({
+			stack,
+			closeCount: stack.length - 1,
+			mounted
+		});
+		assert.deepEqual(
+			released.map((entry) => entry.id),
+			['covered']
+		);
+		assert.equal(lockPathToRelease(covered), '/site/components/covered.xml');
+		assert.equal(lockPathToRelease({ ...covered, releaseLockOnClose: false }), null);
+		const gate = createLockReleaseGate();
+		assert.equal(planLockRelease(top, gate), '/site/components/top.xml');
+		assert.equal(planLockRelease(top, gate), null);
+	});
+});
+
+describe('persisted release-lock switch', () => {
+	it('reads storage at close time and falls back to the atom', () => {
+		const saved = new Map<string, string>();
+		const storage = { getItem: (key: string) => saved.get(key) ?? null };
+		assert.equal(readPersistedBoolean('k', true, storage), true);
+		assert.equal(readPersistedBoolean('k', false, storage), false);
+		saved.set('k', 'false');
+		assert.equal(readPersistedBoolean('k', true, storage), false);
+		saved.set('k', 'true');
+		assert.equal(readPersistedBoolean('k', false, storage), true);
+		saved.set('k', '{');
+		assert.equal(readPersistedBoolean('k', false, storage), false);
+		assert.equal(readPersistedBoolean('k', undefined, null), true);
 	});
 });
 

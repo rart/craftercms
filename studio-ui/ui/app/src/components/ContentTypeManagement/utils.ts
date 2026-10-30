@@ -528,7 +528,9 @@ export const fooStableGlobalContext: StableGlobalContextProps = Object.freeze<St
 	rootFormActions: {
 		save: () => Promise.resolve(),
 		setSaveAsDraft: noOp
-	}
+	},
+	mountedStackEntry: null,
+	releaseUnmountedEntry: null
 });
 
 export function createVirtualTypeFormContext(

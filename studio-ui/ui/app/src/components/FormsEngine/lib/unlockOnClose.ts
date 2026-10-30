@@ -79,7 +79,9 @@ export function lockPathToRelease(state: UnlockOnCloseState): string | null {
 }
 
 /**
- * A saved move updates the same item row to `nextPath`, so the lock goes with it.
+ * A saved move updates the same item row to `nextPath`. `locked_by` stays on that row, but
+ * `ItemDAO.moveItem` clears the USER_LOCKED state bit, so the server-side lock after a rename
+ * is weaker than a normal user lock. Unlock the new path. The old path no longer exists.
  * Returns null when this form is not holding a lock.
  */
 export function applySavedRenameToLock(
@@ -102,6 +104,55 @@ export function keepLockOnStackedUnmount(args: {
 	coveredByDeeperForm: boolean;
 }): boolean {
 	return args.via === 'unmount' && args.isStackedForm && args.entryStillOnStack && args.coveredByDeeperForm;
+}
+
+/**
+ * Root reload pops every stacked form. The mounted top releases itself on unmount.
+ * Covered entries have no bootstrap, so they are released here instead.
+ */
+export function entriesReleasedOnStackRemoval<T>(args: {
+	stack: readonly T[];
+	closeCount: number;
+	mounted: T | null;
+}): T[] {
+	const remaining = args.stack.slice();
+	const released: T[] = [];
+	const count = Math.min(Math.max(args.closeCount, 0), remaining.length);
+	for (let i = 0; i < count; i++) {
+		const entry = remaining.pop();
+		if (entry != null && entry !== args.mounted) released.push(entry);
+	}
+	return released;
+}
+
+/**
+ * The persisted switch, or the atom when storage has no boolean.
+ * Separate form dialogs do not share a jotai store, so close and pagehide must read storage.
+ */
+export function readPersistedBoolean(
+	key: string,
+	atomValue: boolean | undefined,
+	storage: { getItem(key: string): string | null } | null
+): boolean {
+	try {
+		const raw = storage?.getItem(key);
+		if (raw != null) {
+			const parsed = JSON.parse(raw) as unknown;
+			if (typeof parsed === 'boolean') return parsed;
+		}
+	} catch {
+		// Unreadable storage falls through to the atom.
+	}
+	return atomValue !== false;
+}
+
+export function browserLocalStorage(): { getItem(key: string): string | null } | null {
+	try {
+		if (typeof localStorage === 'undefined') return null;
+		return localStorage;
+	} catch {
+		return null;
+	}
 }
 
 const storedAtomsByKey = new Map<string, unknown>();

@@ -27,6 +27,7 @@ import {
 	FormsEngineItemMetaContextProps,
 	FormsEngineSourceMap,
 	StableFormContextProps,
+	StableGlobalContext,
 	StableGlobalContextProps
 } from './formsEngineContext';
 import { fetchContentItem, fetchContentXML, fetchDescriptorXML, lock, unlock } from '../../../services/content';
@@ -37,7 +38,15 @@ import { Dispatch as ReduxDispatch } from 'redux';
 import { IntlShape } from 'react-intl';
 import { showSystemNotification, showUnlockItemSuccessNotification } from '../../../state/actions/system';
 import { atom, Atom, PrimitiveAtom, useAtomValue, useStore as useJotaiStore } from 'jotai';
-import React, { ReactNode, RefObject, useEffect, useRef, type SetStateAction } from 'react';
+import React, {
+	ReactNode,
+	RefObject,
+	useContext,
+	useEffect,
+	useLayoutEffect,
+	useRef,
+	type SetStateAction
+} from 'react';
 import { fromString, getInnerHtml } from '../../../utils/xml';
 import { nanoid } from 'nanoid';
 import { popDialog, pushDialog } from '../../../state/actions/dialogStack';
@@ -63,6 +72,7 @@ import { useDispatch } from 'react-redux';
 import type { FormsEngineProps } from '../FormsEngine';
 import usePreviousValue from '../../../hooks/usePreviousValue';
 import useActiveSiteId from '../../../hooks/useActiveSiteId';
+import useActiveUser from '../../../hooks/useActiveUser';
 import { areAllPairsEqual } from '../../../utils/array';
 import { deserializeContentDoc } from './valueRetrievers';
 import { buildContentXml } from './valueSerializers';
@@ -95,7 +105,9 @@ import {
 	keepLockOnStackedUnmount,
 	lockPathToRelease,
 	planLockRelease,
+	browserLocalStorage,
 	postUnlockKeepalive,
+	readPersistedBoolean,
 	sharedPerUserAtom,
 	shouldUnlockOnPageHide,
 	unlockErrorPayload,
@@ -943,7 +955,7 @@ export { shouldUnlockItem, type UnlockOnCloseState } from './unlockOnClose';
  * Releases this form's lock when the form session ends, not when a dependency changes.
  * Mount it on the bootstrap that stays up across reload and minimize. A stacked form has its own.
  * Repeat, create, readonly, and an embedded form on an editable parent do not unlock.
- * A user choice to keep the lock is read from the form's atom at close time, including pagehide.
+ * A user choice to keep the lock is read from storage at close time, including pagehide.
  */
 export function useUnlockOnClose(props: {
 	stackIndex?: number;
@@ -951,9 +963,12 @@ export function useUnlockOnClose(props: {
 	formsStackData: StableGlobalContextProps['formsStackData'];
 }) {
 	const { stackIndex = 0, stableFormContextRef, formsStackData } = props;
+	const globalContext = useContext(StableGlobalContext);
 	const store = useJotaiStore();
 	const dispatch = useDispatch();
 	const siteId = useActiveSiteId();
+	const username = useActiveUser()?.username ?? '';
+	const releaseLockKey = getFormsEngineReleaseLockOnClose(username);
 	const readEntryState = (entry: StableFormContextProps | undefined, index: number): UnlockOnCloseState => {
 		const atoms = entry?.atoms ?? null;
 		const lockResult = atoms ? store.get(atoms.lockResult) : null;
@@ -961,6 +976,7 @@ export function useUnlockOnClose(props: {
 		const parentAtoms = stackEntryAtoms(parentEntry);
 		const props = entry?.props;
 		const recorded = lockResult?.lockedPath;
+		const atomChoice = atoms ? store.get(atoms.releaseLockOnClose) : undefined;
 		return {
 			isRepeatMode: Boolean(props?.repeat?.fieldId),
 			isCreateMode: Boolean(props?.create?.path),
@@ -970,8 +986,8 @@ export function useUnlockOnClose(props: {
 			isParentReadonly: parentAtoms ? store.get(parentAtoms.readonly) : false,
 			siteId,
 			lockedPath: lockResult?.locked ? recorded || entry?.itemMeta?.path || null : null,
-			// The atom is shared per user, and this read is at close time.
-			releaseLockOnClose: atoms ? store.get(atoms.releaseLockOnClose) !== false : true
+			// Storage is shared across dialog stores. The atom covers a missing or unreadable value.
+			releaseLockOnClose: readPersistedBoolean(releaseLockKey, atomChoice, browserLocalStorage())
 		};
 	};
 	const unlockEffectRefs = useUpdateRefs({
@@ -984,6 +1000,16 @@ export function useUnlockOnClose(props: {
 		entryStillOnStack: () => stackIndex > 0 && formsStackData[stackIndex] === stableFormContextRef.current,
 		coveredByDeeperForm: () => formsStackData.length > stackIndex + 1
 	});
+	// Only the top stacked bootstrap is mounted. popForm uses this to skip the entry that will unmount.
+	useLayoutEffect(() => {
+		if (!globalContext || stackIndex === 0) return;
+		globalContext.mountedStackEntry = stableFormContextRef.current;
+		return () => {
+			if (globalContext.mountedStackEntry === stableFormContextRef.current) {
+				globalContext.mountedStackEntry = null;
+			}
+		};
+	}, [globalContext, stackIndex, stableFormContextRef]);
 	// Stable dep: the ref identity does not change. Save Draft must not re-run this cleanup while the form is open.
 	useEffect(() => {
 		const gate = createLockReleaseGate();
@@ -1028,12 +1054,24 @@ export function useUnlockOnClose(props: {
 				if (coveredPath) sendUnlock(covered, coveredPath, via);
 			}
 		};
+		if (globalContext && stackIndex === 0) {
+			globalContext.releaseUnmountedEntry = (entry) => {
+				const index = formsStackData.lastIndexOf(entry);
+				if (index <= 0) return;
+				const state = unlockEffectRefs.current.readCovered(index);
+				const path = lockPathToRelease(state);
+				if (path) sendUnlock(state, path, 'unmount');
+			};
+		}
 		const onPageHide = (event: PageTransitionEvent) => {
 			if (!shouldUnlockOnPageHide(event)) return;
 			release('pagehide');
 		};
 		window.addEventListener('pagehide', onPageHide);
 		return () => {
+			if (globalContext && stackIndex === 0 && globalContext.releaseUnmountedEntry) {
+				globalContext.releaseUnmountedEntry = null;
+			}
 			window.removeEventListener('pagehide', onPageHide);
 			release('unmount');
 		};

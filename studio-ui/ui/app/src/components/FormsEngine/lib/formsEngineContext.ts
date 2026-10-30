@@ -139,6 +139,10 @@ export interface StableGlobalContextProps {
 		save: (draft?: boolean) => Promise<'revealed' | 'invalid' | 'saved' | void>;
 		setSaveAsDraft: (value: boolean) => void;
 	};
+	/** Stacked bootstrap that is mounted. It releases its own lock on unmount. */
+	mountedStackEntry: StableFormContextProps | null;
+	/** Releases a removed entry that has no mounted bootstrap (a covered form popped by reload). */
+	releaseUnmountedEntry: ((entry: StableFormContextProps) => void) | null;
 }
 
 // Consolidated base data store for the form instance (single form/item). Once initialised, it won't change (won't cause re-renders).
