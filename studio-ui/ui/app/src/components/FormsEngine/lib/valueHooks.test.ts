@@ -24,6 +24,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import '../../../../test/registerTsLoader.mjs';
 import type { ComponentType } from 'react';
+import type { AnyValue } from '../types';
 import type ContentType from '../../../models/ContentType';
 import type { ContentTypeField } from '../../../models/ContentType';
 import type PluginDescriptor from '../../../models/PluginDescriptor';
@@ -35,7 +36,7 @@ const { XML_ATTRIBUTE_PREFIX, XML_CDATA_KEY, XML_ITEM_LIST_ATTRIBUTE, XML_LIST_I
 	await import('./controlValueTypes.ts');
 
 const source = { site: 'editorial', type: 'control', name: 'example', file: 'index.js' };
-const Component = (() => null) as ComponentType<any>;
+const Component = (() => null) as ComponentType<AnyValue>;
 
 function field(id: string, type: string, extra: Partial<ContentTypeField> = {}): ContentTypeField {
 	return { id, name: id, type, validations: {}, ...extra } as ContentTypeField;

@@ -23,6 +23,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import '../../../../test/registerTsLoader.mjs';
 import type { ComponentType } from 'react';
+import type { AnyValue } from '../types';
 import type PluginDescriptor from '../../../models/PluginDescriptor';
 
 const { registerPlugin } = await import('../../../services/plugin.ts');
@@ -30,8 +31,8 @@ const { getRegisteredControlContribution } = await import('../controls/registry.
 const { toLoadedControlPlugin } = await import('./controlPluginLoader.ts');
 
 const source = { site: 'editorial', type: 'control', name: 'example', file: 'index.js' };
-const Control = (() => null) as ComponentType<any>;
-const ErrorPlaceholder = (() => null) as ComponentType<any>;
+const Control = (() => null) as ComponentType<AnyValue>;
+const ErrorPlaceholder = (() => null) as ComponentType<AnyValue>;
 const url = '/studio/api/2/plugin/file?type=control&name=example&filename=index.js';
 
 function register(id: string, typeKey: string, entry: Record<string, unknown> = {}) {

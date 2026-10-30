@@ -25,6 +25,7 @@ import assert from 'node:assert/strict';
 import { describe, it, mock } from 'node:test';
 import '../../../../test/registerTsLoader.mjs';
 import type { ComponentType } from 'react';
+import type { AnyValue } from '../types';
 import type { ContentTypeField } from '../../../models/ContentType';
 import type PluginDescriptor from '../../../models/PluginDescriptor';
 import type { Validator } from './validators.ts';
@@ -35,11 +36,11 @@ const { createFieldAtoms } = await import('./formUtils.tsx');
 const { createStore, atom } = await import('jotai');
 
 const source = { site: 'editorial', type: 'control', name: 'example', file: 'index.js' };
-const Component = (() => null) as ComponentType<any>;
+const Component = (() => null) as ComponentType<AnyValue>;
 const meta = { siteId: 'editorial', fileName: 'index.xml', itemMeta: { path: '/site/website/index.xml' } };
 
 let counter = 0;
-function plugin(validator: Validator<any>, validations: ContentTypeField['validations'] = {}) {
+function plugin(validator: Validator<AnyValue>, validations: ContentTypeField['validations'] = {}) {
 	const typeKey = `plugin-validator-${counter++}`;
 	registerPlugin(
 		{ id: `org.example.${typeKey}`, controls: { [typeKey]: { Component, validator } } } as PluginDescriptor,
