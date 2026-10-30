@@ -26,7 +26,7 @@ const { window } = new JSDOM('');
 Object.assign(globalThis, { DOMParser: window.DOMParser, XMLSerializer: window.XMLSerializer });
 
 const { createStore } = await import('jotai');
-const { parseLegacyFormDefinition } = await import('../../../services/contentTypes.ts');
+const { getItemDataSourceId, parseLegacyFormDefinition } = await import('../../../services/contentTypes.ts');
 const { deserialize, entityEncodingTagValueProcessor, fromString } = await import('../../../utils/xml.ts');
 const { createParsedValuesObject, deserializeContentDoc } = await import('./valueRetrievers.ts');
 const { buildContentXml } = await import('./valueSerializers.ts');
@@ -190,5 +190,27 @@ describe('datasource option keys', () => {
 			'01',
 			'1.50'
 		]);
+	});
+});
+
+describe('XB item datasource', () => {
+	const prop = (name: string, value: string, type = 'boolean') =>
+		`<property><name>${name}</name><value>${value}</value><type>${type}</type></property>`;
+	const dataSource = (id: string, contentTypes: string, props: string) =>
+		`<datasource><type>components</type><id>${id}</id><title>${id}</title><interface>item</interface><properties>${prop('contentTypes', contentTypes, 'contentTypes')}${props}</properties></datasource>`;
+	const type = parseType(`<form><title>T</title><content-type>/page/t</content-type><objectType>page</objectType>
+		<properties></properties><sections><section><title>S</title><fields><field><type>node-selector</type><id>items_o</id>
+		<title>Items</title><properties>${prop('itemManager', 'a,b', 'datasource:item')}</properties><constraints></constraints></field>
+		</fields></section></sections><datasources>${dataSource('a', '/component/x,/component/y', prop('allowEmbedded', 'true'))}
+		${dataSource('b', '/component/y', prop('allowEmbedded', 'true') + prop('enableBrowse', 'true'))}</datasources></form>`);
+	const id = (itemType: string, mode: 'embedded' | 'shared' | 'sharedExisting') =>
+		getItemDataSourceId(type, type.fields.items_o, itemType, mode);
+	it('is the only data source that allows the item', () => {
+		assert.equal(id('/component/x', 'embedded'), 'a');
+		assert.equal(id('/component/y', 'sharedExisting'), 'b');
+	});
+	it('is unknown when none or several data sources allow the item', () => {
+		assert.equal(id('/component/x', 'shared'), undefined);
+		assert.equal(id('/component/y', 'embedded'), undefined);
 	});
 });

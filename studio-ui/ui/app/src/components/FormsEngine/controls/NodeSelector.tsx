@@ -128,6 +128,8 @@ export interface NodeSelectorProps extends ControlProps {
 export interface NodeSelectorItem {
 	key: string;
 	value: string;
+	/** The `datasource` attribute: the id of the data source the item was added with. */
+	'@:datasource'?: string;
 	include?: string;
 	disableFlattening?: boolean;
 	component?: Record<string, Primitive>;
@@ -332,6 +334,7 @@ function NodeSelector(props: NodeSelectorProps) {
 	};
 	const applyDataSourceSelection = (
 		selection: DataSourceSelection | DataSourceSelection[] | null,
+		dataSourceId: string,
 		createChoice?: CreateDataSourcePickerData
 	) => {
 		const selections = Array.isArray(selection) ? selection : selection ? [selection] : [];
@@ -369,7 +372,11 @@ function NodeSelector(props: NodeSelectorProps) {
 				}
 			];
 		});
-		const { validItems, duplicateItems } = validateNewItems(newItems, value, allowDuplicates);
+		const { validItems, duplicateItems } = validateNewItems(
+			withDataSourceId(newItems, dataSourceId),
+			value,
+			allowDuplicates
+		);
 		if (newItems.length) setValue(validItems);
 		if (!allowDuplicates && duplicateItems.length) showDuplicatesWarning(dispatch, duplicateItems);
 	};
@@ -384,7 +391,7 @@ function NodeSelector(props: NodeSelectorProps) {
 				const pickerChoice = choice as AllowedPathsData;
 				if (pickerChoice.actionChoice && dataSources?.context) {
 					invokeActionChoice(pickerChoice.actionChoice, dataSources.context)
-						.then(applyDataSourceSelection)
+						.then((selection) => applyDataSourceSelection(selection, pickerChoice.actionChoice.action.dataSourceId))
 						.catch(console.error);
 					break;
 				}
@@ -410,7 +417,11 @@ function NodeSelector(props: NodeSelectorProps) {
 								...(fileType ? getFileMetaData({ fileType, useSingleValueFilename, useMVS }) : {})
 							});
 						});
-						const { validItems, duplicateItems } = validateNewItems(newNodeSelectorItems, value, allowDuplicates);
+						const { validItems, duplicateItems } = validateNewItems(
+							withDataSourceId(newNodeSelectorItems, pickerChoice.actionChoice?.action.dataSourceId),
+							value,
+							allowDuplicates
+						);
 						setValue(validItems);
 						if (!allowDuplicates && duplicateItems.length) showDuplicatesWarning(dispatch, duplicateItems);
 					}
@@ -421,7 +432,7 @@ function NodeSelector(props: NodeSelectorProps) {
 				const pickerChoice = choice as AllowedPathsData;
 				if (pickerChoice.actionChoice && dataSources?.context) {
 					invokeActionChoice(pickerChoice.actionChoice, dataSources.context)
-						.then(applyDataSourceSelection)
+						.then((selection) => applyDataSourceSelection(selection, pickerChoice.actionChoice.action.dataSourceId))
 						.catch(console.error);
 					break;
 				}
@@ -445,7 +456,11 @@ function NodeSelector(props: NodeSelectorProps) {
 								disableFlattening
 							});
 						});
-						const { validItems, duplicateItems } = validateNewItems(newNodeSelectorItems, value, allowDuplicates);
+						const { validItems, duplicateItems } = validateNewItems(
+							withDataSourceId(newNodeSelectorItems, pickerChoice.actionChoice?.action.dataSourceId),
+							value,
+							allowDuplicates
+						);
 						setValue(validItems);
 						if (!allowDuplicates && duplicateItems.length) showDuplicatesWarning(dispatch, duplicateItems);
 					}
@@ -463,7 +478,7 @@ function NodeSelector(props: NodeSelectorProps) {
 						path: pickerChoice.strategy === 'embedded' ? contextItem.path : pickerChoice.path,
 						strategy: pickerChoice.strategy
 					})
-						.then((selection) => applyDataSourceSelection(selection, pickerChoice))
+						.then((selection) => applyDataSourceSelection(selection, owner.dataSourceId, pickerChoice))
 						.catch(console.error);
 					break;
 				}
@@ -483,7 +498,11 @@ function NodeSelector(props: NodeSelectorProps) {
 							[isEmbedded ? 'component' : 'include']: isEmbedded ? (result.values as LookupTable<Primitive>) : key,
 							disableFlattening
 						};
-						const { validItems, duplicateItems } = validateNewItems([newItem], value, allowDuplicates);
+						const { validItems, duplicateItems } = validateNewItems(
+							withDataSourceId([newItem], owner?.dataSourceId),
+							value,
+							allowDuplicates
+						);
 						setValue(validItems);
 						if (!allowDuplicates && duplicateItems.length) showDuplicatesWarning(dispatch, duplicateItems);
 						return Promise.resolve({ close: true });
@@ -495,7 +514,7 @@ function NodeSelector(props: NodeSelectorProps) {
 				const pickerChoice = choice as AllowedPathsData;
 				if (pickerChoice.actionChoice && dataSources?.context) {
 					invokeActionChoice(pickerChoice.actionChoice, dataSources.context)
-						.then(applyDataSourceSelection)
+						.then((selection) => applyDataSourceSelection(selection, pickerChoice.actionChoice.action.dataSourceId))
 						.catch(console.error);
 					break;
 				}
@@ -519,7 +538,11 @@ function NodeSelector(props: NodeSelectorProps) {
 									...(fileType ? getFileMetaData({ fileType, fileSize, useSingleValueFilename, useMVS }) : {})
 								});
 							});
-							const { validItems, duplicateItems } = validateNewItems(newNodeSelectorItems, value, allowDuplicates);
+							const { validItems, duplicateItems } = validateNewItems(
+								withDataSourceId(newNodeSelectorItems, pickerChoice.actionChoice?.action.dataSourceId),
+								value,
+								allowDuplicates
+							);
 							setValue(validItems);
 							if (!allowDuplicates && duplicateItems.length) showDuplicatesWarning(dispatch, duplicateItems);
 						}
@@ -627,7 +650,7 @@ function NodeSelector(props: NodeSelectorProps) {
 				actions={customActions}
 				context={dataSources.context}
 				disabled={readonly}
-				onResult={applyDataSourceSelection}
+				onResult={(selection, action) => applyDataSourceSelection(selection, action.dataSourceId)}
 				onError={console.error}
 				onMenuClose={() => setAddMenuOpen(false)}
 			/>
@@ -1399,6 +1422,11 @@ function isItemComponent(item: NodeSelectorItem): boolean {
 		// 3. It has an 'include' property that does not point to an editable asset (shared component).
 		item.component || (item.include && (item.include.startsWith('/site/') || !isEditableAsset(item.include)))
 	);
+}
+
+/** Sets the `datasource` attribute of new items to the id of the data source they were added with, when known. */
+function withDataSourceId(newItems: NodeSelectorItem[], dataSourceId: string | undefined): NodeSelectorItem[] {
+	return dataSourceId ? newItems.map((item) => ({ ...item, '@:datasource': dataSourceId })) : newItems;
 }
 
 /**

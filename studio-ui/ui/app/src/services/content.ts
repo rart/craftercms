@@ -41,7 +41,7 @@ import { GetChildrenOptions } from '../models/GetChildrenOptions';
 import { generateComponentPath, isPdfDocument, parseContentXML, prepareVirtualItemProps } from '../utils/content';
 import QuickCreateItem from '../models/content/QuickCreateItem';
 import ApiResponse, { Api2ResponseFormat } from '../models/ApiResponse';
-import { fetchContentTypes } from './contentTypes';
+import { fetchContentTypes, getItemDataSourceId } from './contentTypes';
 import { Clipboard } from '../models/GlobalState';
 import { createObjectGroupId, getFileNameFromPath } from '../utils/path';
 import { GetChildrenResponse } from '../models/GetChildrenResponse';
@@ -391,10 +391,16 @@ export function insertComponent(
 			// Create the new `item` that holds or references (embedded vs shared) the component.
 			const newItem = createElement('item');
 			const field = parentContentType.fields[parentFieldId];
+			const dataSourceId = getItemDataSourceId(
+				parentContentType,
+				field,
+				insertedItemContentType.id,
+				isSharedInstance ? 'shared' : 'embedded'
+			);
 
 			// Add the child elements into the `item` node
 			createElements(newItem, {
-				'@attributes': { inline: !isSharedInstance },
+				'@attributes': { ...(dataSourceId ? { datasource: dataSourceId } : {}), inline: !isSharedInstance },
 				key: isSharedInstance ? path : id,
 				value: cdataWrap(insertedContentInstance.craftercms.label),
 				...(isSharedInstance
@@ -437,12 +443,12 @@ export function insertInstance(
 			const path = insertedInstance.craftercms.path;
 			const newItem = createElement('item');
 			const field = parentContentType.fields[parentFieldId];
+			const dataSourceId =
+				datasource ??
+				getItemDataSourceId(parentContentType, field, insertedInstance.craftercms.contentTypeId, 'sharedExisting');
 
 			createElements(newItem, {
-				'@attributes': {
-					// TODO: Review datasource persistence.
-					datasource: datasource ?? ''
-				},
+				...(dataSourceId ? { '@attributes': { datasource: dataSourceId } } : {}),
 				key: path,
 				value: cdataWrap(insertedInstance.craftercms.label),
 				include: path,
