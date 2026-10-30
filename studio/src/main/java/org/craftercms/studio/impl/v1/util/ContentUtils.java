@@ -181,7 +181,7 @@ public class ContentUtils {
 	 * @return the text of the node, or null if the node is not found
 	 */
 	public static String readSingleDocumentNodeText(final Element root, final String nodeName) {
-		return root.elementText(nodeName);
+		return root.elementTextTrim(nodeName);
 	}
 
 	/**

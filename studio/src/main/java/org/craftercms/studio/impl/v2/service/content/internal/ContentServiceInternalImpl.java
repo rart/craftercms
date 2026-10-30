@@ -2798,7 +2798,7 @@ public class ContentServiceInternalImpl implements ContentService, ApplicationEv
 		 * @param objectId the object id
 		 */
 		public ContentItemIds(String objectId) {
-			this(objectId, objectId.substring(0, 4));
+			this(objectId, StringUtils.left(objectId, 4));
 		}
 
 		/**
