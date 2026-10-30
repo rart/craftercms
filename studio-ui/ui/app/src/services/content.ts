@@ -222,7 +222,7 @@ function createComponentObject(
 		'content-type': contentType.id,
 		'display-template': contentType.displayTemplate,
 		// TODO: per this, at this point, internal-name is always cdata wrapped, not driven by config.
-		'internal-name': cdataWrap(instance.craftercms.label),
+		'internal-name': cdataWrap(instance.craftercms.label ?? ''),
 		'file-name': fileName,
 		objectId: id,
 		...serializedInstance
@@ -285,7 +285,7 @@ export function updateField(
 				typeof serializeValue === 'function'
 					? serializeValue(value)
 					: Boolean(serializeValue)
-						? cdataWrap(value)
+						? cdataWrap(value ?? '')
 						: value;
 		},
 		modelId,
@@ -395,7 +395,7 @@ export function insertComponent(
 			createElements(newItem, {
 				'@attributes': { inline: !isSharedInstance },
 				key: isSharedInstance ? path : id,
-				value: cdataWrap(insertedContentInstance.craftercms.label),
+				value: cdataWrap(insertedContentInstance.craftercms.label ?? ''),
 				...(isSharedInstance
 					? { include: path, disableFlattening: String(field?.properties?.disableFlattening?.value ?? 'false') }
 					: {
@@ -443,7 +443,7 @@ export function insertInstance(
 					datasource: datasource ?? ''
 				},
 				key: path,
-				value: cdataWrap(insertedInstance.craftercms.label),
+				value: cdataWrap(insertedInstance.craftercms.label ?? ''),
 				include: path,
 				disableFlattening: String(field?.properties?.disableFlattening?.value ?? 'false')
 			});

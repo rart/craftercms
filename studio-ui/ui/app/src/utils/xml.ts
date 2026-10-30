@@ -17,7 +17,7 @@
 import prettierXmlPlugin from '@prettier/plugin-xml';
 import { format } from 'prettier/standalone';
 import { nnou } from './object';
-import { XMLParser, X2jOptions } from 'fast-xml-parser';
+import { XMLBuilder, XMLParser, X2jOptions } from 'fast-xml-parser';
 import { legacyUnescapeXml } from './string';
 
 export function fromString(xml: string): XMLDocument {
@@ -207,10 +207,11 @@ export function deserialize(xml: string | Node, options?: Partial<X2jOptions>): 
 	return parser.parse(xml);
 }
 
+// Uses the library's CDATA handling. null and undefined build to ''.
+const cdataBuilder = new XMLBuilder({ cdataPropName: '#cdata' });
+
 export function cdataWrap(value: string): string {
-	// ']]>' would end the section early. Split it the same way fast-xml-builder's safeCdata does.
-	const safe = `${value}`.replace(/\]\]>/g, ']]]]><![CDATA[>');
-	return `<![CDATA[${safe}]]>`;
+	return cdataBuilder.build({ '#cdata': value });
 }
 
 export function parseValidateDocument(content: string): XMLDocument | string {
