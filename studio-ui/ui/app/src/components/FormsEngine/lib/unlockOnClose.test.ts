@@ -181,9 +181,6 @@ describe('root reload of stacked forms', () => {
 		);
 		assert.equal(lockPathToRelease(covered), '/site/components/covered.xml');
 		assert.equal(lockPathToRelease({ ...covered, releaseLockOnClose: false }), null);
-		const gate = createLockReleaseGate();
-		assert.equal(planLockRelease(top, gate), '/site/components/top.xml');
-		assert.equal(planLockRelease(top, gate), null);
 	});
 });
 

@@ -118,7 +118,7 @@ import {
 	useValidateFormProps
 } from './lib/formUtils';
 import { renderFieldControl } from './lib/controlHelpers';
-import { releaseLockToggleFailed } from './lib/unlockOnClose';
+import { entriesReleasedOnStackRemoval, releaseLockToggleFailed } from './lib/unlockOnClose';
 import {
 	ContentTypeNotFoundError,
 	ItemNotFoundError,
@@ -323,8 +323,13 @@ function GlobalFormsState(props: FormsEngineProps) {
 				const removed = stack[stack.length - 1];
 				if (!removed) return;
 				// The mounted top releases itself on unmount. A covered entry has no bootstrap.
-				if (removed !== ctx.mountedStackEntry) {
-					ctx.releaseUnmountedEntry?.(removed);
+				const [release] = entriesReleasedOnStackRemoval({
+					stack,
+					closeCount: 1,
+					mounted: ctx.mountedStackEntry
+				});
+				if (release) {
+					ctx.releaseUnmountedEntry?.(release);
 				} else {
 					ctx.mountedStackEntry = null;
 				}
