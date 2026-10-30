@@ -71,7 +71,14 @@ export function getInnerHtml(element: Element, options?: Partial<GetInnerHtmlOpt
 		// @ts-ignore downlevelIteration
 		const matches = [...content.matchAll(/<!\[CDATA\[([\s\S\n]*?)\]\]>/g)];
 		if (matches.length > 0) {
-			content = matches[0][1].trim();
+			// ']]>' is stored as adjacent sections (]]]]><![CDATA[>). Read every section in that run.
+			let cdata = matches[0][1];
+			let end = matches[0].index + matches[0][0].length;
+			for (let i = 1; i < matches.length && matches[i].index === end; i++) {
+				cdata += matches[i][1];
+				end = matches[i].index + matches[i][0].length;
+			}
+			content = cdata.trim();
 		}
 		if (opts.trim) {
 			content = content.trim();

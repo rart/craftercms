@@ -23,8 +23,11 @@ import '../../test/registerTsLoader.mjs';
 const { window } = new JSDOM('<!doctype html><html><body></body></html>');
 globalThis.DOMParser = window.DOMParser;
 
-const { cdataWrap, deserialize, fromString } = await import('./xml.ts');
+globalThis.document = window.document;
+
+const { cdataWrap, deserialize, fromString, getInnerHtml } = await import('./xml.ts');
 const { getXmlBuilder } = await import('../components/FormsEngine/lib/valueSerializers.ts');
+const { parseContentXML } = await import('./content.ts');
 
 const cdataPropName = '__cdata__';
 // Several terminators, including the a]]>b case, in one value.
@@ -61,5 +64,37 @@ describe('CDATA terminators', () => {
 		assert.equal(cdataData(formatted), value);
 		assert.equal(cdataData(`<field>${wrapped}</field>`), value);
 		assert.equal(fromString(`<field>${wrapped}</field>`).documentElement.textContent, value);
+	});
+
+	it('reads a split CDATA value back through parseContentXML', () => {
+		const rteValue = 'a]]>b]]>c';
+		const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<page>
+	<objectId>01234567-89ab-cdef-0123-456789abcdef</objectId>
+	<content-type>/page/article</content-type>
+	<internal-name>${cdataWrap(rteValue)}</internal-name>
+	<file-name>index.xml</file-name>
+	<body_html>${cdataWrap(rteValue)}</body_html>
+</page>`;
+		const doc = fromString(xml);
+		assert.equal(doc.querySelector('parsererror'), null);
+		assert.equal(getInnerHtml(doc.querySelector('body_html')), rteValue);
+		assert.equal(getInnerHtml(doc.querySelector('internal-name'), { applyLegacyUnescaping: true }), rteValue);
+		assert.equal(getInnerHtml(fromString('<field><![CDATA[  plain  ]]></field>').documentElement), 'plain');
+
+		const parsed = parseContentXML(
+			doc,
+			'/site/website/articles/index.xml',
+			{
+				'/page/article': {
+					fields: {
+						body_html: { id: 'body_html', type: 'rte' }
+					}
+				}
+			} as never,
+			{}
+		);
+		assert.equal(parsed.body_html, rteValue);
+		assert.equal(parsed.craftercms.label, rteValue);
 	});
 });
