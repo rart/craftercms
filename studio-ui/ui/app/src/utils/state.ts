@@ -469,10 +469,6 @@ export function getFormsEngineReleaseLockOnClose(username: string): string {
 	return `craftercms.${username}.formsEngine.releaseLockOnClose`;
 }
 
-export function setStoredFormsEngineReleaseLockOnClose(username: string, value: boolean): void {
-	window.localStorage.setItem(getFormsEngineReleaseLockOnClose(username), JSON.stringify(value));
-}
-
 /** Stored choice, or null when absent or unreadable. Absent means release the lock. */
 export function getStoredFormsEngineReleaseLockOnClose(username: string): boolean | null {
 	try {
@@ -492,22 +488,6 @@ export function removeStoredFormsEngineReleaseLockOnClose(username: string): voi
 /** False or absent means Save. True means the user last chose Save Draft. */
 export function getFormsEngineSaveAsDraft(username: string): string {
 	return `craftercms.${username}.formsEngine.saveAsDraft`;
-}
-
-export function setStoredFormsEngineSaveAsDraft(username: string, value: boolean): void {
-	window.localStorage.setItem(getFormsEngineSaveAsDraft(username), JSON.stringify(value));
-}
-
-/** Stored choice, or null when absent or unreadable. Absent means Save. */
-export function getStoredFormsEngineSaveAsDraft(username: string): boolean | null {
-	try {
-		const value = window.localStorage.getItem(getFormsEngineSaveAsDraft(username));
-		if (value == null) return null;
-		const parsed = JSON.parse(value) as unknown;
-		return typeof parsed === 'boolean' ? parsed : null;
-	} catch {
-		return null;
-	}
 }
 
 export function removeStoredFormsEngineSaveAsDraft(username: string): void {

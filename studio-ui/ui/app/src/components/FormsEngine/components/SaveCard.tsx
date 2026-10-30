@@ -55,7 +55,7 @@ const messages = defineMessages({
 	close: { defaultMessage: 'Close' },
 	releaseLockOnClose: { defaultMessage: 'Release lock when closing' },
 	keepLockWarning: {
-		defaultMessage: "Other users can't edit it until you release the lock."
+		defaultMessage: "Others can't edit it until you release the lock."
 	}
 });
 

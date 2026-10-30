@@ -124,17 +124,7 @@ export const preferencesGroups: Array<{
 		label: <FormattedMessage defaultMessage="Form Settings" />,
 		onClear: (props) => {
 			removeStoredItems((key) => key.includes(`craftercms.${props.username}.saveButtonSubAction.`));
-		}
-	},
-	{
-		label: <FormattedMessage defaultMessage="Release Lock When Closing" />,
-		onClear: (props) => {
 			removeStoredFormsEngineReleaseLockOnClose(props.username);
-		}
-	},
-	{
-		label: <FormattedMessage defaultMessage="Save as Draft" />,
-		onClear: (props) => {
 			removeStoredFormsEngineSaveAsDraft(props.username);
 		}
 	},
