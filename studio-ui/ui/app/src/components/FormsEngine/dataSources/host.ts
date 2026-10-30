@@ -57,8 +57,9 @@ export const formsEngineDataSourcesHost = {
  * for UMD-style loaders.
  *
  * `FormsEngineField` is the field chrome built-in controls use (label, required/invalid
- * state, validity messages, field menu, inheritance notice). Plugin controls are rendered
- * bare, so they must wrap their input in it to display validation state like built-ins do.
+ * state, validity messages, field menu, inheritance notice). The host wraps plugin controls
+ * in it by default. A contribution that sets `fieldChrome: false` renders bare and wraps its
+ * input in `FormsEngineField` itself, using the `inputId` / `labelId` control props.
  *
  * `useFieldValue(fieldId)` is the supported way for plugin controls to access sibling
  * fields — e.g. a descriptor-declared additional field such as `{id}_tz` (date/time) or

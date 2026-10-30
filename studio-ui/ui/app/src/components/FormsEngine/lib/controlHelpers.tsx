@@ -15,6 +15,7 @@
  */
 
 import { ControlProps } from '../types';
+import type { SxProps, Theme } from '@mui/material/styles';
 import { countLimitValue } from '../../../utils/countLimits';
 import Alert from '@mui/material/Alert';
 import { FormattedMessage } from 'react-intl';
@@ -93,7 +94,15 @@ function PluginControlRenderer({
 	plugin: NonNullable<ContentTypeField['properties']['plugin']>;
 }) {
 	const loaded = useControlPluginModule(siteId, plugin, props.field.type, ControlPluginError);
-	return <ResolvedControlRenderer {...props} Control={loaded.Component} bindings={loaded.bindings} />;
+	return (
+		<ResolvedControlRenderer
+			{...props}
+			Control={loaded.Component}
+			bindings={loaded.bindings}
+			fieldChrome={loaded.fieldChrome}
+			fieldSx={loaded.fieldSx}
+		/>
+	);
 }
 
 function ResolvedControlRenderer({
@@ -104,12 +113,20 @@ function ResolvedControlRenderer({
 	value,
 	setValue,
 	Control,
-	bindings = getControlDataSourceBindings(field.type)
+	bindings = getControlDataSourceBindings(field.type),
+	fieldChrome = false,
+	fieldSx
 }: Omit<ControlWrapperProps, 'atom' | 'customControlMap'> & {
 	value: unknown;
 	setValue: (value: unknown) => void;
 	Control: ElementType<ControlProps>;
 	bindings?: ReturnType<typeof getControlDataSourceBindings>;
+	/**
+	 * Wrap the control in `FormsEngineField`, labelled by the generated ids. Built-in controls and Type Builder
+	 * controls wrap themselves, so this is `false` unless a plugin control asks for the default wrapper.
+	 */
+	fieldChrome?: boolean;
+	fieldSx?: SxProps<Theme>;
 }) {
 	const id = useId();
 	const siteId = useActiveSiteId();
@@ -148,7 +165,9 @@ function ResolvedControlRenderer({
 		expandPath,
 		contentTypes
 	});
-	return (
+	const inputId = `${id}-input`;
+	const labelId = `${id}-label`;
+	const control = (
 		<Control
 			autoFocus={autoFocus && !readonly}
 			value={value}
@@ -156,10 +175,17 @@ function ResolvedControlRenderer({
 			field={field}
 			contentType={contentType}
 			readonly={readonly}
-			inputId={`${id}-input`}
-			labelId={`${id}-label`}
+			inputId={inputId}
+			labelId={labelId}
 			dataSources={dataSources}
 		/>
+	);
+	return fieldChrome ? (
+		<FormsEngineField field={field} htmlFor={inputId} labelId={labelId} sx={fieldSx}>
+			{control}
+		</FormsEngineField>
+	) : (
+		control
 	);
 }
 

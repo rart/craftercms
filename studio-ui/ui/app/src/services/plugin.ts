@@ -16,6 +16,7 @@
 
 import { isValidElementType } from 'react-is';
 import type { ComponentType } from 'react';
+import type { SxProps, Theme } from '@mui/material/styles';
 import LookupTable from '../models/LookupTable';
 import { augmentTranslations } from '../utils/i18n';
 import { components, plugins } from '../utils/constants';
@@ -44,6 +45,8 @@ type ControlContributionCommit = {
 	typeKey: string;
 	Component: ComponentType<ControlProps<AnyValue>>;
 	bindings: readonly DataSourceBinding[];
+	fieldChrome?: boolean;
+	fieldSx?: SxProps<Theme>;
 	valueRetriever?: ValueRetriever<AnyValue>;
 	valueSerializer?: ValueSerializer<AnyValue>;
 	validator?: Validator<AnyValue>;
@@ -222,6 +225,9 @@ export function registerPlugin(plugin: PluginDescriptor, source?: PluginFileBuil
 					`Plugin "${plugin.id}" control "${typeKey}" must declare a valid React Component on ControlPluginContribution.Component.`
 				);
 			}
+			if (entry.fieldChrome != null && typeof entry.fieldChrome !== 'boolean') {
+				throw new TypeError(`Plugin "${plugin.id}" control "${typeKey}" fieldChrome must be a boolean when provided.`);
+			}
 			if (entry.valueRetriever != null && typeof entry.valueRetriever !== 'function') {
 				throw new TypeError(
 					`Plugin "${plugin.id}" control "${typeKey}" valueRetriever must be a function when provided.`
@@ -253,6 +259,8 @@ export function registerPlugin(plugin: PluginDescriptor, source?: PluginFileBuil
 				typeKey,
 				Component: entry.Component,
 				bindings,
+				fieldChrome: entry.fieldChrome,
+				fieldSx: entry.fieldSx,
 				valueRetriever: entry.valueRetriever,
 				valueSerializer: entry.valueSerializer,
 				validator: entry.validator
@@ -264,17 +272,21 @@ export function registerPlugin(plugin: PluginDescriptor, source?: PluginFileBuil
 	dsToCommit.forEach((module) => {
 		dataSourceModuleRegistry.register(module);
 	});
-	controlsToCommit.forEach(({ typeKey, Component, bindings, valueRetriever, valueSerializer, validator }) => {
-		registerControlContribution(typeKey, {
-			Component,
-			bindings,
-			pluginId: plugin.id,
-			valueRetriever,
-			valueSerializer,
-			validator
-		});
-		registerControlDataSourceBindings(typeKey, bindings);
-	});
+	controlsToCommit.forEach(
+		({ typeKey, Component, bindings, fieldChrome, fieldSx, valueRetriever, valueSerializer, validator }) => {
+			registerControlContribution(typeKey, {
+				Component,
+				bindings,
+				fieldChrome,
+				fieldSx,
+				pluginId: plugin.id,
+				valueRetriever,
+				valueSerializer,
+				validator
+			});
+			registerControlDataSourceBindings(typeKey, bindings);
+		}
+	);
 
 	if (alreadyRegistered) {
 		const existing = plugins.get(plugin.id);

@@ -15,6 +15,7 @@
  */
 
 import type { ComponentType } from 'react';
+import type { SxProps, Theme } from '@mui/material/styles';
 import WidgetRecord from './WidgetRecord';
 import type { DataSourceBinding, DataSourceModule } from '../components/FormsEngine/dataSources/types';
 import type { AnyValue, ControlProps } from '../components/FormsEngine/types';
@@ -28,6 +29,14 @@ import type { Validator } from '../components/FormsEngine/lib/validators';
 export interface ControlPluginContribution<V = unknown> {
 	/** React control component; must accept ControlProps. */
 	Component: ComponentType<ControlProps<V>>;
+	/**
+	 * Whether the host wraps `Component` in `FormsEngineField` (label, required and invalid state, validity
+	 * messages, field menu). Defaults to `true`. Set `false` to render the component bare and wrap it yourself
+	 * with `craftercms.formsEngine.controls.FormsEngineField`, using the `inputId` and `labelId` props.
+	 */
+	fieldChrome?: boolean;
+	/** `sx` for the default `FormsEngineField` wrapper. Ignored when `fieldChrome` is `false`. */
+	fieldSx?: SxProps<Theme>;
 	/** Optional; same shapes as built-in `controlDataSourceBindings` entries. */
 	dataSourceBindings?: DataSourceBinding | readonly DataSourceBinding[];
 	/**

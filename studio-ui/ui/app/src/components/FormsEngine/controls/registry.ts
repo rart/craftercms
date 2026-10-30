@@ -15,6 +15,7 @@
  */
 
 import type { ComponentType } from 'react';
+import type { SxProps, Theme } from '@mui/material/styles';
 import type { DataSourceBinding } from '../dataSources/types';
 import type { ValueRetriever, ValueSerializer } from '../lib/controlValueTypes';
 import type { Validator } from '../lib/validators';
@@ -24,6 +25,10 @@ import type { AnyValue, ControlProps } from '../types';
 export interface RegisteredControlContribution {
 	Component: ComponentType<ControlProps<AnyValue>>;
 	bindings: readonly DataSourceBinding[];
+	/** Wrap in `FormsEngineField` when not `false`. See `ControlPluginContribution.fieldChrome`. */
+	fieldChrome?: boolean;
+	/** `sx` for the default wrapper. */
+	fieldSx?: SxProps<Theme>;
 	/** Owning {@link PluginDescriptor.id} — not the form-definition asset locator `pluginId`. */
 	pluginId: string;
 	valueRetriever?: ValueRetriever<AnyValue>;
@@ -39,7 +44,7 @@ const registeredControls = new Map<string, RegisteredControlContribution>();
  * Idempotent for the same owning plugin + Component. Throws if another plugin's descriptor already
  * claims the type (even with an identical Component reference), so binding/IO metadata cannot be
  * overwritten under a retained first owner. Re-entry with the same owner+Component replaces
- * bindings and optional valueRetriever/valueSerializer/validator (omitted hooks are cleared).
+ * bindings, fieldChrome, fieldSx and the optional valueRetriever/valueSerializer/validator (omitted ones are cleared).
  */
 export function registerControlContribution(controlType: string, contribution: RegisteredControlContribution): void {
 	if (!controlType) {
