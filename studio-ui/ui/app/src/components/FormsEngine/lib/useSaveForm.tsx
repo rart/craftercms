@@ -63,6 +63,7 @@ import { validateActionPolicy } from '../../../services/sites';
 import { createComponentId, pushConfirmDialog } from '../../../utils/system';
 import { nanoid } from 'nanoid';
 import { popDialog, pushDialog } from '../../../state/actions/dialogStack';
+import { reloadContentItem } from '../../../state/actions/content';
 import { useAtomValue, useSetAtom, useStore as useJotaiStore } from 'jotai';
 import { showSystemNotification } from '../../../state/actions/system';
 import {
@@ -96,6 +97,10 @@ export function useSaveForm(props: UseSaveFormProps) {
 	const jotai = useJotaiStore();
 	const store = useReduxStore<GlobalState>();
 	const dispatch = useDispatch();
+	// The sandbox item in the store is not updated by the write. The address bar reads that item.
+	const refreshSavedItem = (savedPath: string) => {
+		if (savedPath) dispatch(reloadContentItem({ path: savedPath }));
+	};
 	const { formatMessage } = useIntl();
 	const siteId = useActiveSiteId();
 	const { isEmbedded, isStackedForm = false, isRepeatMode, isCreateMode, onClose, onMinimize, createPath } = props;
@@ -404,6 +409,7 @@ export function useSaveForm(props: UseSaveFormProps) {
 							async next(ajaxResponse: AjaxResponse<WriteContentResponse>) {
 								try {
 									const isAmended = ajaxResponse.response?.items?.[0]?.amended;
+									refreshSavedItem(path);
 									const result = ((await onSave?.(repositorySaveArgs(path, dom, xml))) ?? {
 										close: false
 									}) as FormSavePromiseResult;
@@ -477,6 +483,7 @@ export function useSaveForm(props: UseSaveFormProps) {
 							}
 							const isAmended = ajaxResponse.response?.items?.[0]?.amended;
 							const dom = fromString(xml);
+							refreshSavedItem(path);
 							const result = ((await onSave?.(repositorySaveArgs(path, dom, xml))) ?? {
 								close: false
 							}) as FormSavePromiseResult;
