@@ -382,7 +382,7 @@ export type DescriptorContentTypeFieldValidation = Omit<ContentTypeFieldValidati
 
 export type DescriptorFieldValidations = Record<DescriptorFieldValidationKeys, DescriptorContentTypeFieldValidation>;
 
-export interface TypeBuilderControl extends Omit<ControlProps, 'field'> {
+export interface TypeBuilderControl<V = unknown> extends Omit<ControlProps<V>, 'field'> {
 	field: ContentTypeField & {
 		validations: Partial<DescriptorFieldValidations>;
 	};

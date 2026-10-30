@@ -35,6 +35,7 @@ import { isPagePath, withIndex } from '../../../utils/path';
 import { FormsEngineItemMetaContextProps } from './formsEngineContext';
 import { validateDatePopulateExpression } from './controlHelpers';
 import type { DescriptorControlType } from '../../ContentTypeManagement/controlMap';
+import type { AnyValue } from '../types';
 import type { RepeatItem } from '../controls/Repeat';
 import type { NodeSelectorItem } from '../controls/NodeSelector';
 import type { CheckboxGroupProps } from '../controls/CheckboxGroup';
@@ -136,7 +137,7 @@ interface BuiltInValidatorContext extends ValidatorContext {
 	readonly meta: ValidatorMetaData;
 }
 
-type BuiltInValidator = (value: any, ctx: BuiltInValidatorContext) => ValidatorResult | Promise<ValidatorResult>;
+type BuiltInValidator = (value: AnyValue, ctx: BuiltInValidatorContext) => ValidatorResult | Promise<ValidatorResult>;
 
 const validatorsMap: Partial<Record<BuiltInControlType | DescriptorControlType, BuiltInValidator>> = {
 	repeat: repeatGroupValidator,

@@ -22,12 +22,12 @@ import type LookupTable from '../../../models/LookupTable';
 import { buildFileUrl, importPlugin } from '../../../services/plugin';
 import { getRegisteredControlContribution } from '../controls/registry';
 import type { DataSourceBinding } from '../dataSources/types';
-import type { ControlProps } from '../types';
+import type { AnyValue, ControlProps } from '../types';
 import { XmlKeys } from './formConsts';
 
 export interface LoadedControlPlugin {
 	/** Resolved control Component + bindings; `url` is the plugin file URL used for cache/errors. */
-	Component: ComponentType<ControlProps>;
+	Component: ComponentType<ControlProps<AnyValue>>;
 	bindings: readonly DataSourceBinding[];
 	url: string;
 }

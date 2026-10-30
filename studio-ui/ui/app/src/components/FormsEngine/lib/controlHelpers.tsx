@@ -18,7 +18,7 @@ import { ControlProps } from '../types';
 import { countLimitValue } from '../../../utils/countLimits';
 import Alert from '@mui/material/Alert';
 import { FormattedMessage } from 'react-intl';
-import React, { ElementType, memo, Suspense, useCallback, useContext, useMemo } from 'react';
+import React, { ElementType, memo, Suspense, useCallback, useContext, useId, useMemo } from 'react';
 import useActiveSiteId from '../../../hooks/useActiveSiteId';
 import { Atom, useAtom } from 'jotai';
 import { controlMap } from './controlMap';
@@ -111,6 +111,7 @@ function ResolvedControlRenderer({
 	Control: ElementType<ControlProps>;
 	bindings?: ReturnType<typeof getControlDataSourceBindings>;
 }) {
+	const id = useId();
 	const siteId = useActiveSiteId();
 	const dispatch = useDispatch();
 	const contentTypes = useContentTypes();
@@ -155,6 +156,8 @@ function ResolvedControlRenderer({
 			field={field}
 			contentType={contentType}
 			readonly={readonly}
+			inputId={`${id}-input`}
+			labelId={`${id}-label`}
 			dataSources={dataSources}
 		/>
 	);

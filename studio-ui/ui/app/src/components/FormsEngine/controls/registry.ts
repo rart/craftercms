@@ -18,17 +18,17 @@ import type { ComponentType } from 'react';
 import type { DataSourceBinding } from '../dataSources/types';
 import type { ValueRetriever, ValueSerializer } from '../lib/controlValueTypes';
 import type { Validator } from '../lib/validators';
-import type { ControlProps } from '../types';
+import type { AnyValue, ControlProps } from '../types';
 
 /** Cached plugin control: Component, bindings, optional IO/validator hooks, and owning `PluginDescriptor.id`. */
 export interface RegisteredControlContribution {
-	Component: ComponentType<ControlProps>;
+	Component: ComponentType<ControlProps<AnyValue>>;
 	bindings: readonly DataSourceBinding[];
 	/** Owning {@link PluginDescriptor.id} — not the form-definition asset locator `pluginId`. */
 	pluginId: string;
-	valueRetriever?: ValueRetriever;
-	valueSerializer?: ValueSerializer;
-	validator?: Validator;
+	valueRetriever?: ValueRetriever<AnyValue>;
+	valueSerializer?: ValueSerializer<AnyValue>;
+	validator?: Validator<AnyValue>;
 }
 
 const registeredControls = new Map<string, RegisteredControlContribution>();
@@ -73,16 +73,16 @@ export function hasRegisteredControl(controlType: string): boolean {
 }
 
 /** Plugin control valueRetriever for `field.type`, if contributed. */
-export function getPluginControlValueRetriever(controlType: string): ValueRetriever | undefined {
+export function getPluginControlValueRetriever(controlType: string): ValueRetriever<AnyValue> | undefined {
 	return registeredControls.get(controlType)?.valueRetriever;
 }
 
 /** Plugin control valueSerializer for `field.type`, if contributed. */
-export function getPluginControlValueSerializer(controlType: string): ValueSerializer | undefined {
+export function getPluginControlValueSerializer(controlType: string): ValueSerializer<AnyValue> | undefined {
 	return registeredControls.get(controlType)?.valueSerializer;
 }
 
 /** Plugin control validator for `field.type`, if contributed. */
-export function getPluginControlValidator(controlType: string): Validator | undefined {
+export function getPluginControlValidator(controlType: string): Validator<AnyValue> | undefined {
 	return registeredControls.get(controlType)?.validator;
 }

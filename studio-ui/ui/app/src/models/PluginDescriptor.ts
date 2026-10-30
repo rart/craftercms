@@ -17,7 +17,7 @@
 import type { ComponentType } from 'react';
 import WidgetRecord from './WidgetRecord';
 import type { DataSourceBinding, DataSourceModule } from '../components/FormsEngine/dataSources/types';
-import type { ControlProps } from '../components/FormsEngine/types';
+import type { AnyValue, ControlProps } from '../components/FormsEngine/types';
 import type { ValueRetriever, ValueSerializer } from '../components/FormsEngine/lib/controlValueTypes';
 import type { Validator } from '../components/FormsEngine/lib/validators';
 
@@ -25,9 +25,9 @@ import type { Validator } from '../components/FormsEngine/lib/validators';
  * FE2 control contribution on a PluginDescriptor.
  * Map keys on `controls` must equal the control type id (`field.type`).
  */
-export interface ControlPluginContribution {
+export interface ControlPluginContribution<V = unknown> {
 	/** React control component; must accept ControlProps. */
-	Component: ComponentType<ControlProps>;
+	Component: ComponentType<ControlProps<V>>;
 	/** Optional; same shapes as built-in `controlDataSourceBindings` entries. */
 	dataSourceBindings?: DataSourceBinding | readonly DataSourceBinding[];
 	/**
@@ -35,18 +35,18 @@ export interface ControlPluginContribution {
 	 * Must be registered before form bootstrap parses content (FE preloads plugin locators).
 	 * Falls back to identity (pass-through) when omitted.
 	 */
-	valueRetriever?: ValueRetriever;
+	valueRetriever?: ValueRetriever<V>;
 	/**
 	 * Optional form value → XML-serialiser shape for this control type.
 	 * Used on save via `valueSerializers`; falls back to pass-through when omitted.
 	 */
-	valueSerializer?: ValueSerializer;
+	valueSerializer?: ValueSerializer<V>;
 	/**
 	 * Optional type-specific validator for this control type.
 	 * Required/empty checks remain host-owned in `validateFieldValue`.
 	 * FE preloads plugin locators before form bootstrap so validators are registered in time.
 	 */
-	validator?: Validator;
+	validator?: Validator<V>;
 }
 
 export interface PluginDescriptor {
@@ -76,7 +76,7 @@ export interface PluginDescriptor {
 	 * FE2 control contributions, keyed by control type id (`field.type`).
 	 * `registerPlugin` validates and installs each into the control contribution registry.
 	 */
-	controls?: Record<string, ControlPluginContribution>;
+	controls?: Record<string, ControlPluginContribution<AnyValue>>;
 	// themes: Array<{ id: string; name: string; themeOptions: ThemeOptions[] }>;
 }
 

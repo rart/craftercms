@@ -35,18 +35,18 @@ import {
 } from '../components/FormsEngine/controls/registry';
 import { controlMap } from '../components/FormsEngine/lib/controlMap';
 import type { ValueRetriever, ValueSerializer } from '../components/FormsEngine/lib/controlValueTypes';
-import type { ControlProps } from '../components/FormsEngine/types';
+import type { AnyValue, ControlProps } from '../components/FormsEngine/types';
 import type { Validator } from '../components/FormsEngine/lib/validators';
 
 const DEFAULT_FILE_NAME = 'index.js';
 
 type ControlContributionCommit = {
 	typeKey: string;
-	Component: ComponentType<ControlProps>;
+	Component: ComponentType<ControlProps<AnyValue>>;
 	bindings: readonly DataSourceBinding[];
-	valueRetriever?: ValueRetriever;
-	valueSerializer?: ValueSerializer;
-	validator?: Validator;
+	valueRetriever?: ValueRetriever<AnyValue>;
+	valueSerializer?: ValueSerializer<AnyValue>;
+	validator?: Validator<AnyValue>;
 };
 
 function isPluginFileBuilder(target: any): target is PluginFileBuilder {
