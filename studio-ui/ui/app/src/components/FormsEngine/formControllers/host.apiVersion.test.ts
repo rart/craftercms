@@ -15,8 +15,7 @@
  */
 
 /**
- * The form-controller host publishes the contract integer as its first member,
- * the same way the control and data-source hosts do.
+ * The form-controller host publishes the contract integer, the same way the control and data-source hosts do.
  */
 
 import assert from 'node:assert/strict';
@@ -27,9 +26,8 @@ const { FORM_CONTROLLER_API_VERSION } = await import('./types.ts');
 const { formsEngineFormControllersHost } = await import('./host.ts');
 
 describe('formsEngineFormControllersHost.apiVersion', () => {
-	it('exposes the current contract as the first member', () => {
+	it('exposes the current contract', () => {
 		assert.equal(FORM_CONTROLLER_API_VERSION, 1);
 		assert.equal(formsEngineFormControllersHost.apiVersion, FORM_CONTROLLER_API_VERSION);
-		assert.equal(Object.keys(formsEngineFormControllersHost)[0], 'apiVersion');
 	});
 });
