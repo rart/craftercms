@@ -299,6 +299,8 @@ function NodeSelector(props: NodeSelectorProps) {
 					}
 
 					const newItem: NodeSelectorItem = {
+						// Keeps the item's other children and its attributes (e.g. `datasource`).
+						...item,
 						key,
 						value: values[XmlKeys.internalName] as string,
 						[isEmbedded ? 'component' : 'include']: isEmbedded ? (values as LookupTable<Primitive>) : key,

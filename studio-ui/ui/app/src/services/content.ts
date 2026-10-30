@@ -43,7 +43,7 @@ import QuickCreateItem from '../models/content/QuickCreateItem';
 import ApiResponse, { Api2ResponseFormat } from '../models/ApiResponse';
 import { fetchContentTypes } from './contentTypes';
 import { Clipboard } from '../models/GlobalState';
-import { getFileNameFromPath } from '../utils/path';
+import { createObjectGroupId, getFileNameFromPath } from '../utils/path';
 import { GetChildrenResponse } from '../models/GetChildrenResponse';
 import { GetItemWithChildrenResponse } from '../models/GetItemWithChildrenResponse';
 import { FetchItemsByPathOptions } from '../models/FetchItemsByPath';
@@ -224,6 +224,7 @@ function createComponentObject(
 		// TODO: per this, at this point, internal-name is always cdata wrapped, not driven by config.
 		'internal-name': cdataWrap(instance.craftercms.label),
 		'file-name': fileName,
+		objectGroupId: createObjectGroupId(id),
 		objectId: id,
 		...serializedInstance
 	});
@@ -930,8 +931,11 @@ function updateComponentId(component: Element, id: string): void {
 	// Update the file name even if not a UUID (manually assigned name). Otherwise, it could override
 	// the existing document when duplicating and the UI has no visibility of whether
 	// there could be other duplicates already to create a meaningful name.
-	fileName.innerHTML = `${id}.xml`;
+	// Components created or edited in-session by FE2 may have no file-name.
+	if (fileName) fileName.innerHTML = `${id}.xml`;
 	objectId.innerHTML = id;
+	const groupId = component.querySelector(':scope > objectGroupId');
+	if (groupId) groupId.innerHTML = createObjectGroupId(id);
 
 	updateElementComponentsId(component);
 }

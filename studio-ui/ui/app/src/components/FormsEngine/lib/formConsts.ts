@@ -28,6 +28,8 @@ export const stackFormCountAtom = atom(0);
 
 export enum XmlKeys {
 	modelId = 'objectId',
+	groupId = 'objectGroupId',
+	orderDefault = 'orderDefault_f',
 	contentTypeId = 'content-type',
 	displayTemplate = 'display-template',
 	mergeStrategy = 'merge-strategy',
@@ -60,3 +62,12 @@ export const systemFieldsNotInType = [
 	XmlKeys.dateModified,
 	`${XmlKeys.dateModified}_dt`
 ];
+
+/**
+ * Elements a content object may hold without a field for them in its type. They are kept on save
+ * when the form doesn't produce them. Unknown elements are still dropped, as they are fields removed from the type.
+ */
+export const preservedElements: string[] = [XmlKeys.groupId, XmlKeys.orderDefault, XmlKeys.placeInNav];
+
+/** Prefix of item attributes in the values object, as read by `deserializeContentDoc` and written by `buildContentXml`. */
+export const xmlAttributePrefix = '@:';

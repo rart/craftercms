@@ -29,8 +29,8 @@ import {
 } from './formsEngineContext';
 import {
 	commitFormVisibility,
+	complementValuesWithSystemProps,
 	composePathForType,
-	createObjectWithSystemProps,
 	extractAtomValues,
 	getBasePath,
 	getFileNameValueFromPath,
@@ -641,29 +641,6 @@ export function useSaveForm(props: UseSaveFormProps) {
 	};
 
 	return { save };
-}
-
-function complementValuesWithSystemProps(
-	id: string,
-	values: LookupTable<unknown>,
-	contentObject: LookupTable<unknown>,
-	contentType: ContentType,
-	saveAsDraft: boolean
-): void {
-	const systemProps = createObjectWithSystemProps(contentType, {
-		[XmlKeys.modelId]: id,
-		[XmlKeys.internalName]: values[XmlKeys.internalName] as string,
-		[XmlKeys.dateCreated]: contentObject[XmlKeys.dateCreated] as string,
-		[XmlKeys.dateCreatedDt]: contentObject[XmlKeys.dateCreatedDt] as string,
-		[XmlKeys.savedAsDraft]: saveAsDraft
-	});
-
-	// Do not overwrite any existing value.
-	for (const key in systemProps) {
-		if (!(key in values)) {
-			values[key] = systemProps[key];
-		}
-	}
 }
 
 export default useSaveForm;
