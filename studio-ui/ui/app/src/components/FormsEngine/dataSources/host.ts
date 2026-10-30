@@ -25,6 +25,13 @@ import { dataSourceModuleRegistry, registerDataSourceModule } from './registry';
 import { DATA_SOURCE_API_VERSION } from './types';
 import { FormsEngineField } from '../components/FormsEngineField';
 import { useFieldValue } from '../lib/formsEngineContext';
+import {
+	XML_ATTRIBUTE_PREFIX,
+	XML_CDATA_KEY,
+	XML_ITEM_LIST_ATTRIBUTE,
+	XML_LIST_ITEM_KEY,
+	XML_TEXT_KEY
+} from '../lib/controlValueTypes';
 
 /**
  * Public runtime surface for the data-source *module registry* (built-ins and
@@ -68,5 +75,13 @@ export const formsEngineControlsHost = {
 	getValueSerializer: getPluginControlValueSerializer,
 	getValidator: getPluginControlValidator,
 	useFieldValue,
-	FormsEngineField
+	FormsEngineField,
+	/** Special keys a `valueSerializer` may use in the shape it returns. See the plugins doc. */
+	xmlKeys: {
+		attributePrefix: XML_ATTRIBUTE_PREFIX,
+		cdata: XML_CDATA_KEY,
+		text: XML_TEXT_KEY,
+		listItem: XML_LIST_ITEM_KEY,
+		itemListAttribute: XML_ITEM_LIST_ATTRIBUTE
+	}
 };
