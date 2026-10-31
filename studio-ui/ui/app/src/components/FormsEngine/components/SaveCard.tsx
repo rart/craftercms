@@ -332,7 +332,9 @@ export function SaveCard(props: SaveCardProps) {
 						width: '100%',
 						minWidth: 0,
 						maxWidth: '100%',
-						borderRadius: theme.shape.borderRadius
+						// A numeric sx radius is multiplied by the token. `1` is exactly that token in px.
+						borderRadius: 1,
+						overflow: 'hidden'
 					})}
 				>
 					<Box
@@ -357,7 +359,6 @@ export function SaveCard(props: SaveCardProps) {
 									component="span"
 									sx={(theme) => ({
 										fontSize: theme.typography.caption.fontSize,
-										fontStyle: 'italic',
 										fontWeight: theme.typography.fontWeightMedium,
 										lineHeight: 1
 									})}
@@ -377,15 +378,18 @@ export function SaveCard(props: SaveCardProps) {
 						aria-labelledby={afterSavingLabelId}
 						onChange={handleAfterSaving}
 						sx={(theme) => ({
+							display: 'flex',
+							width: '100%',
 							minWidth: 0,
 							maxWidth: '100%',
+							m: 0,
 							[`& .${toggleButtonGroupClasses.firstButton}`]: {
 								borderTopLeftRadius: 0,
-								borderBottomLeftRadius: theme.shape.borderRadius
+								borderBottomLeftRadius: `${theme.shape.borderRadius}px`
 							},
 							[`& .${toggleButtonGroupClasses.lastButton}`]: {
 								borderTopRightRadius: 0,
-								borderBottomRightRadius: theme.shape.borderRadius
+								borderBottomRightRadius: `${theme.shape.borderRadius}px`
 							},
 							[`& .${toggleButtonClasses.root}`]: {
 								flex: '1 1 0',
