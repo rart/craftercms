@@ -224,7 +224,7 @@ export function registerPlugin(plugin: PluginDescriptor, source?: PluginFileBuil
 			const reportedVersion = (entry as { apiVersion?: unknown }).apiVersion;
 			if ((reportedVersion ?? CONTROL_API_VERSION) !== CONTROL_API_VERSION) {
 				throw new TypeError(
-					`Plugin "${plugin.id}" control "${typeKey}" reports unsupported apiVersion "${String(reportedVersion)}" (expected ${CONTROL_API_VERSION}).`
+					`Plugin "${plugin.id}" control "${typeKey}" reports unsupported apiVersion (got ${typeof reportedVersion} "${String(reportedVersion)}"; expected the number ${CONTROL_API_VERSION}).`
 				);
 			}
 			if (!isValidElementType(entry.Component)) {

@@ -111,7 +111,7 @@ export function loadFormController(siteId: string, contentTypeId: string): Promi
 					exported && typeof exported === 'object' ? (exported as { apiVersion?: number }).apiVersion : undefined;
 				if (reportedVersion != null && reportedVersion !== FORM_CONTROLLER_API_VERSION) {
 					console.error(
-						`The form controller for "${contentTypeId}" reports unsupported apiVersion ${reportedVersion} (expected ${FORM_CONTROLLER_API_VERSION}). ${commonErrorMsg}`
+						`The form controller for "${contentTypeId}" reports unsupported apiVersion (got ${typeof reportedVersion} "${String(reportedVersion)}"; expected the number ${FORM_CONTROLLER_API_VERSION}). ${commonErrorMsg}`
 					);
 				} else {
 					console.error(

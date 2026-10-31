@@ -95,8 +95,7 @@ describe('control contribution apiVersion', () => {
 				const message = (error as TypeError).message;
 				assert.match(message, /org\.example\.unsupported-api-version/);
 				assert.match(message, /future-picker/);
-				assert.match(message, /unsupported apiVersion "2"/);
-				assert.match(message, /expected 1/);
+				assert.match(message, /unsupported apiVersion \(got number "2"; expected the number 1\)/);
 				return true;
 			}
 		);
@@ -151,8 +150,7 @@ describe('data-source contribution apiVersion', () => {
 				const message = (error as TypeError).message;
 				assert.match(message, /org\.example\.ds-unsupported-api-version/);
 				assert.match(message, /org-example-ds-future/);
-				assert.match(message, /unsupported apiVersion "2"/);
-				assert.match(message, /expected 1/);
+				assert.match(message, /unsupported apiVersion \(got number "2"; expected the number 1\)/);
 				return true;
 			}
 		);

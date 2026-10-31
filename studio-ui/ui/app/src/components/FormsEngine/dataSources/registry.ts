@@ -39,7 +39,7 @@ export function validateDataSourceModule(
 		const typeName = owner?.type ?? (typeof candidate.type === 'string' && candidate.type ? candidate.type : 'unknown');
 		const subject = owner ? `Plugin "${owner.pluginId}" data-source "${typeName}"` : `Data-source "${typeName}"`;
 		throw new TypeError(
-			`${subject} reports unsupported apiVersion "${String(reportedVersion)}" (expected ${DATA_SOURCE_API_VERSION}).`
+			`${subject} reports unsupported apiVersion (got ${typeof reportedVersion} "${String(reportedVersion)}"; expected the number ${DATA_SOURCE_API_VERSION}).`
 		);
 	}
 	if (!candidate.type || typeof candidate.type !== 'string') {

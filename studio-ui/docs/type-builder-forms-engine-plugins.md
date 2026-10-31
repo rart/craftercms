@@ -537,11 +537,11 @@ Handoff (historical): [`fe2-control-plugin-single-model-implementation.md`](fe2-
 
 Each FE2 contract has its own version: one positive integer, not semver. The number says which contract a plugin was written against, so the host can accept it, adapt it, or reject it. The three contracts change independently.
 
-| Contract | Constant | Now | Missing `apiVersion` | Read at runtime |
-| --- | --- | --- | --- | --- |
-| Control contribution | `CONTROL_API_VERSION` in `FormsEngine/types.ts` | `1` | Counts as `1` | `craftercms.formsEngine.controls.apiVersion` |
-| Data-source module | `DATA_SOURCE_API_VERSION` in `dataSources/types.ts` | `1` | Counts as `1` | `craftercms.formsEngine.dataSources.apiVersion` |
-| Form controller | `FORM_CONTROLLER_API_VERSION` in `formControllers/types.ts` | `1` | Counts as `1` | `craftercms.formsEngine.formControllers.apiVersion` |
+| Contract             | Constant                                                    | Now | Missing `apiVersion` | Read at runtime                                     |
+| -------------------- | ----------------------------------------------------------- | --- | -------------------- | --------------------------------------------------- |
+| Control contribution | `CONTROL_API_VERSION` in `FormsEngine/types.ts`             | `1` | Counts as `1`        | `craftercms.formsEngine.controls.apiVersion`        |
+| Data-source module   | `DATA_SOURCE_API_VERSION` in `dataSources/types.ts`         | `1` | Counts as `1`        | `craftercms.formsEngine.dataSources.apiVersion`     |
+| Form controller      | `FORM_CONTROLLER_API_VERSION` in `formControllers/types.ts` | `1` | Counts as `1`        | `craftercms.formsEngine.formControllers.apiVersion` |
 
 Bump a constant only when that contract breaks: a prop or hook argument is removed, renamed, or retyped, or a return value's shape or meaning changes.
 
