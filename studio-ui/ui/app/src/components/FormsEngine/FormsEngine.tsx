@@ -1429,7 +1429,7 @@ function FormOrchestrator(props: FormsEngineProps) {
 		[parentEntry]
 	);
 	const validationErrors = validationErrorsAlert({
-		localInvalidFieldIds: localInvalid.ids,
+		localInvalidFieldIds: localInvalid,
 		localSectionOrder: isRepeatMode ? repeatFieldIdList : countFieldIds,
 		localIrrelevant: irrelevantFieldPaths,
 		localParentPath: repeat?.fieldId,
@@ -1437,7 +1437,7 @@ function FormOrchestrator(props: FormsEngineProps) {
 		openRepeatFieldId: repeat?.fieldId,
 		parent: parentEntry
 			? {
-					invalidFieldIds: parentInvalid.ids,
+					invalidFieldIds: parentInvalid,
 					sectionOrder: parentFieldOrder,
 					irrelevantFieldPaths: parentEntry.formControllerState?.irrelevantFieldPaths
 				}
@@ -1860,7 +1860,7 @@ function FormOrchestrator(props: FormsEngineProps) {
 											<ValidationErrorsAlert
 												count={validationErrors.count}
 												fieldName={validationFieldName}
-												willSaveAsDraft={Boolean(validationErrors)}
+												willSaveAsDraft
 												onShow={showValidationField}
 											/>
 										)}
