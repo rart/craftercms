@@ -16,6 +16,8 @@
 
 import React, { ReactNode, useContext } from 'react';
 import { useTheme } from '@mui/material/styles';
+import type { SxProps, Theme } from '@mui/material/styles';
+import { useDispatch } from 'react-redux';
 import { ItemContext, ItemMetaContext, StableFormContext } from '../lib/formsEngineContext';
 import { useAtom, useAtomValue, useStore as useJotaiStore } from 'jotai';
 import useLocale from '../../../hooks/useLocale';
@@ -36,6 +38,7 @@ import ItemStateIcon from '../../ItemStateIcon';
 import Tooltip from '@mui/material/Tooltip';
 import IconButton from '@mui/material/IconButton';
 import { copyToClipboard } from '../../../utils/system';
+import { showSystemNotification } from '../../../state/actions/system';
 import MenuOpenIcon from '@mui/icons-material/MenuOpenRounded';
 import { XmlKeys } from '../lib/formConsts';
 import { DraftChip } from '../../DraftChip';
@@ -45,40 +48,49 @@ import { DraftChip } from '../../DraftChip';
 const tocGutterQuery = (theme: { breakpoints: { values: { lg: number } } }) =>
 	`@container formHeader (min-width: ${theme.breakpoints.values.lg + 80}px)`;
 
-function CopyableValue({ value, tooltip, children }: { value: string; tooltip: ReactNode; children: ReactNode }) {
+function CopyableValue({ value, children, sx }: { value: string; children: ReactNode; sx?: SxProps<Theme> }) {
+	const dispatch = useDispatch();
+	const { formatMessage } = useIntl();
 	return (
-		<Tooltip title={tooltip}>
+		<Tooltip title={formatMessage({ defaultMessage: 'Copy {value}' }, { value })}>
 			<Box
 				component="button"
 				type="button"
-				onClick={() => copyToClipboard(value)}
-				sx={{
-					display: 'flex',
-					alignItems: 'center',
-					minWidth: 0,
-					maxWidth: '100%',
-					overflow: 'hidden',
-					p: 0,
-					border: 0,
-					backgroundColor: 'transparent',
-					color: 'inherit',
-					font: 'inherit',
-					lineHeight: 'inherit',
-					cursor: 'pointer',
-					borderRadius: 0.5,
-					'&:hover': {
-						backgroundColor: 'action.hover'
-					},
-					'&:focus': {
-						outline: 'none'
-					},
-					'&:focus-visible': {
-						outlineStyle: 'solid',
-						outlineWidth: 2,
-						outlineColor: 'primary.main',
-						outlineOffset: '2px'
-					}
+				onClick={() => {
+					copyToClipboard(value).then(() => {
+						dispatch(showSystemNotification({ message: formatMessage({ defaultMessage: 'Copied' }) }));
+					});
 				}}
+				sx={[
+					{
+						display: 'flex',
+						alignItems: 'center',
+						minWidth: 0,
+						maxWidth: '100%',
+						overflow: 'hidden',
+						p: 0,
+						border: 0,
+						backgroundColor: 'transparent',
+						color: 'inherit',
+						font: 'inherit',
+						lineHeight: 'inherit',
+						cursor: 'pointer',
+						borderRadius: 0.5,
+						'&:hover': {
+							backgroundColor: 'action.hover'
+						},
+						'&:focus': {
+							outline: 'none'
+						},
+						'&:focus-visible': {
+							outlineStyle: 'solid',
+							outlineWidth: 2,
+							outlineColor: 'primary.main',
+							outlineOffset: '2px'
+						}
+					},
+					...(Array.isArray(sx) ? sx : [sx])
+				]}
 			>
 				{children}
 			</Box>
@@ -101,85 +113,52 @@ export function EditModeHeader({ isEmbedded }: { isEmbedded: boolean }) {
 
 	return (
 		<Container className="space-y" sx={{ py: 1 }}>
-			<Box
-				sx={{
-					display: 'flex',
-					alignItems: 'center',
-					minWidth: 0
-				}}
-			>
-				{isLargeContainer && (
-					<Box
-						sx={(theme) => ({
+			<Box className="space-x" sx={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
+				{isLargeContainer && <CollapseToCButton />}
+				<ItemTypeIcon item={typeIconItem} sx={{ color: 'info.main', flexShrink: 0 }} />
+				<Typography sx={{ flexShrink: 0 }}>{itemLabel}</Typography>
+				{item.savedAsDraft && <DraftChip />}
+				{readonly && (
+					<Chip
+						sx={{ [`.${chipClasses.label}`]: { display: 'flex', alignItems: 'center' }, flexShrink: 0 }}
+						color="warning"
+						variant="outlined"
+						label={
+							<>
+								<FormattedMessage defaultMessage="Readonly" />
+								<EditOffOutlined fontSize="small" sx={{ ml: 1 }} />
+							</>
+						}
+					/>
+				)}
+				<Box sx={{ flexGrow: 1, minWidth: 0, display: 'flex', justifyContent: 'flex-end' }}>
+					<Typography
+						component="span"
+						variant="body2"
+						color="textSecondary"
+						sx={{
 							display: 'flex',
 							alignItems: 'center',
-							flexShrink: 0,
-							alignSelf: 'stretch',
-							[tocGutterQuery(theme)]: {
-								position: 'relative',
-								width: 0,
-								overflow: 'visible',
-								'& .tocToggle': {
-									position: 'absolute',
-									right: theme.spacing(0.5),
-									top: '50%',
-									transform: 'translateY(-50%)',
-									mr: 0
-								}
-							}
-						})}
+							overflow: 'hidden',
+							maxWidth: '100%',
+							minWidth: 0
+						}}
 					>
-						<CollapseToCButton />
-					</Box>
-				)}
-				<Box className="space-x" sx={{ display: 'flex', alignItems: 'center', minWidth: 0, flexGrow: 1 }}>
-					<ItemTypeIcon item={typeIconItem} sx={{ color: 'info.main', flexShrink: 0 }} />
-					<Typography sx={{ flexShrink: 0 }}>{itemLabel}</Typography>
-					{item.savedAsDraft && <DraftChip />}
-					{readonly && (
-						<Chip
-							sx={{ [`.${chipClasses.label}`]: { display: 'flex', alignItems: 'center' }, flexShrink: 0 }}
-							color="warning"
-							variant="outlined"
-							label={
-								<>
-									<FormattedMessage defaultMessage="Readonly" />
-									<EditOffOutlined fontSize="small" sx={{ ml: 1 }} />
-								</>
-							}
-						/>
-					)}
-					<Box sx={{ flexGrow: 1, minWidth: 0, display: 'flex', justifyContent: 'flex-end' }}>
-						<Typography
-							component="span"
-							variant="body2"
-							color="textSecondary"
-							sx={{
-								display: 'flex',
-								alignItems: 'center',
-								overflow: 'hidden',
-								maxWidth: '100%',
-								minWidth: 0
-							}}
-						>
-							<CopyableValue value={item.path} tooltip={<FormattedMessage defaultMessage="Copy" />}>
-								<Box
-									component="span"
-									sx={{ whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden', minWidth: 0 }}
-								>
-									{item.path}
-									{/* Super-long test path: /Lorem/Ipsum/is/simply/dummy/text/of/the/printing/and/typesetting/industry/Lorem/Ipsum/has/been/the/industrys/standard/dummy/text/ever/since/the/1500s/when/an/unknown/printer/took/a/galley/of/type/and/scrambled/it/to/make/a/type/specimen/book.xml */}
-								</Box>
-							</CopyableValue>
-						</Typography>
-					</Box>
+						<CopyableValue value={item.path}>
+							<Box
+								component="span"
+								sx={{ whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden', minWidth: 0 }}
+							>
+								{item.path}
+								{/* Super-long test path: /Lorem/Ipsum/is/simply/dummy/text/of/the/printing/and/typesetting/industry/Lorem/Ipsum/has/been/the/industrys/standard/dummy/text/ever/since/the/1500s/when/an/unknown/printer/took/a/galley/of/type/and/scrambled/it/to/make/a/type/specimen/book.xml */}
+							</Box>
+						</CopyableValue>
+					</Typography>
 				</Box>
 			</Box>
 		</Container>
 	);
 }
-
-const objectIdTailLength = 12;
 
 export function EditModeMetadata() {
 	const { id: objectId } = useContext(ItemMetaContext);
@@ -194,18 +173,16 @@ export function EditModeMetadata() {
 	const formattedModifiedDate = new Intl.DateTimeFormat(localeConf.localeCode, {
 		dateStyle: 'short'
 	}).format(new Date(item.dateModified));
-	const objectIdHead = objectId.length > objectIdTailLength ? objectId.slice(0, -objectIdTailLength) : '';
-	const objectIdTail = objectId.slice(-objectIdTailLength);
 
 	return (
 		<Box
 			sx={{
 				display: 'flex',
-				alignItems: 'end',
-				justifyContent: 'space-between'
+				flexWrap: 'wrap',
+				alignItems: 'flex-start'
 			}}
 		>
-			<Box className="space-y" sx={{ flexBasis: '50%' }}>
+			<Box sx={{ flex: '0 0 auto', maxWidth: '100%', minWidth: 0 }}>
 				{/* Item metadata */}
 				<div>
 					<Typography
@@ -223,6 +200,8 @@ export function EditModeMetadata() {
 							sx={{
 								display: 'flex',
 								alignItems: 'center',
+								flexShrink: 0,
+								whiteSpace: 'nowrap',
 								marginRight: 1
 							}}
 						>
@@ -245,7 +224,9 @@ export function EditModeMetadata() {
 							component="span"
 							sx={{
 								display: 'flex',
-								alignItems: 'center'
+								alignItems: 'center',
+								flexShrink: 0,
+								whiteSpace: 'nowrap'
 							}}
 						>
 							<EditOutlined sx={{ mr: 0.25 }} fontSize="inherit" />
@@ -300,50 +281,38 @@ export function EditModeMetadata() {
 					</Typography>
 				</div>
 			</Box>
-			<Box
-				className="space-y"
+			<Typography
+				component="span"
+				variant="body2"
+				color="textSecondary"
 				sx={{
-					display: 'flex',
-					flexDirection: 'column',
-					alignItems: 'end',
-					maxWidth: '50%',
-					minWidth: 0
+					alignSelf: 'flex-start',
+					minWidth: 0,
+					flex: '1 1 0%',
+					maxWidth: '100%',
+					marginLeft: 'auto',
+					overflow: 'hidden',
+					textOverflow: 'ellipsis',
+					whiteSpace: 'nowrap',
+					textAlign: 'right'
 				}}
 			>
-				<Typography
-					component="span"
-					variant="body2"
-					color="textSecondary"
-					sx={{
-						display: 'flex',
-						alignItems: 'center',
-						overflow: 'hidden',
-						maxWidth: '100%',
-						minWidth: 0
-					}}
-				>
-					<CopyableValue
-						value={objectId}
-						tooltip={
-							<>
-								{objectId}
-								<br />
-								<FormattedMessage defaultMessage="Copy" />
-							</>
-						}
+				<CopyableValue value={objectId} sx={{ width: '100%' }}>
+					<Box
+						component="span"
+						sx={{
+							minWidth: 0,
+							flex: '1 1 auto',
+							overflow: 'hidden',
+							textOverflow: 'ellipsis',
+							whiteSpace: 'nowrap',
+							textAlign: 'right'
+						}}
 					>
-						<Box
-							component="span"
-							sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}
-						>
-							{objectIdHead}
-						</Box>
-						<Box component="span" sx={{ flexShrink: 0, whiteSpace: 'nowrap' }}>
-							{objectIdTail}
-						</Box>
-					</CopyableValue>
-				</Typography>
-			</Box>
+						{objectId}
+					</Box>
+				</CopyableValue>
+			</Typography>
 		</Box>
 	);
 }
@@ -357,14 +326,18 @@ function CollapseToCButton() {
 	return (
 		<Tooltip title={<FormattedMessage defaultMessage="Collapse table of contents" />}>
 			<IconButton
-				className="tocToggle"
 				size="small"
 				onClick={() => setCollapseToC(!collapseToC)}
-				sx={{
+				sx={(theme) => ({
 					// TODO: Tabs will be done at a later phase.
 					// visibility: activeTab === 0 ? undefined : 'hidden',
-					mr: 0.5
-				}}
+					mr: 0.5,
+					// Same in-flow size as the toggle-inside line. Only the horizontal position changes:
+					// the button shifts left by its own width plus the gap before the type icon.
+					[tocGutterQuery(theme)]: {
+						marginLeft: `calc(-1 * (${theme.typography.pxToRem(24)} + 10px + ${theme.spacing(0.5)} + ${theme.spacing(1)}))`
+					}
+				})}
 			>
 				<MenuOpenIcon
 					sx={{
