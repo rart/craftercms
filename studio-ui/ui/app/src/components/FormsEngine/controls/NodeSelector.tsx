@@ -1425,7 +1425,7 @@ function isItemComponent(item: NodeSelectorItem): boolean {
 }
 
 /** Sets the `datasource` attribute of new items to the id of the data source they were added with, when known. */
-function withDataSourceId(newItems: NodeSelectorItem[], dataSourceId: string | undefined): NodeSelectorItem[] {
+export function withDataSourceId(newItems: NodeSelectorItem[], dataSourceId: string | undefined): NodeSelectorItem[] {
 	return dataSourceId ? newItems.map((item) => ({ ...item, [xmlDataSourceAttribute]: dataSourceId })) : newItems;
 }
 

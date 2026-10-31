@@ -56,7 +56,6 @@ import { buildContentXml } from './valueSerializers';
 import { flushSync } from 'react-dom';
 import LookupTable from '../../../models/LookupTable';
 import { checkMinimumSaveRequirementsFulfilled, isInternalNameValid } from './validators';
-import ContentType from '../../../models/ContentType';
 import { cancelPackages } from '../../../services/workflow';
 import { switchMap } from 'rxjs';
 import { validateActionPolicy } from '../../../services/sites';

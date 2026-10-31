@@ -20,6 +20,9 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { JSDOM } from 'jsdom';
+import type ContentInstance from '../../../models/ContentInstance';
+import type ContentType from '../../../models/ContentType';
+import type { FormsEngineAtoms, StableFormContextProps } from './formsEngineContext';
 import '../../../../test/registerTsLoader.mjs';
 
 const { window } = new JSDOM('');
@@ -36,7 +39,7 @@ const { createParsedValuesObject, deserializeContentDoc } = await import('./valu
 const { buildContentXml } = await import('./valueSerializers.ts');
 const { complementValuesWithSystemProps, createObjectWithSystemProps, extractAtomValues, setFieldAtoms } =
 	await import('./formUtils.tsx');
-const { XmlKeys } = await import('./formConsts.ts');
+const { XmlKeys, xmlDataSourceAttribute } = await import('./formConsts.ts');
 const { itemsFromTaxonomyDoc } = await import('../dataSources/modules/simpleTaxonomy.ts');
 const { parseConfiguredListItems } = await import('../dataSources/modules/configuredList.ts');
 
@@ -48,7 +51,11 @@ const blueprintsDir = path.resolve(
 function walk(dir: string, out: string[] = []): string[] {
 	for (const name of readdirSync(dir)) {
 		const file = path.join(dir, name);
-		statSync(file).isDirectory() ? walk(file, out) : out.push(file);
+		if (statSync(file).isDirectory()) {
+			walk(file, out);
+		} else {
+			out.push(file);
+		}
 	}
 	return out;
 }
@@ -60,17 +67,17 @@ function parseType(xml: string) {
 }
 
 /** Open the item for edit and save it without changes, as FormsEngine and useSaveForm do. */
-function saveWithoutChanges(xml: string, contentTypesById: Record<string, any>): Document {
+function saveWithoutChanges(xml: string, contentTypesById: Record<string, ContentType>): Document {
 	const contentObject = deserializeContentDoc(fromString(xml));
 	const contentType = contentTypesById[contentObject[XmlKeys.contentTypeId] as string];
-	const atoms = { valueByFieldId: {}, validationByFieldId: {} } as any;
+	const atoms = { valueByFieldId: {}, validationByFieldId: {} } as FormsEngineAtoms;
 	const values = createParsedValuesObject(
 		contentType.fields,
 		contentObject,
 		contentTypesById,
 		(fieldId, value, isAdditional) =>
 			setFieldAtoms(
-				{ current: {} } as any,
+				{ current: {} as StableFormContextProps },
 				contentType,
 				contentType.fields,
 				fieldId,
@@ -82,7 +89,8 @@ function saveWithoutChanges(xml: string, contentTypesById: Record<string, any>):
 	);
 	const saved = extractAtomValues(createStore(), atoms.valueByFieldId);
 	complementValuesWithSystemProps(values[XmlKeys.modelId] as string, saved, contentObject, contentType, false);
-	const { [XmlKeys.fileName]: _, ...withoutFileName } = saved;
+	const withoutFileName = { ...saved };
+	delete withoutFileName[XmlKeys.fileName];
 	return fromString(buildContentXml(withoutFileName, contentTypesById));
 }
 
@@ -265,9 +273,9 @@ describe('XB item datasource', () => {
 		const lastItem = () => fromString(written.at(-1)).querySelector('items_o > item');
 		const run = (observable) =>
 			new Promise((resolve, reject) => observable.subscribe({ complete: resolve, error: reject }));
-		await run(insertInstance('s', '/site/p.xml', 'p', 'items_o', 0, type, item('/component/y') as any));
+		await run(insertInstance('s', '/site/p.xml', 'p', 'items_o', 0, type, item('/component/y') as ContentInstance));
 		assert.equal(lastItem().getAttribute('datasource'), 'b');
-		await run(insertInstance('s', '/site/p.xml', 'p', 'items_o', 0, type, item('/component/x') as any));
+		await run(insertInstance('s', '/site/p.xml', 'p', 'items_o', 0, type, item('/component/x') as ContentInstance));
 		assert.equal(lastItem().hasAttribute('datasource'), false);
 		await run(
 			insertComponent(
@@ -277,12 +285,28 @@ describe('XB item datasource', () => {
 				'items_o',
 				0,
 				type,
-				item('/component/y') as any,
-				{ id: '/component/y' } as any
+				item('/component/y') as ContentInstance,
+				{ id: '/component/y' } as ContentType
 			)
 		);
 		assert.equal(lastItem().hasAttribute('datasource'), false);
 		assert.equal(lastItem().querySelector('component > objectGroupId').textContent, 'abcd');
+	});
+});
+
+describe('node selector datasource', () => {
+	it('stamps a known data source id and leaves items unchanged when it is unknown', async () => {
+		const { withDataSourceId } = await import('../controls/NodeSelector.tsx');
+		const item = { key: '/site/x.xml', value: 'X', include: '/site/x.xml' };
+		const [stamped] = withDataSourceId([item], 'ds');
+		assert.equal(stamped[xmlDataSourceAttribute], 'ds');
+		assert.equal(stamped.key, item.key);
+		assert.equal(stamped.value, item.value);
+		assert.equal(stamped.include, item.include);
+		assert.equal(item[xmlDataSourceAttribute], undefined);
+		const items = [item];
+		assert.equal(withDataSourceId(items, undefined), items);
+		assert.equal(withDataSourceId(items, '')[0][xmlDataSourceAttribute], undefined);
 	});
 });
 
