@@ -150,8 +150,6 @@ export interface SaveCardProps {
 	atoms?: FormsEngineAtoms;
 	/** From the form's existing validation alert. Not a second validity subscription. */
 	validationErrorCount?: number;
-	/** False until that alert's first validity read has finished. */
-	validityReady?: boolean;
 	/**
 	 * Runs the save. `revealed` opened a hidden field and wrote nothing.
 	 * `invalid` is the cannot-proceed dialog. `saved` started a write.
@@ -161,7 +159,7 @@ export interface SaveCardProps {
 }
 
 export function SaveCard(props: SaveCardProps) {
-	const { isEmbedded, isStackedForm, isRepeatMode, onSave, validationErrorCount = 0, validityReady = false } = props;
+	const { isEmbedded, isStackedForm, isRepeatMode, onSave, validationErrorCount = 0 } = props;
 	const stableFormContext = useContext(StableFormContext);
 	const formAtoms = props.atoms ?? stableFormContext.atoms;
 	const isSubmitting = useAtomValue(formAtoms.isSubmitting);
@@ -170,8 +168,8 @@ export function SaveCard(props: SaveCardProps) {
 	const [closeAfterSave, setCloseAfterSave] = useAtom(formAtoms.closeAfterSave);
 	const [minimizeAfterSave, setMinimizeAfterSave] = useAtom(formAtoms.minimizeAfterSave);
 	const [saveAsDraft, setSaveAsDraftChoice] = useAtom(formAtoms.saveAsDraft);
-	// Invalid forms always show Save Draft. Before the first read, keep the remembered choice.
-	const showDraft = (validityReady && validationErrorCount > 0) || saveAsDraft === true;
+	// Invalid forms always show Save Draft. The alert is mounted only once a read has found errors.
+	const showDraft = validationErrorCount > 0 || saveAsDraft === true;
 	const afterSavingLabelId = useId();
 	const afterSaving = afterSavingChoice(closeAfterSave, minimizeAfterSave);
 	const disableSave = !isEmbedded && !isRepeatMode && (isSubmitting || !versionComment);

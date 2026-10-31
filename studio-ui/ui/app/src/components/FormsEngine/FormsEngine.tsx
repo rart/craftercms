@@ -1191,9 +1191,6 @@ function FormOrchestrator(props: FormsEngineProps) {
 		undefined,
 		parentEntry?.fieldUpdates$
 	);
-	// Until the first read finishes, the save button shows the remembered choice and does not flip to draft.
-	const validityReady = localInvalid.ready && (itemMode === 'selected' ? parentInvalid.ready : true);
-
 	// region Workflow item updates
 	useEffect(() => {
 		const events = [
@@ -1863,7 +1860,7 @@ function FormOrchestrator(props: FormsEngineProps) {
 											<ValidationErrorsAlert
 												count={validationErrors.count}
 												fieldName={validationFieldName}
-												willSaveAsDraft={validityReady}
+												willSaveAsDraft={Boolean(validationErrors)}
 												onShow={showValidationField}
 											/>
 										)}
@@ -1873,7 +1870,6 @@ function FormOrchestrator(props: FormsEngineProps) {
 											isRepeatMode={useParentSaveCard ? false : isRepeatMode}
 											atoms={useParentSaveCard ? parentAtoms : undefined}
 											validationErrorCount={validationErrors?.count ?? 0}
-											validityReady={validityReady}
 											onSave={useParentSaveCard ? saveFromSelectedItem : (_event, draft) => saveFn(draft)}
 										/>
 										{showReleaseLockControl && (
