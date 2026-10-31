@@ -322,8 +322,7 @@ export function SaveCard(props: SaveCardProps) {
 			</Paper>
 			{showSaveOptions && (
 				// Sibling of the card, so the sidebar's space-y gap sits above Release Lock and Close.
-				<Paper
-					elevation={sectionElevation}
+				<Box
 					role="group"
 					aria-labelledby={afterSavingLabelId}
 					sx={(theme) => ({
@@ -332,8 +331,10 @@ export function SaveCard(props: SaveCardProps) {
 						width: '100%',
 						minWidth: 0,
 						maxWidth: '100%',
-						// Same elevation as the save card, so the dark overlay matches, without its shadow.
+						bgcolor: 'transparent',
 						boxShadow: 'none',
+						// Same border ToggleButton paints: `1px solid ${(theme.vars || theme).palette.divider}`.
+						border: `1px solid ${(theme.vars || theme).palette.divider}`,
 						// A numeric sx radius is multiplied by the token. `1` is exactly that token in px.
 						borderRadius: 1,
 						overflow: 'hidden'
@@ -344,7 +345,8 @@ export function SaveCard(props: SaveCardProps) {
 							display: 'flex',
 							alignItems: 'center',
 							justifyContent: 'space-between',
-							px: 1,
+							pl: 1,
+							pr: 1,
 							py: 0.5
 						}}
 					>
@@ -405,7 +407,8 @@ export function SaveCard(props: SaveCardProps) {
 								borderTopLeftRadius: 0,
 								borderTopRightRadius: 0,
 								// Keep the 1px border box so a selection change cannot shift the labels.
-								borderTopColor: 'transparent',
+								// Top edge is the caption separator. Bottom stays clear of the container border.
+								borderTopColor: (theme.vars || theme).palette.divider,
 								borderBottomColor: 'transparent'
 							}
 						})}
@@ -475,7 +478,7 @@ export function SaveCard(props: SaveCardProps) {
 							);
 						})}
 					</ToggleButtonGroup>
-				</Paper>
+				</Box>
 			)}
 		</>
 	);
