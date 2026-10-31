@@ -332,6 +332,8 @@ export function SaveCard(props: SaveCardProps) {
 						width: '100%',
 						minWidth: 0,
 						maxWidth: '100%',
+						// Same elevation as the save card, so the dark overlay matches, without its shadow.
+						boxShadow: 'none',
 						// A numeric sx radius is multiplied by the token. `1` is exactly that token in px.
 						borderRadius: 1,
 						overflow: 'hidden'
@@ -385,11 +387,13 @@ export function SaveCard(props: SaveCardProps) {
 							m: 0,
 							[`& .${toggleButtonGroupClasses.firstButton}`]: {
 								borderTopLeftRadius: 0,
-								borderBottomLeftRadius: `${theme.shape.borderRadius}px`
+								borderBottomLeftRadius: `${theme.shape.borderRadius}px`,
+								borderLeftColor: 'transparent'
 							},
 							[`& .${toggleButtonGroupClasses.lastButton}`]: {
 								borderTopRightRadius: 0,
-								borderBottomRightRadius: `${theme.shape.borderRadius}px`
+								borderBottomRightRadius: `${theme.shape.borderRadius}px`,
+								borderRightColor: 'transparent'
 							},
 							[`& .${toggleButtonClasses.root}`]: {
 								flex: '1 1 0',
@@ -399,7 +403,10 @@ export function SaveCard(props: SaveCardProps) {
 								px: 1,
 								py: 0.5,
 								borderTopLeftRadius: 0,
-								borderTopRightRadius: 0
+								borderTopRightRadius: 0,
+								// Keep the 1px border box so a selection change cannot shift the labels.
+								borderTopColor: 'transparent',
+								borderBottomColor: 'transparent'
 							}
 						})}
 					>

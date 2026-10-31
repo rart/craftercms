@@ -1838,15 +1838,7 @@ function FormOrchestrator(props: FormsEngineProps) {
 							<FormBackToTop containerRef={containerRef} getScrollContainer={getScrollContainer} />
 						</Grid>
 						<Grid size="grow">
-							<StickyBox
-								className="space-y"
-								sx={{
-									height: 'auto',
-									// overflow-y: auto computes overflow-x to auto and clips paper shadows.
-									// This padding is inside that edge, so the shadow paints and the column does not scroll sideways.
-									p: 1
-								}}
-							>
+							<StickyBox className="space-y" sx={{ height: 'auto' }}>
 								{readonly ? (
 									<>
 										<Alert severity="info" variant="outlined" icon={<EditOffOutlined />}>
