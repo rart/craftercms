@@ -31,7 +31,6 @@ import {
 	keepLockOnStackedUnmount,
 	lockPathToRelease,
 	planLockRelease,
-	readPersistedBoolean,
 	releaseLockToggleFailed,
 	sharedPerUserAtom,
 	shouldUnlockOnPageHide,
@@ -181,22 +180,6 @@ describe('root reload of stacked forms', () => {
 		);
 		assert.equal(lockPathToRelease(covered), '/site/components/covered.xml');
 		assert.equal(lockPathToRelease({ ...covered, releaseLockOnClose: false }), null);
-	});
-});
-
-describe('persisted release-lock switch', () => {
-	it('reads storage at close time and falls back to the atom', () => {
-		const saved = new Map<string, string>();
-		const storage = { getItem: (key: string) => saved.get(key) ?? null };
-		assert.equal(readPersistedBoolean('k', true, storage), true);
-		assert.equal(readPersistedBoolean('k', false, storage), false);
-		saved.set('k', 'false');
-		assert.equal(readPersistedBoolean('k', true, storage), false);
-		saved.set('k', 'true');
-		assert.equal(readPersistedBoolean('k', false, storage), true);
-		saved.set('k', '{');
-		assert.equal(readPersistedBoolean('k', false, storage), false);
-		assert.equal(readPersistedBoolean('k', undefined, null), true);
 	});
 });
 

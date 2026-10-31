@@ -271,7 +271,6 @@ type RootFormActions = StableGlobalContextProps['rootFormActions'];
 /** Writes the latest parent save into the stack's mutable slot. The slot is not React state. */
 function publishRootFormActions(actions: RootFormActions, refs: { current: RootFormActions }) {
 	actions.save = (draft) => refs.current.save(draft);
-	actions.setSaveAsDraft = (value) => refs.current.setSaveAsDraft(value);
 }
 
 // Entry point for the form engine. It validates the props and continues if valid.
@@ -296,8 +295,7 @@ function GlobalFormsState(props: FormsEngineProps) {
 			api: null,
 			formsStackData: [createFormStackData({ props })],
 			rootFormActions: {
-				save: () => Promise.resolve(),
-				setSaveAsDraft: () => undefined
+				save: () => Promise.resolve()
 			},
 			mountedStackEntry: null,
 			releaseUnmountedEntry: null
@@ -1069,9 +1067,6 @@ function FormOrchestrator(props: FormsEngineProps) {
 	// with the default comment the version comment atom was created with.
 	const lastCreationCommentRef = useRef(generateDefaultCreationComment('', formatMessage));
 	const [collapseHeader, setCollapseHeader] = useState(false);
-	// SaveCard still reports the draft click. Unlock no longer reads that flag, so this does not
-	// re-render the form (that re-render used to run the unlock cleanup while the form was open).
-	const setSaveAsDraftAction = useCallback((_draft?: boolean) => undefined, []);
 
 	useMount(() => {
 		// If 'update.changeTypeId' has content, it means the content type has changed, so we set pending changes to true
@@ -1360,7 +1355,7 @@ function FormOrchestrator(props: FormsEngineProps) {
 	});
 
 	// Published after paint layout, not during render. The refs stay current, so a click reads this save.
-	const rootActionRefs = useUpdateRefs({ save: saveFn, setSaveAsDraft: setSaveAsDraftAction });
+	const rootActionRefs = useUpdateRefs({ save: saveFn });
 	useLayoutEffect(() => {
 		if (stackIndex !== 0) return;
 		// Stable mutable registry for the item form, not React state. Read .current when Save is clicked.
@@ -1877,7 +1872,6 @@ function FormOrchestrator(props: FormsEngineProps) {
 											isStackedForm={useParentSaveCard ? false : isStackedForm}
 											isRepeatMode={useParentSaveCard ? false : isRepeatMode}
 											atoms={useParentSaveCard ? parentAtoms : undefined}
-											setSaveAsDraft={useParentSaveCard ? rootFormActions.setSaveAsDraft : setSaveAsDraftAction}
 											validationErrorCount={validationErrors?.count ?? 0}
 											validityReady={validityReady}
 											onSave={useParentSaveCard ? saveFromSelectedItem : (_event, draft) => saveFn(draft)}

@@ -68,6 +68,11 @@ export function SplitButton(props: SplitButtonProps) {
 	};
 
 	const handleMenuItemClick = (event: React.MouseEvent<Element, MouseEvent>, index: number) => {
+		// A save can start with this menu still open. Ignore the pick so it cannot change that save.
+		if (disabled || loading) {
+			setOpen(false);
+			return;
+		}
 		if (!controlled) {
 			setSelectedIndex(index);
 			if (storageKey) {

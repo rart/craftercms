@@ -132,9 +132,8 @@ export function useSaveForm(props: UseSaveFormProps) {
 		return { isFormInvalid: invalidFieldIds.length > 0, invalidFieldIds };
 	};
 	const save = async (draft?: boolean | 'auto'): Promise<SaveFormResult | void> => {
-		// Two guards. SaveCard's ref returns before setSaveAsDraft, so an ignored click
-		// cannot flip the draft flag while this read is in flight. isSubmitting is the
-		// write lock: it stays set through preload, onBeforeSave, and the repository write.
+		// isSubmitting stays set through preload, onBeforeSave, and the repository write.
+		// SaveCard ignores a dropdown pick while this flag, or its in-flight ref, is set.
 		if (jotai.get(stableFormContext.atoms.isSubmitting)) {
 			return;
 		}

@@ -110,6 +110,7 @@ export function SplitButtonUI(props: SplitButtonUIProps) {
 									{options.map((option, index) => (
 										<MenuItem
 											key={option.label}
+											disabled={disabled || loading}
 											selected={index === selectedIndex}
 											onClick={(event) => handleMenuItemClick(event, index)}
 										>

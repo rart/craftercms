@@ -60,8 +60,10 @@ export function useInvalidFieldIds(
 				setState({ ids: next, ready: true });
 			} catch (error) {
 				// A plugin validator can reject. Keep the last ids. A stale rejection must not replace a newer read.
+				// The first read must still become ready, or the save button and alert stay on the remembered choice.
 				if (settleInvalidFieldRead({ disposed, seq, latest, rejected: true }) !== 'report') return;
 				console.error(error);
+				setState((current) => ({ ids: current.ids, ready: true }));
 			}
 		};
 		void read();

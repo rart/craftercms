@@ -31,8 +31,8 @@ import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
 import Alert from '@mui/material/Alert';
 import FormHelperText from '@mui/material/FormHelperText';
-import Grow from '@mui/material/Grow';
 import PushPinOutlined from '@mui/icons-material/PushPinOutlined';
+import InfoOutlined from '@mui/icons-material/InfoOutlined';
 import MinimizeRounded from '@mui/icons-material/MinimizeRounded';
 import CloseIcon from '@mui/icons-material/Close';
 import SaveOutlined from '@mui/icons-material/SaveOutlined';
@@ -60,7 +60,8 @@ const messages = defineMessages({
 	releaseLockOnClose: { defaultMessage: 'Release lock when closing' },
 	keepLockWarning: {
 		defaultMessage: "Others can't edit it until you release the lock."
-	}
+	},
+	noChanges: { defaultMessage: 'No changes detected' }
 });
 
 type AfterSaving = 'stay' | 'minimize' | 'close';
@@ -145,7 +146,6 @@ export interface SaveCardProps {
 	isRepeatMode: boolean;
 	isStackedForm: boolean;
 	isEmbedded: boolean;
-	setSaveAsDraft: (value: boolean) => void;
 	/** Defaults to this form's atoms. A selected-fields item form passes the parent's atoms. */
 	atoms?: FormsEngineAtoms;
 	/** From the form's existing validation alert. Not a second validity subscription. */
@@ -161,15 +161,7 @@ export interface SaveCardProps {
 }
 
 export function SaveCard(props: SaveCardProps) {
-	const {
-		isEmbedded,
-		isStackedForm,
-		isRepeatMode,
-		setSaveAsDraft,
-		onSave,
-		validationErrorCount = 0,
-		validityReady = false
-	} = props;
+	const { isEmbedded, isStackedForm, isRepeatMode, onSave, validationErrorCount = 0, validityReady = false } = props;
 	const stableFormContext = useContext(StableFormContext);
 	const formAtoms = props.atoms ?? stableFormContext.atoms;
 	const isSubmitting = useAtomValue(formAtoms.isSubmitting);
@@ -186,6 +178,10 @@ export function SaveCard(props: SaveCardProps) {
 	const showVersionComment = (!isEmbedded || !isStackedForm) && !isRepeatMode;
 	const showSaveOptions = !isEmbedded && !isRepeatMode;
 	const { formatMessage } = useIntl();
+	// Idle forms are disabled by the empty comment while nothing is pending. The tip explains
+	// that case only: not while submitting, and not when pending edits are blocked by the comment.
+	const noChangesMessage = formatMessage(messages.noChanges);
+	const showNoChangesTip = disableSave && !isSubmitting && !hasPendingChanges;
 	// Same surface as a form section: default paper in light, elevation 2 in dark.
 	const sectionElevation = useIsDarkModeTheme() ? 2 : undefined;
 	const afterSavingLabels: Record<AfterSaving, string> = {
@@ -201,9 +197,8 @@ export function SaveCard(props: SaveCardProps) {
 	} = useAfterSavingIcons(afterSavingLabels);
 	const [afterSavingTip, setAfterSavingTip] = useState<AfterSaving | null>(null);
 	const dispatch = useDispatch();
-	// Click guard. It returns before setSaveAsDraft, so a second click cannot flip the draft
-	// flag. save() also checks isSubmitting, which stays set through preload and the write
-	// after this handler has finished waiting on the validity decision.
+	// Set for the whole save, including the validity read before isSubmitting flips.
+	// A dropdown pick in that window must not write saveAsDraft: the save re-reads it after onBeforeSave.
 	const saveInFlight = useRef(false);
 
 	const handleAfterSaving = (_event: MouseEvent<HTMLElement>, choice: AfterSaving | null) => {
@@ -232,7 +227,6 @@ export function SaveCard(props: SaveCardProps) {
 	const handleSave = async (e: MouseEvent, draft?: boolean | 'auto') => {
 		if (saveInFlight.current) return;
 		saveInFlight.current = true;
-		setSaveAsDraft(draft === true);
 		try {
 			const status = await onSave(e, draft);
 			if (status === 'invalid') showCannotProceed();
@@ -256,6 +250,45 @@ export function SaveCard(props: SaveCardProps) {
 			saveInFlight.current = false;
 		}
 	};
+	const saveButton = (
+		<SplitButton
+			fullWidth
+			loading={isSubmitting}
+			disabled={disableSave}
+			selectedId={showDraft ? 'saveDraft' : 'save'}
+			onClick={(e) => handleSave(e, 'auto')}
+			onSelect={(id) => {
+				if (saveInFlight.current || isSubmitting) return;
+				setSaveAsDraftChoice(id === 'saveDraft');
+			}}
+			options={[
+				{
+					id: 'save',
+					color: 'primary',
+					icon: <SaveOutlined fontSize="small" />,
+					label:
+						isRepeatMode || (isEmbedded && isStackedForm)
+							? formatMessage({ defaultMessage: 'Done' })
+							: formatMessage({ defaultMessage: 'Save' }),
+					callback: (e) => {
+						handleSave(e, false);
+					}
+				},
+				{
+					id: 'saveDraft',
+					color: 'warning',
+					icon: <EditNoteOutlined fontSize="small" />,
+					label:
+						isRepeatMode || (isEmbedded && isStackedForm)
+							? formatMessage({ defaultMessage: 'Done (Draft)' })
+							: formatMessage({ defaultMessage: 'Save Draft' }),
+					callback: (e) => {
+						handleSave(e, true);
+					}
+				}
+			]}
+		/>
+	);
 
 	return (
 		<>
@@ -274,50 +307,21 @@ export function SaveCard(props: SaveCardProps) {
 							onFocus={(e) => e.target.select()}
 						/>
 					)}
-					<SplitButton
-						fullWidth
-						loading={isSubmitting}
-						disabled={disableSave}
-						selectedId={showDraft ? 'saveDraft' : 'save'}
-						onClick={(e) => handleSave(e, 'auto')}
-						onSelect={(id) => setSaveAsDraftChoice(id === 'saveDraft')}
-						options={[
-							{
-								id: 'save',
-								color: 'primary',
-								icon: <SaveOutlined fontSize="small" />,
-								label:
-									isRepeatMode || (isEmbedded && isStackedForm)
-										? formatMessage({ defaultMessage: 'Done' })
-										: formatMessage({ defaultMessage: 'Save' }),
-								callback: (e) => {
-									handleSave(e, false);
-								}
-							},
-							{
-								id: 'saveDraft',
-								color: 'warning',
-								icon: <EditNoteOutlined fontSize="small" />,
-								label:
-									isRepeatMode || (isEmbedded && isStackedForm)
-										? formatMessage({ defaultMessage: 'Done (Draft)' })
-										: formatMessage({ defaultMessage: 'Save Draft' }),
-								callback: (e) => {
-									handleSave(e, true);
-								}
-							}
-						]}
-					/>
+					{showNoChangesTip ? (
+						<Tooltip title={noChangesMessage} describeChild>
+							{/* Disabled buttons do not emit hover or focus, so the tip listens on this span. */}
+							<Box component="span" tabIndex={0} sx={{ display: 'block', width: '100%' }}>
+								{saveButton}
+							</Box>
+						</Tooltip>
+					) : (
+						saveButton
+					)}
 					{isStackedForm && isEmbedded && (
 						<FormHelperText sx={{ m: 0, textAlign: 'center' }}>
 							<FormattedMessage defaultMessage="Changes are saved with the main item." />
 						</FormHelperText>
 					)}
-					<Grow in={!hasPendingChanges} appear unmountOnExit>
-						<Alert severity="info" variant="outlined" sx={{ p: 0, border: 'none', placeContent: 'center' }}>
-							<FormattedMessage defaultMessage="No changes detected" />
-						</Alert>
-					</Grow>
 				</Stack>
 			</Paper>
 			{showSaveOptions && (
@@ -326,13 +330,7 @@ export function SaveCard(props: SaveCardProps) {
 					role="group"
 					aria-labelledby={afterSavingLabelId}
 					sx={(theme) => ({
-						p: 0,
-						m: 0,
 						width: '100%',
-						minWidth: 0,
-						maxWidth: '100%',
-						bgcolor: 'transparent',
-						boxShadow: 'none',
 						// Same border ToggleButton paints: `1px solid ${(theme.vars || theme).palette.divider}`.
 						border: `1px solid ${(theme.vars || theme).palette.divider}`,
 						// A numeric sx radius is multiplied by the token. `1` is exactly that token in px.
@@ -345,8 +343,7 @@ export function SaveCard(props: SaveCardProps) {
 							display: 'flex',
 							alignItems: 'center',
 							justifyContent: 'space-between',
-							pl: 1,
-							pr: 1,
+							px: 1,
 							py: 0.5
 						}}
 					>
@@ -357,18 +354,9 @@ export function SaveCard(props: SaveCardProps) {
 							<IconButton
 								size="small"
 								aria-label={formatMessage(messages.afterSavingHelp)}
-								sx={{ p: 0, minWidth: 0, width: 'auto', height: 'auto', color: 'text.secondary' }}
+								sx={{ p: 0, color: 'text.secondary' }}
 							>
-								<Box
-									component="span"
-									sx={(theme) => ({
-										fontSize: theme.typography.caption.fontSize,
-										fontWeight: theme.typography.fontWeightMedium,
-										lineHeight: 1
-									})}
-								>
-									i
-								</Box>
+								<InfoOutlined sx={(theme) => ({ fontSize: theme.typography.caption.fontSize })} />
 							</IconButton>
 						</Tooltip>
 					</Box>
@@ -383,18 +371,10 @@ export function SaveCard(props: SaveCardProps) {
 						onChange={handleAfterSaving}
 						sx={(theme) => ({
 							display: 'flex',
-							width: '100%',
-							minWidth: 0,
-							maxWidth: '100%',
-							m: 0,
 							[`& .${toggleButtonGroupClasses.firstButton}`]: {
-								borderTopLeftRadius: 0,
-								borderBottomLeftRadius: `${theme.shape.borderRadius}px`,
 								borderLeftColor: 'transparent'
 							},
 							[`& .${toggleButtonGroupClasses.lastButton}`]: {
-								borderTopRightRadius: 0,
-								borderBottomRightRadius: `${theme.shape.borderRadius}px`,
 								borderRightColor: 'transparent'
 							},
 							[`& .${toggleButtonClasses.root}`]: {
@@ -404,8 +384,8 @@ export function SaveCard(props: SaveCardProps) {
 								textTransform: 'none',
 								px: 1,
 								py: 0.5,
-								borderTopLeftRadius: 0,
-								borderTopRightRadius: 0,
+								// The container clips the corners. A pill radius is 1px outside that inner edge.
+								borderRadius: 0,
 								// Keep the 1px border box so a selection change cannot shift the labels.
 								// Top edge is the caption separator. Bottom stays clear of the container border.
 								borderTopColor: (theme.vars || theme).palette.divider,

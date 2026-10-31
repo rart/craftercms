@@ -139,7 +139,6 @@ export interface StableGlobalContextProps {
 	 */
 	rootFormActions: {
 		save: (draft?: boolean | 'auto') => Promise<'revealed' | 'invalid' | 'saved' | void>;
-		setSaveAsDraft: (value: boolean) => void;
 	};
 	/** Stacked bootstrap that is mounted. It releases its own lock on unmount. */
 	mountedStackEntry: StableFormContextProps | null;

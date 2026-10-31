@@ -125,36 +125,6 @@ export function entriesReleasedOnStackRemoval<T>(args: {
 	return released;
 }
 
-/**
- * The persisted switch, or the atom when storage has no boolean.
- * Separate form dialogs do not share a jotai store, so close and pagehide must read storage.
- */
-export function readPersistedBoolean(
-	key: string,
-	atomValue: boolean | undefined,
-	storage: { getItem(key: string): string | null } | null
-): boolean {
-	try {
-		const raw = storage?.getItem(key);
-		if (raw != null) {
-			const parsed = JSON.parse(raw) as unknown;
-			if (typeof parsed === 'boolean') return parsed;
-		}
-	} catch {
-		// Unreadable storage falls through to the atom.
-	}
-	return atomValue !== false;
-}
-
-export function browserLocalStorage(): { getItem(key: string): string | null } | null {
-	try {
-		if (typeof localStorage === 'undefined') return null;
-		return localStorage;
-	} catch {
-		return null;
-	}
-}
-
 const storedAtomsByKey = new Map<string, unknown>();
 
 /** One atom per storage key. Stacked forms and the root then share the per-user value in one store. */
@@ -184,7 +154,7 @@ export function unlockErrorPayload(error: {
 	};
 }
 
-/** Release Lock failed when the unlock call came back with an error. A 409 is not an error. */
+/** Release Lock failed when the unlock call came back with an error. */
 export function releaseLockToggleFailed(result: { lockError?: UnlockErrorBody | null }): boolean {
 	return result.lockError != null;
 }

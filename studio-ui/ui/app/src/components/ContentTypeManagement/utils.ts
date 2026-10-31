@@ -526,8 +526,7 @@ export const fooStableGlobalContext: StableGlobalContextProps = Object.freeze<St
 		setStateCache: noOp
 	},
 	rootFormActions: {
-		save: () => Promise.resolve(),
-		setSaveAsDraft: noOp
+		save: () => Promise.resolve()
 	},
 	mountedStackEntry: null,
 	releaseUnmountedEntry: null

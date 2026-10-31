@@ -957,8 +957,6 @@ export function getMessageForErrorSymbol(errorSymbol: unknown): ReactNode {
 	}
 }
 
-export { shouldUnlockItem, type UnlockOnCloseState } from './unlockOnClose';
-
 /**
  * Releases this form's lock when the form session ends, not when a dependency changes.
  * Mount it on the bootstrap that stays up across reload and minimize. A stacked form has its own.
