@@ -19,14 +19,16 @@ import { describe, it } from 'node:test';
 import { JSDOM } from 'jsdom';
 import '../../test/registerTsLoader.mjs';
 
-// node --test has no DOMParser. jsdom's XML parser is what fromString uses.
+// node --test has no DOMParser or XMLSerializer. jsdom supplies both; fromString uses DOMParser.
 const { window } = new JSDOM('<!doctype html><html><body></body></html>');
 globalThis.DOMParser = window.DOMParser;
+globalThis.XMLSerializer = window.XMLSerializer;
 
 globalThis.document = window.document;
 
 const { cdataWrap, deserialize, fromString, getInnerHtml } = await import('./xml.ts');
-const { getXmlBuilder } = await import('../components/FormsEngine/lib/valueSerializers.ts');
+const { buildContentXml, getXmlBuilder } = await import('../components/FormsEngine/lib/valueSerializers.ts');
+const { deserializeContentDoc } = await import('../components/FormsEngine/lib/valueRetrievers.ts');
 const { parseContentXML } = await import('./content.ts');
 
 const cdataPropName = '__cdata__';
@@ -103,5 +105,31 @@ describe('CDATA terminators', () => {
 		assert.equal(cdataWrap(null as unknown as string), emptySection);
 		assert.equal(cdataWrap(undefined as unknown as string), emptySection);
 		assert.equal(cdataWrap(''), emptySection);
+	});
+
+	it('stringifies array and object values before wrapping them', () => {
+		assert.equal(cdataWrap(['a', 'b'] as unknown as string), '<![CDATA[a,b]]>');
+		assert.equal(cdataWrap({ x: 1 } as unknown as string), '<![CDATA[[object Object]]]>');
+	});
+
+	it('saves an rte value containing ]]> and reads it back unchanged', () => {
+		const contentTypeId = '/page/article';
+		const xml = buildContentXml(
+			{
+				'content-type': contentTypeId,
+				body_html: value
+			},
+			{
+				[contentTypeId]: {
+					type: 'page',
+					fields: {
+						body_html: { id: 'body_html', type: 'rte' }
+					}
+				}
+			} as never
+		);
+		const doc = fromString(xml);
+		assert.equal(doc.querySelector('parsererror'), null);
+		assert.equal(deserializeContentDoc(doc).body_html, value);
 	});
 });

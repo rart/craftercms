@@ -72,6 +72,7 @@ export function getInnerHtml(element: Element, options?: Partial<GetInnerHtmlOpt
 		const matches = [...content.matchAll(/<!\[CDATA\[([\s\S\n]*?)\]\]>/g)];
 		if (matches.length > 0) {
 			// ']]>' is stored as adjacent sections (]]]]><![CDATA[>). Read every section in that run.
+			// Joining adjacent CDATA sections on read is intentional.
 			let cdata = matches[0][1];
 			let end = matches[0].index + matches[0][0].length;
 			for (let i = 1; i < matches.length && matches[i].index === end; i++) {
@@ -194,6 +195,8 @@ export function deserialize(xml: Node): any;
 export function deserialize(xml: string, options: Partial<X2jOptions>): any;
 export function deserialize(xml: Node, options: Partial<X2jOptions>): any;
 export function deserialize(xml: string | Node, options?: Partial<X2jOptions>): any {
+	// fast-xml-parser 5.11.2: constructor, prototype and __proto__ throw [SECURITY] Invalid name.
+	// toString, valueOf and hasOwnProperty are renamed with a __ prefix.
 	const parser = new XMLParser({
 		attributeNamePrefix: '',
 		ignoreAttributes: false,
@@ -211,7 +214,7 @@ export function deserialize(xml: string | Node, options?: Partial<X2jOptions>): 
 const cdataBuilder = new XMLBuilder({ cdataPropName: '#cdata' });
 
 export function cdataWrap(value: string): string {
-	return cdataBuilder.build({ '#cdata': value ?? '' });
+	return cdataBuilder.build({ '#cdata': value == null ? '' : String(value) });
 }
 
 export function parseValidateDocument(content: string): XMLDocument | string {

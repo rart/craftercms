@@ -202,15 +202,26 @@ export function retrieveFieldValue<T = unknown>(field: ContentTypeField, value: 
 /** Takes in the CrafterCMS content XML and returns a JS object with the values */
 export function deserializeContentDoc(contentDom: XMLDocument | Element): LookupTable<unknown> {
 	if (!contentDom) return null;
-	return deserialize(contentDom, {
-		ignoreAttributes: true,
-		// Ideally, we would extract all collection types (item selector, repeat) that have
-		// this sort of syntax to avoid false positives.
-		// e.g.collectionFieldIds.map((fieldId) => `${rootTagName}.${fieldId}.item`).includes(jPath);
-		isArray: (tagName, jPathOrMatcher) => {
-			return typeof jPathOrMatcher === 'string' && jPathOrMatcher.endsWith('.item');
+	try {
+		return deserialize(contentDom, {
+			ignoreAttributes: true,
+			// Ideally, we would extract all collection types (item selector, repeat) that have
+			// this sort of syntax to avoid false positives.
+			// e.g.collectionFieldIds.map((fieldId) => `${rootTagName}.${fieldId}.item`).includes(jPath);
+			isArray: (tagName, jPathOrMatcher) => {
+				return typeof jPathOrMatcher === 'string' && jPathOrMatcher.endsWith('.item');
+			}
+		})[(contentDom as XMLDocument).documentElement?.tagName ?? (contentDom as Element).tagName];
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		if (message.includes('[SECURITY] Invalid name')) {
+			throw new Error(
+				`Cannot read this content document: an element or attribute is named constructor, prototype, or __proto__. ${message}`,
+				{ cause: error }
+			);
 		}
-	})[(contentDom as XMLDocument).documentElement?.tagName ?? (contentDom as Element).tagName];
+		throw error;
+	}
 }
 
 export function stringArrayExtractor(value: string): string[] {
