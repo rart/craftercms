@@ -378,6 +378,13 @@ describe('allowed roles', () => {
 		assert.deepEqual(savedType(messy)['allowed-roles']?.role, ['admin', 'editor']);
 	});
 
+	// Given stored roles with surrounding spaces and duplicates, read trims and de-dupes so the next save does not rewrite them.
+	it('trims and de-dupes roles on read', () => {
+		const parsed = withRoles([' admin ', 'admin', 'editor', 'editor', '  ']);
+		assert.deepEqual(parsed.allowedRoles, ['admin', 'editor']);
+		assert.deepEqual(savedType(parsed)['allowed-roles']?.role, ['admin', 'editor']);
+	});
+
 	// Given includes and excludes, a no-edit save writes the same patterns.
 	it('keeps includes and excludes', () => {
 		const parsed = withRoles(['author']);
@@ -497,25 +504,14 @@ describe('shipped form definitions', () => {
 		}));
 	}
 
-	function walkOriginal(fields: unknown, into: Map<string, ReturnType<typeof constraintSnap>>, prefix = '') {
+	function walkFields(fields: unknown, into: Map<string, ReturnType<typeof constraintSnap>>, prefix = '') {
 		for (const field of namedList(
 			fields as { id?: string; constraints?: { constraint?: unknown }; fields?: { field?: unknown } }
 		)) {
 			if (!field?.id) continue;
 			const id = prefix ? `${prefix}.${field.id}` : field.id;
 			into.set(id, constraintSnap(field));
-			if (field.fields?.field) walkOriginal(field.fields.field, into, id);
-		}
-	}
-
-	function walkSaved(fields: unknown, into: Map<string, ReturnType<typeof constraintSnap>>, prefix = '') {
-		for (const field of namedList(
-			fields as { id?: string; constraints?: { constraint?: unknown }; fields?: { field?: unknown } }
-		)) {
-			if (!field?.id) continue;
-			const id = prefix ? `${prefix}.${field.id}` : field.id;
-			into.set(id, constraintSnap(field));
-			if (field.fields?.field) walkSaved(field.fields.field, into, id);
+			if (field.fields?.field) walkFields(field.fields.field, into, id);
 		}
 	}
 
@@ -543,12 +539,12 @@ describe('shipped form definitions', () => {
 			}).form;
 			const originalConstraints = new Map<string, ReturnType<typeof constraintSnap>>();
 			for (const section of namedList(original?.sections?.section)) {
-				walkOriginal(section?.fields?.field, originalConstraints);
+				walkFields(section?.fields?.field, originalConstraints);
 			}
 			const saved = savedType(parseLegacyFormDefinition(original));
 			const savedConstraints = new Map<string, ReturnType<typeof constraintSnap>>();
 			for (const section of namedList(saved.sections?.section)) {
-				walkSaved(section?.fields?.field, savedConstraints);
+				walkFields(section?.fields?.field, savedConstraints);
 			}
 			for (const [fieldId, constraints] of originalConstraints) {
 				const after = savedConstraints.get(fieldId) ?? [];

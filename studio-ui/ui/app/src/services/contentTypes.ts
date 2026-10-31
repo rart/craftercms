@@ -252,9 +252,16 @@ function getFieldDataSourceValidations(
 }
 
 function parseAllowedRoles(definition: LegacyFormDefinition): string[] {
-	return asArray(definition['allowed-roles']?.role).filter(
-		(role): role is string => typeof role === 'string' && role.trim() !== ''
-	);
+	const seen = new Set<string>();
+	const roles: string[] = [];
+	for (const entry of asArray(definition['allowed-roles']?.role)) {
+		if (typeof entry !== 'string') continue;
+		const trimmed = entry.trim();
+		if (!trimmed || seen.has(trimmed)) continue;
+		seen.add(trimmed);
+		roles.push(trimmed);
+	}
+	return roles;
 }
 
 function rawLegacyPropertyValue(legacyField: LegacyFormDefinitionField, name: string): unknown {

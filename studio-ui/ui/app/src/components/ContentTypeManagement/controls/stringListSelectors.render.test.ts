@@ -14,7 +14,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-import './stringListDomSetup.mjs';
+import '../../../../test/stringListDomSetup.mjs';
 import '../../../../test/registerTsLoader.mjs';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
@@ -118,5 +118,33 @@ describe('string list selectors render', () => {
 		assert.equal(host.querySelector('button[aria-label="Remove include pattern 1"]') != null, true);
 		assert.equal(host.querySelector('button[aria-label="Add include path"]') != null, true);
 		assert.equal(host.querySelector('button[aria-label="Add exclude path"]') != null, true);
+	});
+
+	it('removes a role and focuses the row that takes its place', async () => {
+		let latest: string[] = [];
+		function Roles() {
+			const [value, setValue] = React.useState(['author', 'editor', 'admin']);
+			latest = value;
+			return React.createElement(TypeAllowedRolesSelector, {
+				field: field('allowedRoles', 'Allowed Roles', 'type-allowed-roles-selector'),
+				value,
+				setValue
+			});
+		}
+
+		const host = await render(React.createElement(Roles));
+		const remove = host.querySelector('button[aria-label="Remove Role 2"]');
+		assert.ok(remove instanceof HTMLButtonElement);
+		await act(async () => {
+			remove.click();
+		});
+
+		assert.deepEqual(latest, ['author', 'admin']);
+		const inputs = [...host.querySelectorAll('input')].map((input) => (input as HTMLInputElement).value);
+		assert.deepEqual(inputs, ['author', 'admin']);
+		const focused = document.activeElement;
+		assert.ok(focused instanceof HTMLInputElement);
+		assert.equal(focused.getAttribute('aria-label'), 'Role 2');
+		assert.equal(focused.value, 'admin');
 	});
 });
