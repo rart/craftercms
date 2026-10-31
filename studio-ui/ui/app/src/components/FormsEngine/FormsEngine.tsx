@@ -128,7 +128,7 @@ import FormLayout from './components/FormLayout';
 import TableOfContents, { FieldScopeNotice } from './components/TableOfContents';
 import CreateModeHeader from './components/CreateModeHeader';
 import RepeatModeHeader from './components/RepeatModeHeader';
-import EditModeHeader, { EditModeMetadata } from './components/EditModeHeader';
+import EditModeHeader, { EditModeMetadata, formHeaderContainerName } from './components/EditModeHeader';
 import SaveCard from './components/SaveCard';
 import SectionAccordion from './components/SectionAccordion';
 import useSaveForm from './lib/useSaveForm';
@@ -1604,7 +1604,7 @@ function FormOrchestrator(props: FormsEngineProps) {
 			// top/bottom margins (2 top, 2 bottom). If not a dialog, take up the whole screen.
 			targetHeight={getTargetHeight(isDialog, isFullScreen, theme)}
 			headerFragment={
-				<Box id="header" sx={{ minHeight: 50, containerType: 'inline-size', containerName: 'formHeader' }}>
+				<Box id="header" sx={{ minHeight: 50, containerType: 'inline-size', containerName: formHeaderContainerName }}>
 					<Box
 						component={Container}
 						sx={{

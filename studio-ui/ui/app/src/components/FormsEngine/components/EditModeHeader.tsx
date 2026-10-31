@@ -29,7 +29,7 @@ import Box from '@mui/material/Box';
 import ItemTypeIcon from '../../ItemTypeIcon';
 import Typography from '@mui/material/Typography';
 import Chip, { chipClasses } from '@mui/material/Chip';
-import { FormattedMessage, useIntl } from 'react-intl';
+import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { EditOffOutlined, EditOutlined } from '@mui/icons-material';
 import CalendarTodayRounded from '@mui/icons-material/CalendarTodayRounded';
 import ItemPublishingTargetIcon from '../../ItemPublishingTargetIcon';
@@ -43,54 +43,86 @@ import MenuOpenIcon from '@mui/icons-material/MenuOpenRounded';
 import { XmlKeys } from '../lib/formConsts';
 import { DraftChip } from '../../DraftChip';
 
-// Past this width the centered `lg` header container has enough side margin, on top of its
-// padding, for the toggle to hang in the gutter without crossing the header edge.
-const tocGutterQuery = (theme: { breakpoints: { values: { lg: number } } }) =>
-	`@container formHeader (min-width: ${theme.breakpoints.values.lg + 80}px)`;
+export const formHeaderContainerName = 'formHeader';
+
+const copyMessages = defineMessages({
+	copyValue: { defaultMessage: 'Copy {value}' },
+	copied: { defaultMessage: 'Copied' },
+	copyFailed: { defaultMessage: 'Could not copy to the clipboard' }
+});
+
+// Theme spacing units. The title row uses `columnGap`; the toggle also keeps a small end margin.
+const titleRowGap = 1;
+const toggleMarginEnd = 0.5;
+// MUI IconButton size="small" pads 5px on each side. That padding is not a theme spacing step.
+const iconButtonSmallPadding = '10px';
+// Extra header width, beyond the `lg` container, so the shifted toggle stays inside the header.
+// Half of this plus the container padding (`spacing(3)`) covers the toggle shift below.
+const tocGutterSideAllowance = 80;
+
+const copyableValueSx: SxProps<Theme> = {
+	display: 'flex',
+	alignItems: 'center',
+	minWidth: 0,
+	maxWidth: '100%',
+	overflow: 'hidden',
+	p: 0,
+	border: 0,
+	backgroundColor: 'transparent',
+	color: 'inherit',
+	font: 'inherit',
+	lineHeight: 'inherit',
+	cursor: 'pointer',
+	borderRadius: 0.5,
+	'&:hover': {
+		backgroundColor: 'action.hover'
+	},
+	'&:focus': {
+		outline: 'none'
+	},
+	'&:focus-visible': {
+		outlineStyle: 'solid',
+		outlineWidth: 2,
+		outlineColor: 'primary.main',
+		outlineOffset: (theme) => theme.spacing(0.25)
+	}
+};
+
+// Width of the small icon button, its end margin, and the title-row column gap.
+function toggleGutterShift(theme: Theme) {
+	return `${theme.typography.pxToRem(24)} + ${iconButtonSmallPadding} + ${theme.spacing(toggleMarginEnd)} + ${theme.spacing(titleRowGap)}`;
+}
+
+function tocGutterQuery(theme: Theme) {
+	return `@container ${formHeaderContainerName} (min-width: ${theme.breakpoints.values.lg + tocGutterSideAllowance}px)`;
+}
 
 function CopyableValue({ value, children, sx }: { value: string; children: ReactNode; sx?: SxProps<Theme> }) {
 	const dispatch = useDispatch();
 	const { formatMessage } = useIntl();
+	const copyLabel = formatMessage(copyMessages.copyValue, { value });
 	return (
-		<Tooltip title={formatMessage({ defaultMessage: 'Copy {value}' }, { value })}>
+		<Tooltip title={copyLabel}>
 			<Box
 				component="button"
 				type="button"
+				aria-label={copyLabel}
 				onClick={() => {
-					copyToClipboard(value).then(() => {
-						dispatch(showSystemNotification({ message: formatMessage({ defaultMessage: 'Copied' }) }));
-					});
-				}}
-				sx={[
-					{
-						display: 'flex',
-						alignItems: 'center',
-						minWidth: 0,
-						maxWidth: '100%',
-						overflow: 'hidden',
-						p: 0,
-						border: 0,
-						backgroundColor: 'transparent',
-						color: 'inherit',
-						font: 'inherit',
-						lineHeight: 'inherit',
-						cursor: 'pointer',
-						borderRadius: 0.5,
-						'&:hover': {
-							backgroundColor: 'action.hover'
+					copyToClipboard(value).then(
+						() => {
+							dispatch(showSystemNotification({ message: formatMessage(copyMessages.copied) }));
 						},
-						'&:focus': {
-							outline: 'none'
-						},
-						'&:focus-visible': {
-							outlineStyle: 'solid',
-							outlineWidth: 2,
-							outlineColor: 'primary.main',
-							outlineOffset: '2px'
+						() => {
+							dispatch(
+								showSystemNotification({
+									message: formatMessage(copyMessages.copyFailed),
+									options: { variant: 'error' }
+								})
+							);
 						}
-					},
-					...(Array.isArray(sx) ? sx : [sx])
-				]}
+					);
+				}}
+				sx={[copyableValueSx, ...(sx === undefined ? [] : Array.isArray(sx) ? sx : [sx])]}
 			>
 				{children}
 			</Box>
@@ -112,8 +144,8 @@ export function EditModeHeader({ isEmbedded }: { isEmbedded: boolean }) {
 		: item;
 
 	return (
-		<Container className="space-y" sx={{ py: 1 }}>
-			<Box className="space-x" sx={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
+		<Container sx={{ py: 1 }}>
+			<Box sx={{ display: 'flex', alignItems: 'center', minWidth: 0, columnGap: titleRowGap }}>
 				{isLargeContainer && <CollapseToCButton />}
 				<ItemTypeIcon item={typeIconItem} sx={{ color: 'info.main', flexShrink: 0 }} />
 				<Typography sx={{ flexShrink: 0 }}>{itemLabel}</Typography>
@@ -179,7 +211,9 @@ export function EditModeMetadata() {
 			sx={{
 				display: 'flex',
 				flexWrap: 'wrap',
-				alignItems: 'flex-start'
+				alignItems: 'flex-start',
+				columnGap: 1,
+				rowGap: 1
 			}}
 		>
 			<Box sx={{ flex: '0 0 auto', maxWidth: '100%', minWidth: 0 }}>
@@ -192,6 +226,7 @@ export function EditModeMetadata() {
 							display: 'flex',
 							alignItems: 'center',
 							flexWrap: 'wrap',
+							columnGap: 1,
 							em: { fontWeight: 600 }
 						}}
 					>
@@ -201,8 +236,7 @@ export function EditModeMetadata() {
 								display: 'flex',
 								alignItems: 'center',
 								flexShrink: 0,
-								whiteSpace: 'nowrap',
-								marginRight: 1
+								whiteSpace: 'nowrap'
 							}}
 						>
 							<CalendarTodayRounded sx={{ mr: 0.25 }} fontSize="inherit" />
@@ -251,15 +285,15 @@ export function EditModeMetadata() {
 						sx={{
 							display: 'flex',
 							alignItems: 'center',
-							flexWrap: 'wrap'
+							flexWrap: 'wrap',
+							columnGap: 1
 						}}
 					>
 						<Box
 							component="span"
 							sx={{
 								display: 'flex',
-								alignItems: 'center',
-								marginRight: 1
+								alignItems: 'center'
 							}}
 						>
 							<ItemPublishingTargetIcon fontSize="inherit" sxs={{ root: { marginRight: 0.25 } }} item={item} />{' '}
@@ -290,11 +324,11 @@ export function EditModeMetadata() {
 					minWidth: 0,
 					flex: '1 1 0%',
 					maxWidth: '100%',
-					marginLeft: 'auto',
+					marginInlineStart: 'auto',
 					overflow: 'hidden',
 					textOverflow: 'ellipsis',
 					whiteSpace: 'nowrap',
-					textAlign: 'right'
+					textAlign: 'end'
 				}}
 			>
 				<CopyableValue value={objectId} sx={{ width: '100%' }}>
@@ -306,7 +340,7 @@ export function EditModeMetadata() {
 							overflow: 'hidden',
 							textOverflow: 'ellipsis',
 							whiteSpace: 'nowrap',
-							textAlign: 'right'
+							textAlign: 'end'
 						}}
 					>
 						{objectId}
@@ -331,11 +365,11 @@ function CollapseToCButton() {
 				sx={(theme) => ({
 					// TODO: Tabs will be done at a later phase.
 					// visibility: activeTab === 0 ? undefined : 'hidden',
-					mr: 0.5,
-					// Same in-flow size as the toggle-inside line. Only the horizontal position changes:
-					// the button shifts left by its own width plus the gap before the type icon.
+					marginInlineEnd: toggleMarginEnd,
+					// Stay in flow so the line's size matches the toggle-inside state. Shift toward the
+					// start by the button width plus the column gap, so the type icon meets the breadcrumb.
 					[tocGutterQuery(theme)]: {
-						marginLeft: `calc(-1 * (${theme.typography.pxToRem(24)} + 10px + ${theme.spacing(0.5)} + ${theme.spacing(1)}))`
+						marginInlineStart: `calc(-1 * (${toggleGutterShift(theme)}))`
 					}
 				})}
 			>
