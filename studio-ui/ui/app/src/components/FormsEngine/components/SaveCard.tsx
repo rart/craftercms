@@ -307,16 +307,12 @@ export function SaveCard(props: SaveCardProps) {
 							onFocus={(e) => e.target.select()}
 						/>
 					)}
-					{showNoChangesTip ? (
-						<Tooltip title={noChangesMessage} describeChild>
-							{/* Disabled buttons do not emit hover or focus, so the tip listens on this span. */}
-							<Box component="span" tabIndex={0} sx={{ display: 'block', width: '100%' }}>
-								{saveButton}
-							</Box>
-						</Tooltip>
-					) : (
-						saveButton
-					)}
+					<Tooltip title={showNoChangesTip ? noChangesMessage : ''} describeChild>
+						{/* Disabled buttons do not emit hover or focus, so the tip listens on this span. */}
+						<Box component="span" tabIndex={showNoChangesTip ? 0 : undefined} sx={{ display: 'block', width: '100%' }}>
+							{saveButton}
+						</Box>
+					</Tooltip>
 					{isStackedForm && isEmbedded && (
 						<FormHelperText sx={{ m: 0, textAlign: 'center' }}>
 							<FormattedMessage defaultMessage="Changes are saved with the main item." />
