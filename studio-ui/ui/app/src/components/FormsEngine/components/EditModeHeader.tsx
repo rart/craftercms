@@ -88,9 +88,14 @@ const copyableValueSx: SxProps<Theme> = {
 	}
 };
 
+// SvgIcon's medium size plus IconButton size="small" padding. Square, so this is the button's height and width.
+function iconButtonSmallSize(theme: Theme) {
+	return `${theme.typography.pxToRem(24)} + ${iconButtonSmallPadding}`;
+}
+
 // Width of the small icon button, its end margin, and the title-row column gap.
 function toggleGutterShift(theme: Theme) {
-	return `${theme.typography.pxToRem(24)} + ${iconButtonSmallPadding} + ${theme.spacing(toggleMarginEnd)} + ${theme.spacing(titleRowGap)}`;
+	return `${iconButtonSmallSize(theme)} + ${theme.spacing(toggleMarginEnd)} + ${theme.spacing(titleRowGap)}`;
 }
 
 function tocGutterQuery(theme: Theme) {
@@ -145,7 +150,15 @@ export function EditModeHeader({ isEmbedded }: { isEmbedded: boolean }) {
 
 	return (
 		<Container sx={{ py: 1 }}>
-			<Box sx={{ display: 'flex', alignItems: 'center', minWidth: 0, columnGap: titleRowGap }}>
+			<Box
+				sx={{
+					display: 'flex',
+					alignItems: 'center',
+					minWidth: 0,
+					columnGap: titleRowGap,
+					minHeight: (theme) => `calc(${iconButtonSmallSize(theme)})`
+				}}
+			>
 				{isLargeContainer && <CollapseToCButton />}
 				<ItemTypeIcon item={typeIconItem} sx={{ color: 'info.main', flexShrink: 0 }} />
 				<Typography sx={{ flexShrink: 0 }}>{itemLabel}</Typography>
