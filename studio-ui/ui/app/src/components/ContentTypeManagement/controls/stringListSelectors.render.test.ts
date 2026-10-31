@@ -149,4 +149,95 @@ describe('string list selectors render', () => {
 		assert.equal(focused.getAttribute('aria-label'), 'Role 2');
 		assert.equal(focused.value, 'admin');
 	});
+
+	it('appends an empty role and focuses it from an empty list and a populated list', async () => {
+		let latest: string[] = [];
+		function Roles() {
+			const [value, setValue] = React.useState<string[]>([]);
+			latest = value;
+			return React.createElement(TypeAllowedRolesSelector, {
+				field: field('allowedRoles', 'Allowed Roles', 'type-allowed-roles-selector'),
+				value,
+				setValue
+			});
+		}
+
+		const host = await render(React.createElement(Roles));
+		await clickAdd(host, 'Add Role');
+		assert.deepEqual(latest, ['']);
+		assertFocusedRow('Role 1', '');
+
+		await clickAdd(host, 'Add Role');
+		assert.deepEqual(latest, ['', '']);
+		assertFocusedRow('Role 2', '');
+	});
+
+	it('appends an empty include path and focuses it from an empty list and a populated list', async () => {
+		const latest = { includes: { pattern: [] as string[] }, excludes: { pattern: [] as string[] } };
+		function Paths() {
+			const [value, setValue] = React.useState({
+				includes: { pattern: [] as string[] },
+				excludes: { pattern: [] as string[] }
+			});
+			latest.includes = value.includes;
+			latest.excludes = value.excludes;
+			return React.createElement(TypeDestinationPathsSelector, {
+				field: field('paths', 'Paths', 'type-destination-paths-selector'),
+				value,
+				setValue
+			});
+		}
+
+		const host = await render(React.createElement(Paths));
+		await clickAdd(host, 'Add include path');
+		assert.deepEqual(latest.includes.pattern, ['']);
+		assert.deepEqual(latest.excludes.pattern, []);
+		assertFocusedRow('Includes pattern 1', '');
+
+		await clickAdd(host, 'Add include path');
+		assert.deepEqual(latest.includes.pattern, ['', '']);
+		assertFocusedRow('Includes pattern 2', '');
+	});
+
+	it('appends an empty exclude path and focuses it from an empty list and a populated list', async () => {
+		const latest = { includes: { pattern: [] as string[] }, excludes: { pattern: [] as string[] } };
+		function Paths() {
+			const [value, setValue] = React.useState({
+				includes: { pattern: [] as string[] },
+				excludes: { pattern: [] as string[] }
+			});
+			latest.includes = value.includes;
+			latest.excludes = value.excludes;
+			return React.createElement(TypeDestinationPathsSelector, {
+				field: field('paths', 'Paths', 'type-destination-paths-selector'),
+				value,
+				setValue
+			});
+		}
+
+		const host = await render(React.createElement(Paths));
+		await clickAdd(host, 'Add exclude path');
+		assert.deepEqual(latest.excludes.pattern, ['']);
+		assert.deepEqual(latest.includes.pattern, []);
+		assertFocusedRow('Excludes pattern 1', '');
+
+		await clickAdd(host, 'Add exclude path');
+		assert.deepEqual(latest.excludes.pattern, ['', '']);
+		assertFocusedRow('Excludes pattern 2', '');
+	});
 });
+
+async function clickAdd(host: HTMLElement, label: string) {
+	const button = host.querySelector(`button[aria-label="${label}"]`);
+	assert.ok(button instanceof HTMLButtonElement);
+	await act(async () => {
+		button.click();
+	});
+}
+
+function assertFocusedRow(label: string, value: string) {
+	const focused = document.activeElement;
+	assert.ok(focused instanceof HTMLInputElement);
+	assert.equal(focused.getAttribute('aria-label'), label);
+	assert.equal(focused.value, value);
+}

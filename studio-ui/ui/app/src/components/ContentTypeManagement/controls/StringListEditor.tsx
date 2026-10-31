@@ -79,7 +79,10 @@ export function StringListEditor(props: StringListEditorProps) {
 	};
 
 	const addValue = () => {
-		rowIds.current = [...rowIds.current, nextRowId()];
+		const id = nextRowId();
+		rowIds.current = [...rowIds.current, id];
+		// The new input renders before this button. Leave focus here and Tab skips it.
+		pendingFocus.current = id;
 		onChange([...list, '']);
 	};
 
