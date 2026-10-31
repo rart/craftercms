@@ -541,9 +541,12 @@ describe('shipped form definitions', () => {
 			for (const section of namedList(original?.sections?.section)) {
 				walkFields(section?.fields?.field, originalConstraints);
 			}
-			const saved = savedType(parseLegacyFormDefinition(original));
+			const saved = deserialize(buildContentTypeXml(savedType(parseLegacyFormDefinition(original))), {
+				parseTagValue: false,
+				tagValueProcessor: entityEncodingTagValueProcessor
+			}).form;
 			const savedConstraints = new Map<string, ReturnType<typeof constraintSnap>>();
-			for (const section of namedList(saved.sections?.section)) {
+			for (const section of namedList(saved?.sections?.section)) {
 				walkFields(section?.fields?.field, savedConstraints);
 			}
 			for (const [fieldId, constraints] of originalConstraints) {
