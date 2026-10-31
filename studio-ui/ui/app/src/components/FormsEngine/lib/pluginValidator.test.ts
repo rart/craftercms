@@ -105,6 +105,53 @@ describe('plugin validator', () => {
 		}
 	});
 
+	it('reports malformed messages and treats the result as invalid', async () => {
+		const error = mock.method(console, 'error', () => undefined);
+		try {
+			const bad: unknown[] = [
+				'x',
+				null,
+				[null],
+				[1],
+				[{}],
+				[{ id: 1 }],
+				[['plain string tuple']],
+				[[{ defaultMessage: 'a' }, null]],
+				[[{ defaultMessage: 'a' }, {}, 'extra']]
+			];
+			for (const messages of bad) {
+				const field = plugin((() => ({ valid: true, messages })) as unknown as Validator);
+				const result = await validateFieldValue(field, 'x', meta);
+				assert.deepEqual(result, { isValid: false, messages: [] }, JSON.stringify(messages));
+			}
+			assert.equal(error.mock.callCount(), bad.length);
+		} finally {
+			error.mock.restore();
+		}
+	});
+
+	it('accepts strings, message descriptors and descriptor tuples, and a missing messages as empty', async () => {
+		const messages = [
+			'plain',
+			{ defaultMessage: 'by default message' },
+			{ id: 'by.id' },
+			[{ defaultMessage: 'tuple' }],
+			[{ defaultMessage: 'tuple with values {n}' }, { n: 1 }]
+		];
+		const result = await validateFieldValue(
+			plugin(() => ({ valid: false, messages }) as never),
+			'x',
+			meta
+		);
+		assert.deepEqual(result, { isValid: false, messages });
+		const missing = await validateFieldValue(
+			plugin(() => ({ valid: false })),
+			'x',
+			meta
+		);
+		assert.deepEqual(missing, { isValid: false, messages: [] });
+	});
+
 	it('does not run for a required field with an empty value', async () => {
 		let called = false;
 		const field = plugin(

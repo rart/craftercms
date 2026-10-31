@@ -201,6 +201,30 @@ const validationValidators: Partial<Record<string, BuiltInValidator>> = {
 	itemCount: itemCountEditorValidator
 };
 
+function isMessageDescriptor(value: unknown): value is MessageDescriptor {
+	if (value == null || typeof value !== 'object' || Array.isArray(value)) return false;
+	const { id, defaultMessage } = value as Record<string, unknown>;
+	return typeof id === 'string' || typeof defaultMessage === 'string';
+}
+
+/** A string, a `MessageDescriptor`, or a `[MessageDescriptor, values?]` tuple. See {@link FieldValidityMessage}. */
+function isValidMessage(message: unknown): boolean {
+	if (typeof message === 'string') return true;
+	if (Array.isArray(message)) {
+		const [descriptor, values] = message;
+		return (
+			message.length <= 2 &&
+			isMessageDescriptor(descriptor) &&
+			(values === undefined || (values !== null && typeof values === 'object'))
+		);
+	}
+	return isMessageDescriptor(message);
+}
+
+function isValidMessageList(messages: unknown): boolean {
+	return Array.isArray(messages) && messages.every(isValidMessage);
+}
+
 /**
  * Wraps a plugin validator for the host. The plugin gets a fresh context with only the public members,
  * so host internals cannot leak. A result that is not `{ valid: true }` is invalid, and a malformed one is reported.
@@ -228,7 +252,12 @@ function adaptPluginValidator(validator: Validator): BuiltInValidator {
 			}
 			return { valid: false, messages: [] };
 		}
-		if (result == null || typeof result !== 'object' || typeof result.valid !== 'boolean') {
+		if (
+			result == null ||
+			typeof result !== 'object' ||
+			typeof result.valid !== 'boolean' ||
+			(result.messages !== undefined && !isValidMessageList(result.messages))
+		) {
 			console.error(
 				`The validator for control type "${ctx.field.type}" must return { valid: boolean, messages?: [] }. ` +
 					`The field is treated as invalid.`,
@@ -236,7 +265,7 @@ function adaptPluginValidator(validator: Validator): BuiltInValidator {
 			);
 			return { valid: false, messages: [] };
 		}
-		return { valid: result.valid, messages: Array.isArray(result.messages) ? result.messages : [] };
+		return { valid: result.valid, messages: result.messages ?? [] };
 	};
 }
 
