@@ -1838,7 +1838,16 @@ function FormOrchestrator(props: FormsEngineProps) {
 							<FormBackToTop containerRef={containerRef} getScrollContainer={getScrollContainer} />
 						</Grid>
 						<Grid size="grow">
-							<StickyBox className="space-y" sx={{ height: 'auto' }}>
+							<StickyBox
+								className="space-y"
+								sx={{
+									height: 'auto',
+									// overflow-y:auto computes overflow-x to auto and clips the paper shadow.
+									// The negative margin moves that edge out; the padding puts the content back.
+									mx: -1,
+									px: 1
+								}}
+							>
 								{readonly ? (
 									<>
 										<Alert severity="info" variant="outlined" icon={<EditOffOutlined />}>
