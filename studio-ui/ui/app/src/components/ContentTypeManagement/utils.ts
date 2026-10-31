@@ -45,6 +45,7 @@ import { RefObject } from 'react';
 import { Subject } from 'rxjs';
 import { atom } from 'jotai';
 import { createFormVisibilityAtoms } from '../FormsEngine/lib/formVisibility';
+import { createFormLockReleaseSession } from '../FormsEngine/lib/unlockOnClose';
 import { createParsedValueForField } from '../FormsEngine/lib/valueRetrievers';
 import { toBooleanString, toColor } from '../../utils/string';
 import { getXmlBuilder, valueSerializersLookup } from '../FormsEngine/lib/valueSerializers';
@@ -529,7 +530,8 @@ export const fooStableGlobalContext: StableGlobalContextProps = Object.freeze<St
 		save: () => Promise.resolve()
 	},
 	mountedStackEntry: null,
-	releaseUnmountedEntry: null
+	releaseUnmountedEntry: null,
+	lockReleaseSession: createFormLockReleaseSession()
 });
 
 export function createVirtualTypeFormContext(

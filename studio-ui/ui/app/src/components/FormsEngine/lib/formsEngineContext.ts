@@ -28,6 +28,7 @@ import { createUseContextHook } from '../../../utils/system';
 import type { AffectedPluginControlField } from './controlPluginLoader';
 import type { FormControllerState } from '../formControllers/types';
 import type { FormVisibilityState } from './formVisibility';
+import type { FormLockReleaseSession } from './unlockOnClose';
 
 export type FormsEngineSourceMap = LookupTable<string>;
 export type { AffectedPluginControlField };
@@ -144,6 +145,8 @@ export interface StableGlobalContextProps {
 	mountedStackEntry: StableFormContextProps | null;
 	/** Releases a removed entry that has no mounted bootstrap (a covered form popped by reload). */
 	releaseUnmountedEntry: ((entry: StableFormContextProps) => void) | null;
+	/** Dedup and parent-readonly memory for unlocks in this root session. */
+	lockReleaseSession: FormLockReleaseSession;
 }
 
 // Consolidated base data store for the form instance (single form/item). Once initialised, it won't change (won't cause re-renders).

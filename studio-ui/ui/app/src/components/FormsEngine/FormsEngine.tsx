@@ -118,7 +118,7 @@ import {
 	useValidateFormProps
 } from './lib/formUtils';
 import { renderFieldControl } from './lib/controlHelpers';
-import { entriesReleasedOnStackRemoval, releaseLockToggleFailed } from './lib/unlockOnClose';
+import { createFormLockReleaseSession, prepareStackedFormPop, releaseLockToggleFailed } from './lib/unlockOnClose';
 import {
 	ContentTypeNotFoundError,
 	ItemNotFoundError,
@@ -298,7 +298,8 @@ function GlobalFormsState(props: FormsEngineProps) {
 				save: () => Promise.resolve()
 			},
 			mountedStackEntry: null,
-			releaseUnmountedEntry: null
+			releaseUnmountedEntry: null,
+			lockReleaseSession: createFormLockReleaseSession()
 		};
 	}
 	stableGlobalContextRef.current.api = useMemo<FormsEngineGlobalApiContextProps>(() => {
@@ -321,17 +322,21 @@ function GlobalFormsState(props: FormsEngineProps) {
 				const stack = ctx.formsStackData;
 				const removed = stack[stack.length - 1];
 				if (!removed) return;
-				// The mounted top releases itself on unmount. A covered entry has no bootstrap.
-				const [release] = entriesReleasedOnStackRemoval({
+				// The mounted top releases itself on unmount. Remember its parent first: root reload
+				// pops the parent before that unmount. A covered entry has no bootstrap and releases now.
+				const next = prepareStackedFormPop({
 					stack,
-					closeCount: 1,
-					mounted: ctx.mountedStackEntry
+					mounted: ctx.mountedStackEntry,
+					session: ctx.lockReleaseSession,
+					parentReadonly: (parent) => {
+						const atoms = stackEntryAtoms(parent);
+						return atoms ? store.get(atoms.readonly) : false;
+					},
+					releaseCovered: (entry) => {
+						ctx.releaseUnmountedEntry?.(entry);
+					}
 				});
-				if (release) {
-					ctx.releaseUnmountedEntry?.(release);
-				} else {
-					ctx.mountedStackEntry = null;
-				}
+				ctx.mountedStackEntry = next.mounted;
 				runFormControllerCleanup(removed);
 				stack.pop();
 				setCount(-1);

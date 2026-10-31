@@ -125,6 +125,69 @@ export function entriesReleasedOnStackRemoval<T>(args: {
 	return released;
 }
 
+/**
+ * One root-form session. A path may be locked again after it was released, so dedup is the
+ * stack entry (that acquisition), not the path. pagehide and unmount share the entry.
+ * Parent readonly is remembered before a mounted entry is popped: its unmount runs after
+ * root reload has already removed the parent.
+ */
+export interface FormLockReleaseSession {
+	rememberParentReadonly(entry: object, parentReadonly: boolean): void;
+	parentReadonly(entry: object, liveParentReadonly: boolean): boolean;
+	/** Sends the unlock on the first call for this entry. Later calls return null. */
+	releaseOnce(entry: object, state: UnlockOnCloseState, send: (path: string) => void): string | null;
+}
+
+export function createFormLockReleaseSession(): FormLockReleaseSession {
+	const released = new WeakSet<object>();
+	const parentReadonlyByEntry = new WeakMap<object, boolean>();
+	return {
+		rememberParentReadonly(entry, parentReadonly) {
+			if (!parentReadonlyByEntry.has(entry)) parentReadonlyByEntry.set(entry, parentReadonly);
+		},
+		parentReadonly(entry, liveParentReadonly) {
+			const remembered = parentReadonlyByEntry.get(entry);
+			return remembered !== undefined ? remembered : liveParentReadonly;
+		},
+		releaseOnce(entry, state, send) {
+			const path = lockPathToRelease(state);
+			if (!path) return null;
+			if (released.has(entry)) return null;
+			released.add(entry);
+			send(path);
+			return path;
+		}
+	};
+}
+
+/**
+ * One pop during close or root reload, before the entry is removed.
+ * A covered entry is released now. The mounted top is only marked, because it unmounts later.
+ */
+export function prepareStackedFormPop<T extends object>(args: {
+	stack: readonly T[];
+	mounted: T | null;
+	session: FormLockReleaseSession;
+	parentReadonly(parent: T): boolean;
+	releaseCovered(entry: T): void;
+}): { mounted: T | null } {
+	const removed = args.stack[args.stack.length - 1];
+	if (!removed) return { mounted: args.mounted };
+	const [covered] = entriesReleasedOnStackRemoval({
+		stack: args.stack,
+		closeCount: 1,
+		mounted: args.mounted
+	});
+	if (covered) {
+		args.releaseCovered(covered);
+		return { mounted: args.mounted };
+	}
+	const index = args.stack.lastIndexOf(removed);
+	const parent = index > 0 ? args.stack[index - 1] : undefined;
+	args.session.rememberParentReadonly(removed, parent ? args.parentReadonly(parent) : false);
+	return { mounted: null };
+}
+
 const storedAtomsByKey = new Map<string, unknown>();
 
 /** One atom per storage key. Stacked forms and the root then share the per-user value in one store. */

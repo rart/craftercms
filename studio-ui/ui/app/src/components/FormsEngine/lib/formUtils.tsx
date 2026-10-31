@@ -983,13 +983,18 @@ export function useUnlockOnClose(props: {
 		const recorded = lockResult?.lockedPath;
 		const atomChoice = atoms ? store.get(atoms.releaseLockOnClose) : undefined;
 		const storedChoice = getStoredFormsEngineReleaseLockOnClose(username);
+		const liveParentReadonly = parentAtoms ? store.get(parentAtoms.readonly) : false;
 		return {
 			isRepeatMode: Boolean(props?.repeat?.fieldId),
 			isCreateMode: Boolean(props?.create?.path),
 			readonly: atoms ? store.get(atoms.readonly) : true,
 			isEmbedded: Boolean(props?.update?.modelId),
 			isStackedForm: index > 0,
-			isParentReadonly: parentAtoms ? store.get(parentAtoms.readonly) : false,
+			// A mounted top unmounts after root reload has popped its parent. The remembered flag
+			// is the parent that was still on the stack when this entry was popped.
+			isParentReadonly: entry
+				? (globalContext?.lockReleaseSession.parentReadonly(entry, liveParentReadonly) ?? liveParentReadonly)
+				: liveParentReadonly,
 			siteId,
 			lockedPath: lockResult?.locked ? recorded || entry?.itemMeta?.path || null : null,
 			// Storage is shared across dialog stores. The atom covers a missing or unreadable value.
@@ -1019,21 +1024,21 @@ export function useUnlockOnClose(props: {
 	// Stable dep: the ref identity does not change. Save Draft must not re-run this cleanup while the form is open.
 	useEffect(() => {
 		const gate = createLockReleaseGate();
-		const releasedPaths = new Set<string>();
-		const sendUnlock = (state: UnlockOnCloseState, path: string, via: 'pagehide' | 'unmount') => {
-			if (releasedPaths.has(path)) return;
-			releasedPaths.add(path);
-			if (via === 'pagehide') {
-				postUnlockKeepalive(state.siteId, path, getGlobalHeaders());
-				return;
-			}
-			unlock(state.siteId, path).subscribe({
-				next: () => {
-					unlockEffectRefs.current.dispatch(showUnlockItemSuccessNotification());
-				},
-				error: (error: AjaxError) => {
-					unlockEffectRefs.current.dispatch(showErrorDialog({ error: unlockErrorPayload(error) }));
+		const session = globalContext?.lockReleaseSession;
+		const sendUnlock = (entry: StableFormContextProps, state: UnlockOnCloseState, via: 'pagehide' | 'unmount') => {
+			session?.releaseOnce(entry, state, (path) => {
+				if (via === 'pagehide') {
+					postUnlockKeepalive(state.siteId, path, getGlobalHeaders());
+					return;
 				}
+				unlock(state.siteId, path).subscribe({
+					next: () => {
+						unlockEffectRefs.current.dispatch(showUnlockItemSuccessNotification());
+					},
+					error: (error: AjaxError) => {
+						unlockEffectRefs.current.dispatch(showErrorDialog({ error: unlockErrorPayload(error) }));
+					}
+				});
 			});
 		};
 		const release = (via: 'pagehide' | 'unmount') => {
@@ -1050,14 +1055,16 @@ export function useUnlockOnClose(props: {
 				return;
 			}
 			const path = planLockRelease(state, gate);
-			if (path) sendUnlock(state, path, via);
+			const entry = stableFormContextRef.current;
+			if (path && entry) sendUnlock(entry, state, via);
 			// Covered forms are not mounted, so closing the session must release the locks they still hold.
 			if (!refs.isRoot) return;
 			const length = refs.stackLength();
 			for (let index = 1; index < length - 1; index++) {
+				const coveredEntry = formsStackData[index];
 				const covered = refs.readCovered(index);
 				const coveredPath = lockPathToRelease(covered);
-				if (coveredPath) sendUnlock(covered, coveredPath, via);
+				if (coveredPath && coveredEntry) sendUnlock(coveredEntry, covered, via);
 			}
 		};
 		if (globalContext && stackIndex === 0) {
@@ -1065,8 +1072,7 @@ export function useUnlockOnClose(props: {
 				const index = formsStackData.lastIndexOf(entry);
 				if (index <= 0) return;
 				const state = unlockEffectRefs.current.readCovered(index);
-				const path = lockPathToRelease(state);
-				if (path) sendUnlock(state, path, 'unmount');
+				sendUnlock(entry, state, 'unmount');
 			};
 		}
 		const onPageHide = (event: PageTransitionEvent) => {

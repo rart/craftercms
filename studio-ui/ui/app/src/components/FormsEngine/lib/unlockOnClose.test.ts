@@ -27,17 +27,21 @@ import { describe, it } from 'node:test';
 import {
 	applySavedRenameToLock,
 	createLockReleaseGate,
+	createFormLockReleaseSession,
 	entriesReleasedOnStackRemoval,
 	keepLockOnStackedUnmount,
 	lockPathToRelease,
 	planLockRelease,
+	prepareStackedFormPop,
 	releaseLockToggleFailed,
 	sharedPerUserAtom,
 	shouldUnlockOnPageHide,
 	unlockErrorPayload,
 	unlockKeepaliveInit,
+	type FormLockReleaseSession,
 	type UnlockOnCloseState
 } from './unlockOnClose.ts';
+import { stackedFormsClosedByReload } from './formVisibility.ts';
 
 const article = '/site/website/articles/hello/index.xml';
 const renamed = '/site/website/articles/hello-world/index.xml';
@@ -239,6 +243,110 @@ describe('unlock errors', () => {
 		assert.equal(releaseLockToggleFailed({ lockError: { message: 'nope' } }), true);
 		assert.equal(releaseLockToggleFailed({ lockError: null }), false);
 		assert.equal(releaseLockToggleFailed({}), false);
+	});
+});
+
+interface ReloadEntry {
+	readonly: boolean;
+	path: string;
+	embedded: boolean;
+}
+
+/** Root reload: pop every stacked entry the way FormsEngine does, then unmount whatever was mounted. */
+function reloadRootStack(session: FormLockReleaseSession, stack: ReloadEntry[], unlocks: string[]): void {
+	let mounted: ReloadEntry | null = stack[stack.length - 1] ?? null;
+	const mountedAtStart = mounted;
+	const closeCount = stackedFormsClosedByReload(stack.length, 0);
+	const releaseEntry = (entry: ReloadEntry, liveParentReadonly: boolean) => {
+		const state = holding(entry.path, {
+			readonly: entry.readonly,
+			isEmbedded: entry.embedded,
+			isStackedForm: true,
+			isParentReadonly: session.parentReadonly(entry, liveParentReadonly)
+		});
+		// pagehide and unmount share this acquisition.
+		session.releaseOnce(entry, state, (path) => unlocks.push(path));
+		session.releaseOnce(entry, state, (path) => unlocks.push(path));
+	};
+	for (let n = 0; n < closeCount; n++) {
+		const next = prepareStackedFormPop({
+			stack,
+			mounted,
+			session,
+			parentReadonly: (parent) => parent.readonly,
+			releaseCovered: (entry) => {
+				const index = stack.lastIndexOf(entry);
+				const parent = index > 0 ? stack[index - 1] : undefined;
+				releaseEntry(entry, parent ? parent.readonly : false);
+			}
+		});
+		mounted = next.mounted;
+		stack.pop();
+	}
+	if (!mountedAtStart || mountedAtStart === stack[0]) return;
+	// The mounted top unmounts after the parent has left the stack. Live parent readonly is gone.
+	releaseEntry(mountedAtStart, false);
+}
+
+describe('root session lock acquisitions', () => {
+	it('unlocks the same path once per acquisition across two cover and root-reload cycles', () => {
+		const session = createFormLockReleaseSession();
+		const unlocks: string[] = [];
+		const cycle = () => {
+			reloadRootStack(
+				session,
+				[
+					{ readonly: false, path: '/site/website/index.xml', embedded: false },
+					{ readonly: false, path: article, embedded: false },
+					{ readonly: false, path: '/site/components/cover.xml', embedded: true }
+				],
+				unlocks
+			);
+		};
+		cycle();
+		cycle();
+		assert.deepEqual(unlocks, [article, article]);
+	});
+
+	it('releases an embedded lock taken under a readonly parent once when root reload pops both', () => {
+		const session = createFormLockReleaseSession();
+		const unlocks: string[] = [];
+		const embeddedPath = '/site/components/embedded.xml';
+		reloadRootStack(
+			session,
+			[
+				{ readonly: false, path: '/site/website/index.xml', embedded: false },
+				{ readonly: true, path: '/site/components/parent.xml', embedded: false },
+				{ readonly: false, path: embeddedPath, embedded: true }
+			],
+			unlocks
+		);
+		assert.deepEqual(unlocks, [embeddedPath]);
+	});
+
+	it('does not release a lock borrowed from an editable parent', () => {
+		const session = createFormLockReleaseSession();
+		const unlocks: string[] = [];
+		const parentPath = '/site/website/index.xml';
+		reloadRootStack(
+			session,
+			[
+				{ readonly: false, path: parentPath, embedded: false },
+				{ readonly: false, path: parentPath, embedded: true }
+			],
+			unlocks
+		);
+		assert.deepEqual(unlocks, []);
+	});
+
+	it('still skips a repeat item and a lock the author chose to keep', () => {
+		const session = createFormLockReleaseSession();
+		const unlocks: string[] = [];
+		const repeat = {};
+		const kept = {};
+		session.releaseOnce(repeat, holding(article, { isRepeatMode: true }), (path) => unlocks.push(path));
+		session.releaseOnce(kept, holding(article, { releaseLockOnClose: false }), (path) => unlocks.push(path));
+		assert.deepEqual(unlocks, []);
 	});
 });
 
