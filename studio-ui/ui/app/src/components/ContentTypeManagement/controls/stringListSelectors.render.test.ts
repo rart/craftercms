@@ -30,6 +30,7 @@ const { TypeAllowedRolesSelector } = await import('./TypeAllowedRolesSelector.ts
 const { TypeDestinationPathsSelector } = await import('./TypeDestinationPathsSelector.tsx');
 const { FormsEngineFormContextApi, ItemMetaContext, StableFormContext, StableGlobalContext } =
 	await import('../../FormsEngine/lib/formsEngineContext.ts');
+const { createFormVisibilityAtoms } = await import('../../FormsEngine/lib/formVisibility.ts');
 
 const store = configureStore({
 	reducer: {
@@ -48,7 +49,8 @@ function Harness(props: { children: React.ReactNode }) {
 	const stable = {
 		atoms: {
 			valueByFieldId: { allowedRoles: valueAtom, paths: valueAtom },
-			validationByFieldId: { allowedRoles: validationAtom, paths: validationAtom }
+			validationByFieldId: { allowedRoles: validationAtom, paths: validationAtom },
+			...createFormVisibilityAtoms()
 		},
 		changedFieldIds: new Set<string>(),
 		fieldUpdates$: null,
