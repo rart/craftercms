@@ -40,7 +40,7 @@ import type { NodeSelectorItem } from '../controls/NodeSelector';
 import type { CheckboxGroupProps } from '../controls/CheckboxGroup';
 import { macroCreatorLookupTable } from '../../ContentTypeManagement/controls/PathWithMacroCreator';
 import { getPluginControlValidator } from '../controls/registry';
-import { isFieldPathIrrelevant } from '../formControllers/runtime';
+import { isFieldPathIrrelevant } from './formVisibility';
 import {
 	countLimitValue,
 	getRepeatOccurrenceViolations,
@@ -50,6 +50,7 @@ import {
 	readItemCountEditorSpec
 } from '../../../utils/countLimits';
 import { evaluateRteConstraints, measureRteValue } from './rtePlainText';
+import { asArray } from '../../../utils/array';
 
 export interface ValidatorMetaData {
 	siteId: string;
@@ -753,7 +754,7 @@ const variableValidator = (
 	const ownIds = new Set(meta.currentIds ?? []);
 	const candidateIds = [
 		currentValue,
-		...(meta.additionalFields ?? []).map((pattern) => processAdditionalFieldMacro(currentValue, pattern))
+		...asArray(meta.additionalFields).map((pattern) => processAdditionalFieldMacro(currentValue, pattern))
 	];
 	const isDuplicate = candidateIds.some((id) => meta.siblingIds!.includes(id) && !ownIds.has(id));
 	if (isDuplicate) {
