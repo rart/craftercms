@@ -130,10 +130,10 @@ export function Repeat(props: RepeatProps) {
 		if (isAddDisabled) return;
 		openItemForm();
 	};
-	const displayFieldIds = repeatDisplayFieldIds(field.fields);
+	const displayFieldIds = useMemo(() => repeatDisplayFieldIds(field.fields), [field.fields]);
 	const sortList = useMemo<Array<TItem<RepeatItem>>>(
-		() => (sortMode ? repeatSortItems(value, repeatDisplayFieldIds(field.fields)) : []),
-		[sortMode, value, field.fields]
+		() => (sortMode ? repeatSortItems(value, displayFieldIds) : []),
+		[sortMode, value, displayFieldIds]
 	);
 	const onSortChange = (newList: TItem<RepeatItem>[]) => setValue(newList.map((i) => i.data));
 	return (

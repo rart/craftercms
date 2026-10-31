@@ -22,10 +22,6 @@ export function repeatDisplayFieldIds(fields: Record<string, unknown> | null | u
 	return Object.keys(fields ?? {}).filter((id) => !id.startsWith(xmlAttributePrefix));
 }
 
-function displayCandidates(fieldIds: readonly string[]): string[] {
-	return fieldIds.filter((id) => !id.startsWith(xmlAttributePrefix));
-}
-
 /** A value an author can read. Objects and empty strings are not labels. */
 function displayText(value: unknown): string | undefined {
 	if (typeof value === 'string') return value ? value : undefined;
@@ -35,26 +31,25 @@ function displayText(value: unknown): string | undefined {
 }
 
 /**
- * Title for a repeat item. A populated child whose id contains `title` wins.
- * Otherwise the first populated configured child is used. Unknown children and
- * item attributes are ignored. An item with nothing to show is blank.
+ * Title for a repeat item. `fieldIds` are already the configured children.
+ * A populated child whose id contains `title` wins; otherwise the first populated
+ * child is used. An item with nothing to show is blank.
  */
 export function getRepeatItemTitle(item: RepeatItem, fieldIds: readonly string[]): string {
-	const candidates = displayCandidates(fieldIds);
-	const titleId = candidates.find((id) => id.includes('title') && item[id]);
+	const titleId = fieldIds.find((id) => id.includes('title') && item[id]);
 	const title = titleId ? displayText(item[titleId]) : undefined;
 	if (title) return title;
-	for (const id of candidates) {
+	for (const id of fieldIds) {
 		const text = displayText(item[id]);
 		if (text) return text;
 	}
 	return '';
 }
 
-/** Summary of the configured string children. Unknown children and attributes are left out. */
+/** Summary of the given field ids. Callers pass ids from {@link repeatDisplayFieldIds}. */
 export function getRepeatItemSummary(item: RepeatItem, fieldIds: readonly string[]): string {
 	// TODO: HTML tags would look quite bad; somehow exclude HTML fields or convert to text?
-	return displayCandidates(fieldIds)
+	return fieldIds
 		.flatMap((id) => {
 			const value = item[id];
 			return typeof value === 'string' && value ? value.substring(0, 50) : [];

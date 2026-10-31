@@ -25,7 +25,8 @@ import { describe, it } from 'node:test';
 import '../../../../test/registerTsLoader.mjs';
 
 const { xmlAttributePrefix } = await import('../lib/formConsts.ts');
-const { getRepeatItemSummary, getRepeatItemTitle, repeatSortItems } = await import('./repeatItemDisplay.ts');
+const { getRepeatItemSummary, getRepeatItemTitle, repeatDisplayFieldIds, repeatSortItems } =
+	await import('./repeatItemDisplay.ts');
 
 const fields = ['key', 'value'] as const;
 const attribute = `${xmlAttributePrefix}source`;
@@ -39,8 +40,9 @@ describe('repeat item display', () => {
 
 	it('leaves a preserved string item attribute out of the title and summary', () => {
 		const item = { [attribute]: 'legacy', key: 'alpha', value: 'Alpha' };
-		assert.equal(getRepeatItemTitle(item, [attribute, ...fields]), 'alpha');
-		assert.equal(getRepeatItemSummary(item, [attribute, ...fields]), 'alpha | Alpha');
+		const fieldIds = repeatDisplayFieldIds({ [attribute]: {}, key: {}, value: {} });
+		assert.equal(getRepeatItemTitle(item, fieldIds), 'alpha');
+		assert.equal(getRepeatItemSummary(item, fieldIds), 'alpha | Alpha');
 	});
 
 	it('prefers a populated configured title field', () => {
