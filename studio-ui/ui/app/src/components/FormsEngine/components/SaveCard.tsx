@@ -28,6 +28,7 @@ import Switch, { switchClasses } from '@mui/material/Switch';
 import ToggleButton, { toggleButtonClasses } from '@mui/material/ToggleButton';
 import ToggleButtonGroup, { toggleButtonGroupClasses } from '@mui/material/ToggleButtonGroup';
 import Typography from '@mui/material/Typography';
+import IconButton from '@mui/material/IconButton';
 import Alert from '@mui/material/Alert';
 import FormHelperText from '@mui/material/FormHelperText';
 import Grow from '@mui/material/Grow';
@@ -36,6 +37,7 @@ import MinimizeRounded from '@mui/icons-material/MinimizeRounded';
 import CloseIcon from '@mui/icons-material/Close';
 import SaveOutlined from '@mui/icons-material/SaveOutlined';
 import EditNoteOutlined from '@mui/icons-material/EditNoteOutlined';
+import InfoOutlined from '@mui/icons-material/InfoOutlined';
 import { useIsDarkModeTheme } from '../../../hooks/useIsDarkModeTheme';
 import { SplitButton } from '../../SplitButton';
 import { useDispatch } from 'react-redux';
@@ -49,7 +51,10 @@ import type { ApiResponse } from '../../../models/ApiResponse';
 
 const messages = defineMessages({
 	saveReadFailed: { defaultMessage: 'The form could not be checked before saving.' },
-	afterSaving: { defaultMessage: 'After saving' },
+	afterSaving: { defaultMessage: 'Save and…' },
+	afterSavingHelp: {
+		defaultMessage: 'Choose what happens after you save: stay in the form, minimize it, or close it.'
+	},
 	stay: { defaultMessage: 'Stay' },
 	minimize: { defaultMessage: 'Minimize' },
 	close: { defaultMessage: 'Close' },
@@ -320,15 +325,20 @@ export function SaveCard(props: SaveCardProps) {
 				// Sibling of the card, so the sidebar's space-y gap sits above Release Lock and Close.
 				<Box role="group" aria-labelledby={afterSavingLabelId}>
 					<Stack spacing={0.5}>
-						<Typography
-							id={afterSavingLabelId}
-							variant="caption"
-							color="text.secondary"
-							component="span"
-							sx={{ textAlign: 'left' }}
-						>
-							<FormattedMessage {...messages.afterSaving} />
-						</Typography>
+						<Box sx={{ display: 'inline-flex', alignItems: 'center', textAlign: 'left' }}>
+							<Typography id={afterSavingLabelId} variant="caption" color="text.secondary" component="span">
+								<FormattedMessage {...messages.afterSaving} />
+							</Typography>
+							<Tooltip title={formatMessage(messages.afterSavingHelp)}>
+								<IconButton
+									size="small"
+									aria-label={formatMessage(messages.afterSavingHelp)}
+									sx={{ p: 0, ml: 0.5, color: 'text.secondary' }}
+								>
+									<InfoOutlined fontSize="small" />
+								</IconButton>
+							</Tooltip>
+						</Box>
 						<ToggleButtonGroup
 							ref={setGroup}
 							exclusive
