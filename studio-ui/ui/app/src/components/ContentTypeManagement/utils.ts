@@ -44,6 +44,7 @@ import {
 import { RefObject } from 'react';
 import { Subject } from 'rxjs';
 import { atom } from 'jotai';
+import { createFormVisibilityAtoms } from '../FormsEngine/lib/formVisibility';
 import { createParsedValueForField } from '../FormsEngine/lib/valueRetrievers';
 import { toBooleanString, toColor } from '../../utils/string';
 import { getXmlBuilder, valueSerializersLookup } from '../FormsEngine/lib/valueSerializers';
@@ -523,6 +524,10 @@ export const fooStableGlobalContext: StableGlobalContextProps = Object.freeze<St
 		popForm: noOp,
 		updateProps: noOp,
 		setStateCache: noOp
+	},
+	rootFormActions: {
+		save: () => Promise.resolve(),
+		setSaveAsDraft: noOp
 	}
 });
 
@@ -596,8 +601,10 @@ export const createStableFormContextProps = (
 			closeAfterSave: undefined,
 			minimizeAfterSave: undefined,
 			// Field validation atoms always read this, even where no form controller attaches.
-			relevanceVersion: atom(0)
+			relevanceVersion: atom(0),
+			...createFormVisibilityAtoms()
 		},
+		itemFormMode: null,
 		changedFieldIds: null,
 		fieldUpdates$: null,
 		itemMeta: createFieldItemMetaContext(type), // TODO: Property may be removed from this context altogether
