@@ -38,6 +38,7 @@ export function KeyboardShortcutsSwitch(props: SwitchProps) {
 
 	return (
 		<Tooltip
+			describeChild
 			title={
 				shortcutsEnabled ? (
 					<FormattedMessage defaultMessage="Disable shortcuts" />

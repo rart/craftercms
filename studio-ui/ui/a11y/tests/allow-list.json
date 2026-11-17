@@ -456,14 +456,6 @@
 		]
 	},
 	{
-		"rule": "aria-prohibited-attr",
-		"screen": "edit mode tools panel > Settings",
-		"theme": "dark",
-		"nodes": [
-			".MuiSwitch-colorDefault <span class=\"Mui-checked MuiButtonBase-root MuiSwitch-colorDefault MuiSwitch-switchBase PrivateSwitchBase-root\">"
-		]
-	},
-	{
 		"rule": "label",
 		"screen": "edit mode tools panel > Settings",
 		"theme": "dark",
@@ -484,14 +476,6 @@
 		"nodes": [
 			".mui-*.MuiListItem-root.MuiListItem-gutters:nth-child(1) <li class=\"MuiListItem-gutters MuiListItem-root\">",
 			".mui-*.MuiListItem-root.MuiListItem-gutters:nth-child(8) <li class=\"MuiListItem-gutters MuiListItem-root\">"
-		]
-	},
-	{
-		"rule": "aria-prohibited-attr",
-		"screen": "edit mode tools panel > Settings",
-		"theme": "light",
-		"nodes": [
-			".MuiSwitch-colorDefault <span class=\"Mui-checked MuiButtonBase-root MuiSwitch-colorDefault MuiSwitch-switchBase PrivateSwitchBase-root\">"
 		]
 	},
 	{
@@ -612,34 +596,6 @@
 		]
 	},
 	{
-		"rule": "aria-prohibited-attr",
-		"screen": "search",
-		"theme": "dark",
-		"nodes": [
-			".MuiGrid-grid-xs-12.MuiGrid-grid-sm-6.MuiGrid-grid-md-4:nth-child(17) > .MuiPaper-elevation1.MuiCard-root.mui-* > .MuiCardHeader-root.mui-* > .MuiCardHeader-avatar.mui-* > .MuiFormGroup-root.mui-* > .MuiCheckbox-sizeSmall.MuiCheckbox-root.MuiCheckbox-colorPrimary <span class=\"M... MuiButtonBase-root\">",
-			".MuiGrid-grid-xs-12.MuiGrid-grid-sm-6.MuiGrid-grid-md-4:nth-child(18) > .MuiPaper-elevation1.MuiCard-root.mui-* > .MuiCardHeader-root.mui-* > .MuiCardHeader-avatar.mui-* > .MuiFormGroup-root.mui-* > .MuiCheckbox-sizeSmall.MuiCheckbox-root.MuiCheckbox-colorPrimary <span class=\"M... MuiButtonBase-root\">",
-			".MuiGrid-grid-xs-12.MuiGrid-grid-sm-6.MuiGrid-grid-md-4:nth-child(19) > .MuiPaper-elevation1.MuiCard-root.mui-* > .MuiCardHeader-root.mui-* > .MuiCardHeader-avatar.mui-* > .MuiFormGroup-root.mui-* > .MuiCheckbox-sizeSmall.MuiCheckbox-root.MuiCheckbox-colorPrimary <span class=\"M... MuiButtonBase-root\">",
-			".MuiGrid-grid-xs-12.MuiGrid-grid-sm-6.MuiGrid-grid-md-4:nth-child(21) > .MuiPaper-elevation1.MuiCard-root.mui-* > .MuiCardHeader-root.mui-* > .MuiCardHeader-avatar.mui-* > .MuiFormGroup-root.mui-* > .MuiCheckbox-sizeSmall.MuiCheckbox-root.MuiCheckbox-colorPrimary <span class=\"M... MuiButtonBase-root\">",
-			".MuiGrid-grid-xs-12.MuiGrid-grid-sm-6.MuiGrid-grid-md-4:nth-child(4) > .MuiPaper-elevation1.MuiCard-root.mui-* > .MuiCardHeader-root.mui-* > .MuiCardHeader-avatar.mui-* > .MuiFormGroup-root.mui-* > .MuiCheckbox-sizeSmall.MuiCheckbox-root.MuiCheckbox-colorPrimary <span class=\"M... MuiButtonBase-root\">",
-			".MuiGrid-grid-xs-12.MuiGrid-grid-sm-6.MuiGrid-grid-md-4:nth-child(9) > .MuiPaper-elevation1.MuiCard-root.mui-* > .MuiCardHeader-root.mui-* > .MuiCardHeader-avatar.mui-* > .MuiFormGroup-root.mui-* > .MuiCheckbox-sizeSmall.MuiCheckbox-root.MuiCheckbox-colorPrimary <span class=\"M... MuiButtonBase-root\">",
-			"span[aria-label=\"Select 1-gear.png\"] <span class=\"MuiButtonBase-root MuiCheckbox-colorPrimary MuiCheckbox-root MuiCheckbox-sizeSmall PrivateSwitchBase-root\">",
-			"span[aria-label=\"Select 10 Tips to Get in Shape\"] <span class=\"M... MuiButtonBase-root\">",
-			"span[aria-label=\"Select 404.ftl\"] <span class=\"MuiButtonBase-root MuiCheckbox-colorPrimary MuiCheckbox-root MuiCheckbox-sizeSmall PrivateSwitchBase-root\">",
-			"span[aria-label=\"Select 500.ftl\"] <span class=\"MuiButtonBase-root MuiCheckbox-colorPrimary MuiCheckbox-root MuiCheckbox-sizeSmall PrivateSwitchBase-root\">",
-			"span[aria-label=\"Select Brand Icons\"] <span class=\"MuiButtonBase-root MuiCheckbox-colorPrimary MuiCheckbox-root MuiCheckbox-sizeSmall PrivateSwitchBase-root\">",
-			"span[aria-label=\"Select Categories\"] <span class=\"MuiButtonBase-root MuiCheckbox-colorPrimary MuiCheckbox-root MuiCheckbox-sizeSmall PrivateSwitchBase-root\">",
-			"span[aria-label=\"Select Closed captioning\"] <span class=\"MuiButtonBase-root MuiCheckbox-colorPrimary MuiCheckbox-root MuiCheckbox-sizeSmall PrivateSwitchBase-root\">",
-			"span[aria-label=\"Select Contact Widget\"] <span class=\"MuiButtonBase-root MuiCheckbox-colorPrimary MuiCheckbox-root MuiCheckbox-sizeSmall PrivateSwitchBase-root\">",
-			"span[aria-label=\"Select Entertainment\"] <span class=\"MuiButtonBase-root MuiCheckbox-colorPrimary MuiCheckbox-root MuiCheckbox-sizeSmall PrivateSwitchBase-root\">",
-			"span[aria-label=\"Select Feature Icons\"] <span class=\"MuiButtonBase-root MuiCheckbox-colorPrimary MuiCheckbox-root MuiCheckbox-sizeSmall PrivateSwitchBase-root\">",
-			"span[aria-label=\"Select Header\"] <span class=\"MuiButtonBase-root MuiCheckbox-colorPrimary MuiCheckbox-root MuiCheckbox-sizeSmall PrivateSwitchBase-root\">",
-			"span[aria-label=\"Select Health\"] <span class=\"MuiButtonBase-root MuiCheckbox-colorPrimary MuiCheckbox-root MuiCheckbox-sizeSmall PrivateSwitchBase-root\">",
-			"span[aria-label=\"Select Home\"] <span class=\"MuiButtonBase-root MuiCheckbox-colorPrimary MuiCheckbox-root MuiCheckbox-sizeSmall PrivateSwitchBase-root\">",
-			"span[aria-label=\"Select Latest Articles Widget\"] <span class=\"M... MuiButtonBase-root\">",
-			"span[aria-label=\"Select Men Styles For Winter\"] <span class=\"M... MuiButtonBase-root\">"
-		]
-	},
-	{
 		"rule": "label",
 		"screen": "search",
 		"theme": "dark",
@@ -673,34 +629,6 @@
 		"theme": "light",
 		"nodes": [
 			"#* <div role=\"combobox\" class=\"MuiInputBase-input MuiSelect-select MuiSelect-standard MuiTablePagination-select\">"
-		]
-	},
-	{
-		"rule": "aria-prohibited-attr",
-		"screen": "search",
-		"theme": "light",
-		"nodes": [
-			".MuiGrid-grid-xs-12.MuiGrid-grid-sm-6.MuiGrid-grid-md-4:nth-child(17) > .MuiPaper-elevation1.MuiCard-root.mui-* > .MuiCardHeader-root.mui-* > .MuiCardHeader-avatar.mui-* > .MuiFormGroup-root.mui-* > .MuiCheckbox-sizeSmall.MuiCheckbox-root.MuiCheckbox-colorPrimary <span class=\"M... MuiButtonBase-root\">",
-			".MuiGrid-grid-xs-12.MuiGrid-grid-sm-6.MuiGrid-grid-md-4:nth-child(18) > .MuiPaper-elevation1.MuiCard-root.mui-* > .MuiCardHeader-root.mui-* > .MuiCardHeader-avatar.mui-* > .MuiFormGroup-root.mui-* > .MuiCheckbox-sizeSmall.MuiCheckbox-root.MuiCheckbox-colorPrimary <span class=\"M... MuiButtonBase-root\">",
-			".MuiGrid-grid-xs-12.MuiGrid-grid-sm-6.MuiGrid-grid-md-4:nth-child(19) > .MuiPaper-elevation1.MuiCard-root.mui-* > .MuiCardHeader-root.mui-* > .MuiCardHeader-avatar.mui-* > .MuiFormGroup-root.mui-* > .MuiCheckbox-sizeSmall.MuiCheckbox-root.MuiCheckbox-colorPrimary <span class=\"M... MuiButtonBase-root\">",
-			".MuiGrid-grid-xs-12.MuiGrid-grid-sm-6.MuiGrid-grid-md-4:nth-child(21) > .MuiPaper-elevation1.MuiCard-root.mui-* > .MuiCardHeader-root.mui-* > .MuiCardHeader-avatar.mui-* > .MuiFormGroup-root.mui-* > .MuiCheckbox-sizeSmall.MuiCheckbox-root.MuiCheckbox-colorPrimary <span class=\"M... MuiButtonBase-root\">",
-			".MuiGrid-grid-xs-12.MuiGrid-grid-sm-6.MuiGrid-grid-md-4:nth-child(4) > .MuiPaper-elevation1.MuiCard-root.mui-* > .MuiCardHeader-root.mui-* > .MuiCardHeader-avatar.mui-* > .MuiFormGroup-root.mui-* > .MuiCheckbox-sizeSmall.MuiCheckbox-root.MuiCheckbox-colorPrimary <span class=\"M... MuiButtonBase-root\">",
-			".MuiGrid-grid-xs-12.MuiGrid-grid-sm-6.MuiGrid-grid-md-4:nth-child(9) > .MuiPaper-elevation1.MuiCard-root.mui-* > .MuiCardHeader-root.mui-* > .MuiCardHeader-avatar.mui-* > .MuiFormGroup-root.mui-* > .MuiCheckbox-sizeSmall.MuiCheckbox-root.MuiCheckbox-colorPrimary <span class=\"M... MuiButtonBase-root\">",
-			"span[aria-label=\"Select 1-gear.png\"] <span class=\"MuiButtonBase-root MuiCheckbox-colorPrimary MuiCheckbox-root MuiCheckbox-sizeSmall PrivateSwitchBase-root\">",
-			"span[aria-label=\"Select 10 Tips to Get in Shape\"] <span class=\"M... MuiButtonBase-root\">",
-			"span[aria-label=\"Select 404.ftl\"] <span class=\"MuiButtonBase-root MuiCheckbox-colorPrimary MuiCheckbox-root MuiCheckbox-sizeSmall PrivateSwitchBase-root\">",
-			"span[aria-label=\"Select 500.ftl\"] <span class=\"MuiButtonBase-root MuiCheckbox-colorPrimary MuiCheckbox-root MuiCheckbox-sizeSmall PrivateSwitchBase-root\">",
-			"span[aria-label=\"Select Brand Icons\"] <span class=\"MuiButtonBase-root MuiCheckbox-colorPrimary MuiCheckbox-root MuiCheckbox-sizeSmall PrivateSwitchBase-root\">",
-			"span[aria-label=\"Select Categories\"] <span class=\"MuiButtonBase-root MuiCheckbox-colorPrimary MuiCheckbox-root MuiCheckbox-sizeSmall PrivateSwitchBase-root\">",
-			"span[aria-label=\"Select Closed captioning\"] <span class=\"MuiButtonBase-root MuiCheckbox-colorPrimary MuiCheckbox-root MuiCheckbox-sizeSmall PrivateSwitchBase-root\">",
-			"span[aria-label=\"Select Contact Widget\"] <span class=\"MuiButtonBase-root MuiCheckbox-colorPrimary MuiCheckbox-root MuiCheckbox-sizeSmall PrivateSwitchBase-root\">",
-			"span[aria-label=\"Select Entertainment\"] <span class=\"MuiButtonBase-root MuiCheckbox-colorPrimary MuiCheckbox-root MuiCheckbox-sizeSmall PrivateSwitchBase-root\">",
-			"span[aria-label=\"Select Feature Icons\"] <span class=\"MuiButtonBase-root MuiCheckbox-colorPrimary MuiCheckbox-root MuiCheckbox-sizeSmall PrivateSwitchBase-root\">",
-			"span[aria-label=\"Select Header\"] <span class=\"MuiButtonBase-root MuiCheckbox-colorPrimary MuiCheckbox-root MuiCheckbox-sizeSmall PrivateSwitchBase-root\">",
-			"span[aria-label=\"Select Health\"] <span class=\"MuiButtonBase-root MuiCheckbox-colorPrimary MuiCheckbox-root MuiCheckbox-sizeSmall PrivateSwitchBase-root\">",
-			"span[aria-label=\"Select Home\"] <span class=\"MuiButtonBase-root MuiCheckbox-colorPrimary MuiCheckbox-root MuiCheckbox-sizeSmall PrivateSwitchBase-root\">",
-			"span[aria-label=\"Select Latest Articles Widget\"] <span class=\"M... MuiButtonBase-root\">",
-			"span[aria-label=\"Select Men Styles For Winter\"] <span class=\"M... MuiButtonBase-root\">"
 		]
 	},
 	{

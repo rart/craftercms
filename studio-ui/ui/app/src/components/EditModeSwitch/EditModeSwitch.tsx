@@ -78,12 +78,16 @@ const EditSwitch = styled(Switch)(({ theme }) => {
 	};
 });
 
-export interface EditModeSwitchProps extends Partial<SwitchProps> {}
+export interface EditModeSwitchProps extends Partial<Omit<SwitchProps, 'slotProps'>> {}
 
 export function EditModeSwitch(props: EditModeSwitchProps) {
 	const { disabled, ...rest } = props;
 	const { formatMessage } = useIntl();
 	const dispatch = useDispatch();
+	const toggleEditModeLabel = formatMessage({
+		id: 'previewToolbar.toggleEditMode',
+		defaultMessage: 'Toggle edit mode'
+	});
 	const editMode = useSelection((state) => state.preview.editMode);
 
 	const onChange = (e) => {
@@ -91,8 +95,15 @@ export function EditModeSwitch(props: EditModeSwitchProps) {
 	};
 
 	return (
-		<Tooltip title={formatMessage({ id: 'previewToolbar.toggleEditMode', defaultMessage: 'Toggle edit mode' })}>
-			<EditSwitch color="default" checked={editMode} onChange={onChange} {...rest} disabled={disabled} />
+		<Tooltip describeChild title={toggleEditModeLabel}>
+			<EditSwitch
+				color="default"
+				checked={editMode}
+				onChange={onChange}
+				{...rest}
+				slotProps={{ input: { 'aria-label': toggleEditModeLabel } }}
+				disabled={disabled}
+			/>
 		</Tooltip>
 	);
 }
