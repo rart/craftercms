@@ -335,6 +335,11 @@ export function MyRecentActivityDashlet(props: MyRecentActivityDashletProps) {
 											onClick={(e) => {
 												handleSelect(e, activity.item.path);
 											}}
+											slotProps={{
+												input: {
+													'aria-label': formatMessage({ defaultMessage: 'Select {name}' }, { name: activity.item.path })
+												}
+											}}
 										/>
 									) : (
 										<Box sx={{ minWidth: '30px' }} />

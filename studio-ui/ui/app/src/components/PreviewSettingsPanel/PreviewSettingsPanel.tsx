@@ -79,8 +79,8 @@ export function PreviewSettingsPanel() {
 	return (
 		<List>
 			<ListItem>
-				<ListItemText primary={formatMessage(translations.editMode)} />
-				<EditModeSwitch edge="end" />
+				<ListItemText id="settingsPanelEditModeLabel" primary={formatMessage(translations.editMode)} />
+				<EditModeSwitch edge="end" slotProps={{ input: { 'aria-labelledby': 'settingsPanelEditModeLabel' } }} />
 			</ListItem>
 			<FormHelperText sx={formHelperTextSx}>{formatMessage(translations.editModeHelperText)}</FormHelperText>
 			<ListItem>

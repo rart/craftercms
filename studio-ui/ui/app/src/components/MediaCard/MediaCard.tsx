@@ -219,7 +219,9 @@ function MediaCard(props: MediaCardProps) {
 								onClick={(e: any) => !disableSelection && onSelect(path, e.target.checked)}
 								color="primary"
 								size="small"
-								aria-label={formatMessage({ defaultMessage: 'Select {name}' }, { name })}
+								slotProps={{
+									input: { 'aria-label': formatMessage({ defaultMessage: 'Select {name}' }, { name }) }
+								}}
 							/>
 						</FormGroup>
 					) : (

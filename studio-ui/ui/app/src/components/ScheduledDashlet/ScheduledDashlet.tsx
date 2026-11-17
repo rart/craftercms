@@ -309,6 +309,9 @@ export function ScheduledDashlet(props: ScheduledDashletProps) {
 									edge="start"
 									checked={isSelected(pkg)}
 									onClick={(e) => onSelectItem(e, pkg as PublishPackage)}
+									slotProps={{
+										input: { 'aria-label': formatMessage({ defaultMessage: 'Select {name}' }, { name: pkg.title }) }
+									}}
 								/>
 							</ListItemIcon>
 							{pkg.submitter && (

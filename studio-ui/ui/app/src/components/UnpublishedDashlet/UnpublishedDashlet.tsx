@@ -306,7 +306,14 @@ export function UnpublishedDashlet(props: UnpublishedDashletProps) {
 					{items.map((item, index) => (
 						<ListItemButton key={index} onClick={(e) => onSelectItem(e, item)} sx={{ pt: 0, pb: 0 }}>
 							<ListItemIcon>
-								<Checkbox edge="start" checked={isSelected(item)} onChange={(e) => onSelectItem(e, item)} />
+								<Checkbox
+									edge="start"
+									checked={isSelected(item)}
+									onChange={(e) => onSelectItem(e, item)}
+									slotProps={{
+										input: { 'aria-label': formatMessage({ defaultMessage: 'Select {name}' }, { name: item.path }) }
+									}}
+								/>
 							</ListItemIcon>
 							<ListItemText
 								primary={

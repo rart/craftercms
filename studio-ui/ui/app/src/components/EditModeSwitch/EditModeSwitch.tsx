@@ -81,7 +81,7 @@ const EditSwitch = styled(Switch)(({ theme }) => {
 export interface EditModeSwitchProps extends Partial<SwitchProps> {}
 
 export function EditModeSwitch(props: EditModeSwitchProps) {
-	const { disabled, ...rest } = props;
+	const { disabled, slotProps, ...rest } = props;
 	const { formatMessage } = useIntl();
 	const dispatch = useDispatch();
 	const editMode = useSelection((state) => state.preview.editMode);
@@ -90,9 +90,25 @@ export function EditModeSwitch(props: EditModeSwitchProps) {
 		dispatch(setPreviewEditMode({ editMode: e.target.checked }));
 	};
 
+	const label = formatMessage({ id: 'previewToolbar.toggleEditMode', defaultMessage: 'Toggle edit mode' });
+
 	return (
-		<Tooltip title={formatMessage({ id: 'previewToolbar.toggleEditMode', defaultMessage: 'Toggle edit mode' })}>
-			<EditSwitch color="default" checked={editMode} onChange={onChange} {...rest} disabled={disabled} />
+		<Tooltip title={label}>
+			<EditSwitch
+				color="default"
+				checked={editMode}
+				onChange={onChange}
+				{...rest}
+				slotProps={{
+					...slotProps,
+					// The tooltip labels the root element, but the accessible name must be on the input itself.
+					input: (ownerState) => ({
+						'aria-label': label,
+						...(typeof slotProps?.input === 'function' ? slotProps.input(ownerState) : slotProps?.input)
+					})
+				}}
+				disabled={disabled}
+			/>
 		</Tooltip>
 	);
 }
